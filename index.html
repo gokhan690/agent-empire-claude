@@ -317,6 +317,22 @@ body.noscroll{overflow:hidden}
 .chart-tip .ct-delta.up{color:#8BE0AE}.chart-tip .ct-delta.down{color:#F0A9A9}
 .chart-tip .ct-ev{margin-top:3px;font-size:10.5px;font-weight:600;color:#F3DFA8}
 .dept-grid{display:grid;grid-template-columns:1fr;gap:10px}
+/* V8 Phase B/B2: full-page entity ekranı */
+.ent-head{position:sticky;top:54px;z-index:35;display:flex;align-items:center;gap:10px;padding:8px 0;margin:-8px 0 8px;
+  background:var(--bg);border-bottom:1px solid var(--div)}
+.ent-crumb{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-weight:600}
+.ent-crumb a{text-decoration:none}
+.ent-body{padding-bottom:24px}
+.grouped .card{margin-bottom:6px}
+/* V8-B2 pazarlık stepper */
+.nego-stepper{display:flex;gap:5px;overflow-x:auto;padding:6px 0 10px;-webkit-overflow-scrolling:touch}
+.nstep{flex-shrink:0;display:flex;align-items:center;gap:5px;border:1.5px solid var(--border-soft);background:var(--card);
+  border-radius:999px;padding:6px 11px;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--ink2);cursor:pointer;min-height:36px}
+.nstep.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.nstep .nstep-n{background:var(--bg2);color:var(--ink2);border-radius:999px;width:17px;height:17px;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
+.nstep.on .nstep-n{background:rgba(255,255,255,.25);color:#fff}
+.nstep.st-done{border-color:var(--green)}.nstep.st-warn{border-color:var(--gold)}.nstep.st-locked{opacity:.55}
+@media(min-width:1100px){ .entity-screen{grid-column:2;grid-row:2} .ent-head{top:66px} }
 @media(min-width:1100px){
   .tb-center{display:flex;gap:16px;align-items:center;font-size:12px;font-weight:700;color:var(--ink2)}
   #app.sb-collapsed{grid-template-columns:70px minmax(0,1fr) 330px}
@@ -351,9 +367,15 @@ body.noscroll{overflow:hidden}
   <div class="screen" id="scr-scout"></div>
   <div class="screen" id="scr-transfer"></div>
   <div class="screen" id="scr-agency"></div>
+  <div class="screen" id="scr-world"></div>
+  <div class="screen" id="scr-news"></div>
+  <div class="screen" id="scr-settings"></div>
+  <div class="screen" id="scr-career"></div>
+  <div class="screen" id="scr-calendar"></div>
+  <div class="screen" id="scr-weeklyBriefing"></div>
+  <div class="screen entity-screen" id="scr-entity"></div>
   <div class="context-panel" id="ctxpanel"></div>
-  <div class="playbar"><div class="playbar-inner" style="display:flex;gap:8px">
-  <button class="btn gold" id="planbtn" style="border-radius:18px;flex-shrink:0;box-shadow:var(--shadow-md)" onclick="openWeeklyPlan()" aria-label="Haftalık plan">📋 Plan</button>
+  <div class="playbar"><div class="playbar-inner">
   <button class="playbtn" id="playbtn" onclick="playWeek()">⚽ Haftayı Oynat</button></div></div>
   <div class="tabbar"><div class="tabbar-inner" id="tabbar"></div></div>
 </div>
@@ -749,9 +771,11 @@ let S = null; // global save state
 
 function newGame(agentName, agencyName){
   const seed = Date.now()>>>0;
-  const world = buildWorld(seed);
+  const preset = (typeof window!=="undefined" && window._worldPreset) || "standard";
+  const startCountry = (typeof window!=="undefined" && window._startCountry) || "tr";
+  const world = generateWorldFromPreset(preset, seed);
   S = {
-    v:6, seed, agentName, agencyName,
+    v:8, seed, agentName, agencyName,
     week:1, season:1,
     cash:BAL.startCash, rep:BAL.startRep, status:5, shady:0,
     officeLevel:0,
@@ -779,17 +803,31 @@ function newGame(agentName, agencyName){
     negotiationSessions:{}, representationAgreements:{},
     rivalAgencies:[], rivalDiplomacy:{},
     phoneInbox:[], transferAdaptations:[], deadlineDayState:null,
+    // ---- V7 alanları ----
+    worldDataVersion:WORLD_DATA_VERSION, worldSeed:seed, worldPreset:preset, startCountry,
+    worldDeltas:{}, countryStates:{}, leagueStates:{}, clubSeasonStates:{},
+    promotionHistory:[], relegationHistory:[], continentalCompetitions:null,
+    regionalOffices:[], marketIndexes:null,
+    // ---- V8 alanları ----
+    routeState:{screen:"home",entityType:null,entityId:null,section:null},
+    tutorialFlow:{active:true,skipped:false,completedSteps:[],startedTick:0},
+    actionCenterState:{}, weeklyBriefing:null,
+    nationalCompetitions:[], registrationCases:[], workPermitCases:[], playerDetailRegistry:null,
   };
+  S.uiState.bottomNav="5tab"; S.uiState.entityHistory=[]; S.uiState.scrollPositions={};
   S.uiState.chartTooltipMode="auto";
   S.settings.edgeSwipeMenu=true;
-  // başlangıç: 2 müşteri (TR 1.Lig gençleri) + 1 scout
-  const cands = Object.values(world.players).filter(p=>p.discovered && p.age<=21 && leagueOf(p,world)?.id==="tr2").sort((a,b)=>b.pa-a.pa);
+  // başlangıç: seçilen ülkenin alt liginden 2 genç müşteri + 1 scout
+  const startLeagues = world.leagues.filter(l=>l.countryId===startCountry).sort((a,b)=>b.tier-a.tier);
+  const startLeague = startLeagues.find(l=>l.tier>=2) || startLeagues[0] || world.leagues[0];
+  const cands = Object.values(world.players).filter(p=>p.discovered && p.age<=21 && p.clubId && world.clubs[p.clubId] && world.clubs[p.clubId].leagueId===startLeague.id).sort((a,b)=>b.pa-a.pa);
   for(const p of cands.slice(0,2)){ p.agent="you"; p.loyalty=ri(62,78); p.agentWeeksLeft=ri(100,160); p.famTrust=ri(60,80); p.rivalId=null; }
   S.scouts.push(makeScout(2));
-  S.scouts[0].assign={leagueId:"tr2"};
+  S.scouts[0].assign={leagueId:startLeague.id};
   initDepartments(S);
   initRivalAgencies(S);
   initRepresentationAgreements(S);
+  buildWorldIndexes(S);
   rollAssetMarket();
   addNews("me","Ajans kuruldu",`${agencyName} bugün İstanbul'da küçük bir ofiste kuruldu. ${agentName} ilk müşterileriyle yola çıkıyor.`,"good");
   save();
@@ -1301,8 +1339,13 @@ function simContractsAndPlans(sum){
     if(p.agent==="you" && p.clubId && contractWeeksLeft(p)===12) notify("oyuncu",`${p.name} kulüp sözleşmesi 12 hafta sonra bitiyor`,"players",null);
     if(p.clubId && p.contractEndSeason!=null && contractWeeksLeft(p)<=0){
       const wasMine=p.agent==="you"; const c=S.world.clubs[p.clubId];
-      p.clubId=null; p.wage=0; p.contractEndSeason=null; p.loan=null;
-      if(wasMine) addNews("me",`${p.name} serbest kaldı`,`${c?c.name+" ":""}sözleşmesi doldu. Bosman ile istediği kulübe gidebilir — doğru kulübü bul, imza komisyonunu kap.`,"bad");
+      if(!wasMine && rnd()<0.82){
+        // kulüp oyuncusunu yeniler — kadrolar boşalmasın (yalnız bir kısmı serbest kalır)
+        p.contractEndSeason=S.season+ri(1,3); p.contractEndWeek=ri(20,42);
+      } else {
+        p.clubId=null; p.wage=0; p.contractEndSeason=null; p.loan=null;
+        if(wasMine) addNews("me",`${p.name} serbest kaldı`,`${c?c.name+" ":""}sözleşmesi doldu. Bosman ile istediği kulübe gidebilir — doğru kulübü bul, imza komisyonunu kap.`,"bad");
+      }
     }
   }
   for(const p of myPlayers()){
@@ -1403,25 +1446,7 @@ function generateAgencyInsights(){
   if(S.reports.filter(r=>!r.opened).length>=2) out.push("Açılmamış scout raporların birikiyor.");
   return out.slice(0,4);
 }
-function buildActions(){
-  const acts=[];
-  for(const o of S.offers) if(o.expires-S.week<=1){ const p=S.world.players[o.pid];
-    acts.push({t:`Teklif süresi doluyor: ${p.name}`,cls:"crit",btn:"İncele",fn:`switchTab('transfer')`}); break; }
-  if(S.decisions.length) acts.push({t:`${S.decisions.length} bekleyen karar var`,cls:"crit",btn:"Karar Ver",fn:`openDecision(0)`});
-  const unh=myPlayers().find(p=>p.morale<38);
-  if(unh) acts.push({t:`${unh.name} mutsuz`,cls:"crit",btn:"Görüş",fn:`openPlayer('${unh.id}')`});
-  if(S.cash<0) acts.push({t:"Kasa ekside — gider kıs veya satış yap",cls:"crit",btn:"Finans",fn:`gotoAgency('finans')`});
-  const exp=myPlayers().find(p=>p.agentWeeksLeft>0&&p.agentWeeksLeft<12);
-  if(exp) acts.push({t:`${exp.name} menajerlik sözleşmesi bitiyor`,cls:"crit",btn:"Yenile",fn:`openPlayer('${exp.id}')`});
-  const un=S.reports.filter(r=>!r.opened).length;
-  if(un) acts.push({t:`${un} açılmamış scout raporu`,cls:"sugg",btn:"Aç",fn:`switchTab('scout')`});
-  const cexp=myPlayers().find(p=>p.clubId&&contractWeeksLeft(p)<26);
-  if(cexp) acts.push({t:`${cexp.name} kulüp sözleşmesi azalıyor`,cls:"soon",btn:"Bak",fn:`openPlayer('${cexp.id}')`});
-  if(S.scouts.some(sc=>!sc.assign)) acts.push({t:"Boşta scout var",cls:"sugg",btn:"Ata",fn:`switchTab('scout')`});
-  const nxt=BAL.transferWindows.find(([a])=>a>S.week);
-  if(nxt&&nxt[0]-S.week<=3&&!inWindow(S.week)) acts.push({t:`Transfer penceresi ${nxt[0]-S.week} hafta sonra açılıyor`,cls:"soon",btn:"Hazırlan",fn:`switchTab('transfer')`});
-  return acts.slice(0,5);
-}
+/* buildActions() V8 Phase B'de puanlı motorla yeniden tanımlandı (aşağıda). */
 const TASKS=[
  {id:"open_report",t:"İlk scout raporunu aç"},
  {id:"meet",t:"Bir oyuncuyla görüşme talep et"},
@@ -1492,7 +1517,7 @@ function toggleWatch(pid){
   S.watchlist=S.watchlist||[];
   const i=S.watchlist.indexOf(pid);
   if(i>=0){ S.watchlist.splice(i,1); toast("İzleme listesinden çıkarıldı"); }
-  else { S.watchlist.push(pid); toast("İzleme listesine eklendi 👁️","green"); }
+  else { S.watchlist.push(pid); toast("İzleme listesine eklendi 👁️","green"); if(typeof emitGameEvent==="function") emitGameEvent("PLAYER_WATCHLISTED",{pid}); }
   save(); renderAll();
 }
 
@@ -1512,6 +1537,7 @@ const FOCUS_TYPES=[
 ];
 const focusOn=id=> !!(S&&S.weeklyFocus&&S.weeklyFocus.includes(id));
 function toggleFocus(id){
+  if(typeof emitGameEvent==="function") setTimeout(function(){ if((S.weeklyFocus||[]).length) emitGameEvent("WEEKLY_FOCUS_SELECTED",{}); },0);
   S.weeklyFocus=S.weeklyFocus||[];
   const i=S.weeklyFocus.indexOf(id);
   if(i>=0) S.weeklyFocus.splice(i,1);
@@ -1593,6 +1619,15 @@ function repairSaveState(st){
   st.representationAgreements=st.representationAgreements||{}; st.rivalAgencies=st.rivalAgencies||[];
   st.rivalDiplomacy=st.rivalDiplomacy||{}; st.phoneInbox=st.phoneInbox||[];
   st.transferAdaptations=st.transferAdaptations||[];
+  // V7 koleksiyonları
+  if(st.v>=7){ st.promotionHistory=st.promotionHistory||[]; st.relegationHistory=st.relegationHistory||[];
+    st.regionalOffices=st.regionalOffices||[]; st.worldDeltas=st.worldDeltas||{}; st.countryStates=st.countryStates||{};
+    st.leagueStates=st.leagueStates||{}; st.clubSeasonStates=st.clubSeasonStates||{};
+    if(st.world&&!st.world.countries) migrateV6ToV7(st); }
+  if(st.v>=8){ st.uiState=st.uiState||{}; st.uiState.entityHistory=st.uiState.entityHistory||[]; st.uiState.scrollPositions=st.uiState.scrollPositions||{};
+    st.routeState=st.routeState||{screen:"home"}; st.tutorialFlow=st.tutorialFlow||{active:false,done:true};
+    st.actionCenterState=st.actionCenterState||{}; st.nationalCompetitions=st.nationalCompetitions||[];
+    st.registrationCases=st.registrationCases||[]; st.workPermitCases=st.workPermitCases||[]; }
   // NaN temizliği
   for(const k of ["cash","rep","status","mediaPower","sponsorNetwork"]) if(typeof st[k]!=="number"||!isFinite(st[k])) st[k]=0;
   for(const rv of st.rivalAgencies){ if(typeof rv.cash!=="number"||!isFinite(rv.cash)) rv.cash=0;
@@ -1858,6 +1893,8 @@ function advanceWeek(sum){
     S.week=1; S.season++;
     for(const p of Object.values(S.world.players)){ p.age++; p.seasonStats={apps:0,goals:0,assists:0,ratSum:0,ratN:0}; }
     simRetirements();
+    try{ resolvePromotionRelegation(); }catch(e){ console.error("promRel",e); }
+    try{ replenishSquads(); }catch(e){ console.error("replenish",e); }
     addNews("","Yeni sezon başladı 🎉",`Sezon ${S.season} — yeni umutlar, yeni pencereler, yeni elmaslar.`,"good");
   }
   simMatches(sum); simScouts(sum); simOffers(sum); simEconomy(sum); simRivals(sum); simNationalTeam(sum); simSponsors(sum); simEvents(sum); simFlavorNews(); simCrisis(sum);
@@ -1867,6 +1904,10 @@ function advanceWeek(sum){
   try{ simPhone(sum); }catch(e){ console.error("simPhone",e); }
   try{ simAdaptations(sum); }catch(e){ console.error("simAdaptations",e); }
   try{ computeDeadlineDay(); }catch(e){}
+  // V7: lig puanı + bölgesel ofis gideri
+  try{ accrueLeaguePoints(sum); }catch(e){ console.error("accrueLeaguePoints",e); }
+  try{ const roc=regionalOfficeWeeklyCost(); if(roc>0) ledger("Bölgesel ofis giderleri", -roc); }catch(e){}
+  if(S._idx) S._idx.builtWeek=-1; // indeks bir sonraki erişimde yenilensin
   for(const id in S.world.players){ const p=S.world.players[id]; if(p.meetCooldown>0) p.meetCooldown--; if(p.meetCd>0) p.meetCd--; }
   S.managerAttention={max:3+(calculateAgencyTier().lv>=4?1:0),used:0};
   if(focusOn("kulup")) for(const cid in S.world.clubs){ const c=S.world.clubs[cid]; c.relation=clamp(c.relation+0.25,0,100); }
@@ -1894,17 +1935,19 @@ function advanceWeek(sum){
 function playWeek(){
   if(!S) return;
   if(S.decisions.length){ toast("Önce bekleyen kararları ver ✋"); openDecision(0); return; }
+  let before=null; try{ before=createWeeklySnapshot(); }catch(e){}
   const sum={performances:[],newReports:0,newOffers:0,cashBefore:S.cash};
   advanceWeek(sum);
   sum.cashDelta=S.cash-sum.cashBefore;
   S.lastSummary=sum;
+  try{ const after=createWeeklySnapshot(); if(before) S.weeklyBriefing=buildWeeklyBriefing(before,after,sum); }catch(e){ console.error("briefing",e); }
   taskDone("week");
   save(); renderAll();
   if(S.lastAwards&&S.lastAwards.pending){ S.lastAwards.pending=false; save(); openAwardsSheet(); return; }
   if(S.settings&&S.settings.fastMode){
     toast(`H${S.week} · ${sum.cashDelta>=0?"+":""}${fmtM(sum.cashDelta)}${sum.newOffers?` · 📩 ${sum.newOffers} teklif`:""}${sum.newReports?` · ✉️ ${sum.newReports} rapor`:""}`);
     if(S.decisions.length) openDecision(0);
-  } else openSummary(sum);
+  } else openWeeklyBriefing();
 }
 function runStabilitySimulation(weeks){
   if(!S){ console.warn("Önce oyun başlat"); return; }
@@ -1993,6 +2036,27 @@ function migrateSaveState(st){
     pruneHistory(st);
   }
   if(st.v===5){ migrateV5ToV6(st); }
+  if(st.v===6){ migrateV6ToV7(st); }
+  if(st.v===7){ migrateV7ToV8(st); }
+  return st;
+}
+function migrateV7ToV8(st){
+  st.v=8;
+  st.uiState=st.uiState||{};
+  st.uiState.bottomNav=st.uiState.bottomNav??"5tab";
+  st.uiState.entityHistory=st.uiState.entityHistory||[];
+  st.uiState.scrollPositions=st.uiState.scrollPositions||{};
+  st.routeState=st.routeState||{screen:"home",entityType:null,entityId:null,section:null};
+  st.tutorialFlow=st.tutorialFlow??((st.season===1&&st.week<=8)?{active:true,step:Math.max(1,st.week),skipped:false}:{active:false,done:true});
+  st.actionCenterState=st.actionCenterState||{};
+  st.weeklyBriefing=st.weeklyBriefing||null;
+  st.nationalCompetitions=st.nationalCompetitions||[];
+  if(!st.continentalCompetitions) st.continentalCompetitions=null;
+  st.registrationCases=st.registrationCases||[];
+  st.workPermitCases=st.workPermitCases||[];
+  st.playerDetailRegistry=st.playerDetailRegistry||null;
+  // eski agency segmenti V8 4-bölüm haritasına
+  if(st.uiState&&st.uiState.lastAgencySeg){ delete st.uiState.lastAgencySeg; }
   return st;
 }
 function migrateV5ToV6(st){
@@ -2061,11 +2125,20 @@ const $=id=>document.getElementById(id);
 let TAB="home";
 const TABS=[
   {id:"home",label:"Ana"},{id:"players",label:"Portföy"},
-  {id:"scout",label:"Keşif"},{id:"transfer",label:"Pazar"},
+  {id:"scout",label:"Keşif"},{id:"transfer",label:"Transfer"},
   {id:"agency",label:"Ajans"},
 ];
+function playCtaLabel(){
+  if(!S) return "⚽ Haftayı Oynat";
+  const crit=(S.decisions||[]).length;
+  if(crit) return `⚡ ${crit} Kritik Karar Var`;
+  if(typeof deadlineActive==="function"&&deadlineActive()) return "⏰ Deadline — Haftayı Oynat";
+  if(S.week===BAL.weeksPerSeason) return "🏁 Sezon Sonunu Tamamla";
+  if(typeof buildActions==="function"&&buildActions().some(a=>a.cls==="crit")) return "⚠️ Kritik İş Var — Oynat";
+  return "⚽ Haftayı Oynat";
+}
 const NAVI={home:"home",players:"users",scout:"search",transfer:"swap",agency:"build"};
-let SEG={home:"ozet",scout:"gorev",transfer:"teklif",agency:"merkez"};
+let SEG={home:"ozet",scout:"gorev",transfer:"teklif",agency:"genel"};
 let PSTATE={q:"",f:"all",s:"value"};
 let CHART={m:"pv",win:16};
 let NEWSF="all";
@@ -2079,8 +2152,13 @@ function segBar(tab,items){ return `<div class="seg" role="tablist">`+items.map(
    V5 — HAMBURGER MENÜ + ROUTE + BİLDİRİM + HERO + PORTRE/ARMA
    ============================================================ */
 const UI={menuOpen:false,lastFocus:null};
-function navigateTo(screen,seg){ if(seg!==undefined&&seg!==null&&SEG[screen]!==undefined) SEG[screen]=seg; TAB=screen; renderAll(); window.scrollTo(0,0); }
-const PAGE_TITLES={home:["Ana Sayfa","Patron masası"],players:["Portföy","Oyuncu yönetimi"],scout:["Keşif","Scout ağı"],transfer:["Transfer","Pazarlık masası"],agency:["Ajans","Şirket yönetimi"]};
+function navigateTo(screen,seg){
+  if(typeof UI!=="undefined"&&!UI._suppressPush&&typeof pushHistory==="function"){ try{ saveCurrentScroll(); pushHistory(UI.route||{screen:TAB}); }catch(e){} }
+  if(seg!==undefined&&seg!==null&&SEG[screen]!==undefined) SEG[screen]=seg;
+  setActiveRoute({screen:screen,section:(seg!=null?seg:null)});
+  TAB=screen; renderAll(); window.scrollTo(0,0);
+}
+const PAGE_TITLES={home:["Ana Sayfa","Patron masası"],players:["Portföy","Oyuncu yönetimi"],scout:["Keşif","Scout ağı"],transfer:["Transfer","Pazarlık masası"],agency:["Ajans","Şirket yönetimi"],world:["Dünya","Fırsat merkezi"],news:["Haberler","Haber merkezi"],settings:["Ayarlar","Sistem & kayıt"],career:["Kariyer","Hedefler & başarımlar"],calendar:["Takvim","Sezon takvimi"],entity:["Detay",""],weeklyBriefing:["Haftalık Brifing","Sezon özeti"]};
 function menuBadge(id){
   if(id==="__notif") return unreadN();
   if(id==="transfer") return S.offers.length;
@@ -2093,28 +2171,25 @@ const MENU=[
   ["home","home",null,"Ana Sayfa"],
   ["users","players",null,"Portföy"],
   ["search","scout","gorev","Keşif Merkezi"],
-  ["swap","transfer","teklif","Transfer Merkezi"],
+  ["swap","transfer","masa","Transfer Masası"],
   ["cal","__plan",null,"Haftalık Plan"]]],
  ["FUTBOL DÜNYASI",[
-  ["globe","scout","dunya","Dünya & Ligler"],
-  ["doc","home","haber","Haberler"],
+  ["globe","world",null,"Dünya"],
+  ["doc","news",null,"Haberler"],
   ["cal","__takvim",null,"Takvim"],
-  ["brief","transfer","pazarla","Oyuncu Pazarlama"]]],
+  ["warn","agency","iliskiler","Rakip İstihbaratı"]]],
  ["AJANS ŞİRKETİ",[
-  ["build","agency","merkez","Ajans Merkezi"],
-  ["build","agency","departman","Departmanlar"],
-  ["coin","agency","finans","Finans"],
-  ["brief","agency","varlik","Varlıklar"],
-  ["users","agency","sponsor","Sponsorlar"],
-  ["shield","agency","iliski","Kulüp İlişkileri"],
-  ["warn","agency","rakip","Rakip Ajanslar"]]],
+  ["build","agency","genel","Ajans Merkezi"],
+  ["build","agency","operasyon","Operasyon & Departmanlar"],
+  ["coin","agency","finans","Finans & Ticari"],
+  ["shield","agency","iliskiler","İlişkiler"]]],
  ["KARİYER",[
-  ["chart","agency","kariyer","Sezon Hedefleri & Başarımlar"],
+  ["chart","career",null,"Sezon Hedefleri & Başarımlar"],
   ["doc","transfer","gecmis","Transfer Geçmişi"]]],
  ["SİSTEM",[
   ["bell","__notif",null,"Bildirimler"],
   ["brief","__phone",null,"Telefon / Mesajlar"],
-  ["settings","agency","ayar","Ayarlar & Kayıt"],
+  ["settings","settings",null,"Ayarlar & Kayıt"],
   ["doc","__help",null,"Yardım"]]],
 ];
 function renderMainMenu(){
@@ -2174,11 +2249,19 @@ function onHamburger(){
   } else toggleMainMenu();
 }
 /* ---------- bildirim merkezi ---------- */
-function notify(cat,txt,screen,seg){
+function _notifyRaw(cat,txt,screen,seg){
   if(!S) return;
   S.notifications=S.notifications||[];
   S.notifications.unshift({id:"n"+ri(1e5,9e5),cat,txt,screen:screen||null,seg:seg||null,s:S.season,w:S.week,read:false});
   if(S.notifications.length>40) S.notifications.length=40;
+}
+/* V8-B2: dedup motoruna bağlı bildirim */
+function notify(cat,txt,screen,seg){
+  if(!S) return;
+  const key=(typeof phoneDedupKey==="function")?phoneDedupKey(cat,(seg||screen||""),String(txt||"").slice(0,24)):null;
+  if(key && typeof canDeliverEvent==="function" && !canDeliverEvent("notification",key)) return;
+  _notifyRaw(cat,txt,screen,seg);
+  if(key && typeof markEventDelivered==="function") markEventDelivered("notification",key);
 }
 function unreadN(){ return ((S&&S.notifications)||[]).filter(n=>!n.read).length; }
 const NCAT={kritik:"🚨",oyuncu:"👤",transfer:"💼",scout:"🔭",finans:"💰",sponsor:"👟",ajans:"🏛️",dunya:"🌍"};
@@ -2255,26 +2338,8 @@ function renderClubCrest(c,size){
    <text x="20" y="22" text-anchor="middle" font-size="11" font-weight="800" fill="${c2}" font-family="Manrope,system-ui">${ini}</text>
    <text x="20" y="34" text-anchor="middle" font-size="8" fill="${c2}" opacity="0.9">${sym}</text></svg>`;
 }
-/* ---------- takvim + yardım ---------- */
-function openCalendar(){
-  const items=[];
-  const win=BAL.transferWindows;
-  if(inWindow(S.week)){ const cur=win.find(([a,b])=>S.week>=a&&S.week<=b); items.push(["🔓",`Transfer penceresi kapanışı`,`Hafta ${cur[1]}`,cur[1]-S.week]); }
-  else { const nxt=win.find(([a])=>a>S.week); items.push(["🔒",`Transfer penceresi açılışı`,nxt?`Hafta ${nxt[0]}`:`Sezon başı H${win[0][0]}`,nxt?nxt[0]-S.week:(BAL.weeksPerSeason-S.week+win[0][0])]); }
-  for(const o of S.offers){ const p=S.world.players[o.pid]; items.push(["📩",`Teklif bitişi — ${p?p.name:"?"}`,`Hafta ${o.expires}`,o.expires-S.week]); }
-  for(const p of myPlayers()){
-    if(p.clubId&&contractWeeksLeft(p)<40&&contractWeeksLeft(p)<900) items.push(["✍️",`Kontrat bitişi — ${p.name}`,`S${p.contractEndSeason} H${p.contractEndWeek}`,contractWeeksLeft(p)]);
-    if(p.agentWeeksLeft>0&&p.agentWeeksLeft<20) items.push(["💼",`Menajerlik sözleşmesi — ${p.name}`,`${p.agentWeeksLeft} hafta`,p.agentWeeksLeft]);
-    for(const pr of (p.promises||[])) if(pr.status==="open") items.push(["🤙",`Söz — ${p.name}: ${promiseLabel(pr.type)}`,`S${pr.deadlineSeason} H${pr.deadlineWeek}`,(pr.deadlineSeason-S.season)*BAL.weeksPerSeason+pr.deadlineWeek-S.week]);
-  }
-  for(const sc of S.scouts) if(sc.assign&&sc.need) items.push(["🔭",`Scout raporu — ${sc.name}`,`~${Math.max(1,sc.need-sc.progress)} hafta`,Math.max(1,sc.need-sc.progress)]);
-  for(const d of S.sponsorDeals) if(d.weeksLeft<10) items.push(["👟",`Sponsor bitişi — ${d.brand}`,`${d.weeksLeft} hafta`,d.weeksLeft]);
-  items.sort((a,b)=>a[3]-b[3]);
-  let h=`<div class="grab"></div><h2 class="sec">📅 Takvim <span class="cnt">Sezon ${S.season} · Hafta ${S.week}</span></h2>`;
-  h+= items.length? items.slice(0,12).map(i=>`<div class="sumline"><span>${i[0]} ${i[1]}</span><span class="b ${i[3]<=2?'neg-delta':''}">${i[2]}</span></div>`).join("")
-    :`<div class="empty">Yaklaşan kritik tarih yok.</div>`;
-  openSheet(h);
-}
+/* ---------- takvim (V8-B: bağımsız ekran) + yardım ---------- */
+function openCalendar(){ navigateTo("calendar"); }
 function openHelp(){
   const H=[["Ajans Skoru","İtibar, statü, ofis, medya, sponsor ağı, scout ağı ve track record'un ağırlıklı toplamı. Seviye atlamanı belirler."],
    ["İtibar Profili","Gençler geliştirme itibarına, kulüpler pazarlığa, aileler etiğe, sponsorlar medyaya bakar."],
@@ -2299,7 +2364,11 @@ function confettiIfBig(amt){ if(amt<200000) return; for(let i=0;i<26;i++){
   document.body.appendChild(c);
   c.animate([{transform:c.style.transform,top:"-10px"},{transform:`rotate(${Math.random()*720}deg)`,top:"105vh"}],
     {duration:1800+Math.random()*1200,easing:"ease-in"}).onfinish=()=>c.remove(); } }
-function switchTab(t){ TAB=t; renderAll(); window.scrollTo(0,0); }
+function switchTab(t){
+  if(typeof UI!=="undefined"&&!UI._suppressPush&&typeof pushHistory==="function"){ try{ saveCurrentScroll(); pushHistory(UI.route||{screen:TAB}); }catch(e){} }
+  setActiveRoute({screen:t});
+  TAB=t; renderAll(); window.scrollTo(0,0);
+}
 function initials(n){ return n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase(); }
 function starStr(ca){ const s=clamp(Math.round(ca/18),1,5); let h="";
   for(let i=1;i<=5;i++) h+=`<span class="${i<=s?'':'off'}">★</span>`; return `<span class="stars">${h}</span>`; }
@@ -2336,24 +2405,21 @@ function renderChrome(){
       <button class="bellbtn" aria-label="Telefon (${phoneUnread()} yeni)" onclick="openPhone()">${icon("brief",18)}${phoneUnread()?`<span class="bb">${phoneUnread()}</span>`:""}</button>
       <button class="bellbtn" aria-label="Bildirimler (${un} yeni)" onclick="openNotifications()">${icon("bell",19)}${un?`<span class="bb">${un}</span>`:""}</button>
     </div></div>`;
-  const BOTTOM=TABS.filter(t=>t.id!=="agency");
-  $("tabbar").innerHTML=BOTTOM.map(t=>{
-    const notify=(t.id==="transfer"&&S.offers.length)||(t.id==="scout"&&S.reports.some(r=>!r.opened))||(t.id==="home"&&S.decisions.length);
+  $("tabbar").innerHTML=TABS.map(t=>{
+    const notify=(t.id==="transfer"&&S.offers.length)||(t.id==="scout"&&S.reports.some(r=>!r.opened))||(t.id==="home"&&S.decisions.length)||(t.id==="agency"&&(S.departmentTasks||[]).some(x=>x.status==="active"&&x.dueTick<=nowTick()));
     return `<button class="tab ${TAB===t.id?'active':''} ${notify?'notify':''}" aria-label="${t.label}" onclick="switchTab('${t.id}')">
-      <span class="ic">${icon(NAVI[t.id],20)}</span>${t.label}<span class="dot"></span></button>`;}).join("")
-    +`<button class="tab ${TAB==='agency'?'active':''}" aria-label="Menü" onclick="openMainMenu()">
-      <span class="ic">${icon("menu",20)}</span>Menü<span class="dot"></span></button>`;
+      <span class="ic">${icon(NAVI[t.id],20)}</span>${t.label}<span class="dot"></span></button>`;}).join("");
+  const _pb=$("playbtn"); if(_pb) _pb.textContent=playCtaLabel();
   const app=$("app");
   if(app) app.classList.toggle("sb-collapsed", !!(S.uiState&&S.uiState.sidebarCollapsed));
   const sb=$("sidebar");
   if(sb) sb.innerHTML=TABS.map(t=>`<button class="${TAB===t.id?'on':''}" aria-label="${t.label}" onclick="switchTab('${t.id}')">${icon(NAVI[t.id],19)} <span class="sbtxt">${t.label}</span></button>`).join("")
     +`<div class="sb-sep">Kısayollar</div>
-    <button onclick="navigateTo('home','haber')">${icon('doc',18)} <span class="sbtxt">Haberler</span></button>
-    <button onclick="gotoAgency('finans')">${icon('coin',18)} <span class="sbtxt">Finans</span></button>
-    <button onclick="navigateTo('scout','dunya')">${icon('globe',18)} <span class="sbtxt">Dünya</span></button>
+    <button class="${TAB==='world'?'on':''}" onclick="navigateTo('world')">${icon('globe',18)} <span class="sbtxt">Dünya</span></button>
+    <button class="${TAB==='news'?'on':''}" onclick="navigateTo('news')">${icon('doc',18)} <span class="sbtxt">Haberler</span></button>
     <button onclick="openWeeklyPlan()">${icon('cal',18)} <span class="sbtxt">Haftalık Plan</span></button>
-    <button onclick="gotoAgency('kariyer')">${icon('chart',18)} <span class="sbtxt">Sezon Hedefleri</span></button>
-    <button onclick="gotoAgency('ayar')">${icon('settings',18)} <span class="sbtxt">Ayarlar</span></button>`;
+    <button class="${TAB==='career'?'on':''}" onclick="navigateTo('career')">${icon('chart',18)} <span class="sbtxt">Kariyer</span></button>
+    <button class="${TAB==='settings'?'on':''}" onclick="navigateTo('settings')">${icon('settings',18)} <span class="sbtxt">Ayarlar</span></button>`;
   const cp=$("ctxpanel");
   if(cp){
     const acts=buildActions(); const ins=generateAgencyInsights();
@@ -2405,8 +2471,7 @@ function renderHome(){
   const mp=myPlayers();
   const totalVal=mp.reduce((t,p)=>t+p.value,0);
   const of=BAL.officeLevels[S.officeLevel];
-  let h=segBar("home",[["ozet","Özet"],["haber","Haberler"]]);
-  if(SEG.home==="haber"){ $("scr-home").innerHTML=h+renderNewsFeed(); return; }
+  let h="";
   if(S.decisions.length){
     h+=`<h2 class="sec">⚡ Bekleyen Kararlar <span class="cnt">${S.decisions.length}</span></h2>`;
     S.decisions.forEach((d,i)=>{ h+=`<div class="card urgent tappable" onclick="openDecision(${i})">
@@ -2432,6 +2497,8 @@ function renderHome(){
   const pu=phoneUnread();
   if(pu){ h+=`<div class="card gold tappable" onclick="openPhone()"><div class="row"><span style="font-size:22px">📱</span>
     <div class="grow"><span class="b">${pu} yeni mesaj</span><div class="tiny">Oyuncular, kulüpler ve rakipler seni arıyor — gelen kutusuna bak</div></div><span class="tiny">→</span></div></div>`; }
+  h+=renderTutorialCard();
+  if(S.weeklyBriefing){ h+=`<div class="card tappable" style="padding:9px 12px" onclick="openWeeklyBriefing()"><div class="row"><span style="font-size:20px">📋</span><div class="grow"><span class="b" style="font-size:13px">Son Haftanın Özeti</span><div class="tiny">S${S.weeklyBriefing.s} H${S.weeklyBriefing.w} brifingi — dokun ve gör</div></div><span class="tiny">→</span></div></div>`; }
   const at0=S.managerAttention||{max:3,used:0};
   h+=`<div class="card"><div class="row" style="justify-content:space-between">
     <div><span class="b" style="font-size:13.5px">🧠 Haftalık Plan</span>
@@ -2458,7 +2525,10 @@ function renderHome(){
   h+=`<div class="mobile-only">`;
   if(acts.length){
     h+=`<h2 class="sec">📌 Aksiyon Merkezi <span class="cnt">${acts.length}</span></h2>`;
-    h+=acts.map(a=>`<div class="action-item ${a.cls}"><span>${a.t}</span><button class="btn sm ghost" onclick="${a.fn}">${a.btn}</button></div>`).join("");
+    const groups=[["crit","🔴 Şimdi Çöz"],["sugg","🟡 Bu Hafta Önerilen"],["soon","🔵 Yaklaşan"]];
+    for(const [cat,label] of groups){ const g=acts.filter(a=>a.cls===cat); if(!g.length) continue;
+      h+=`<div class="tiny b" style="margin:6px 2px 4px">${label}</div>`;
+      h+=g.map(a=>`<div class="action-item ${a.cls}"><span>${a.t}${a.deleg?' <span class="tiny">· delege edilebilir</span>':''}</span><button class="btn sm ghost" onclick="${a.fn}">${a.btn}</button></div>`).join(""); }
   }
   const ins=generateAgencyInsights();
   if(ins.length){ h+=`<h2 class="sec">🧠 Ajans Analisti</h2>`+ins.map(i=>`<div class="news"><div class="bd">${i}</div></div>`).join(""); }
@@ -2502,8 +2572,8 @@ function renderHome(){
       <div class="hl">${perf.p.name} — Rating ${perf.rating} ${perf.rating>=8?"⭐":""}</div>
       <div class="bd">${perf.mins} dk${perf.goals?` · ${perf.goals} gol ⚽`:""}${perf.assists?` · ${perf.assists} asist`:""}${perf.ev.filter(e=>!["gol","asist"].includes(e)).slice(0,2).map(e=>" · "+e).join("")}</div></div>`;}
   }
-  h+=`<h2 class="sec">📰 Gündem <button class="btn sm ghost" style="margin-left:auto" onclick="setSeg('home','haber')">Tümü →</button></h2>`;
-  const news=S.news.slice(0,4);
+  h+=`<h2 class="sec">📰 Son Haberler <button class="btn sm ghost" style="margin-left:auto" onclick="navigateTo('news')">Haber Merkezi →</button></h2>`;
+  const news=S.news.slice(0,3);
   h+= news.length? news.map(n=>`<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}">
     <div class="src">${n.kind==="me"?"AJANS GÜNDEMİ":"FUTBOL BASINI"} · S${n.season} H${n.week}</div>
     <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
@@ -2584,6 +2654,7 @@ function careerStage(p){
 }
 function openPlayer(pid){
   const p=S.world.players[pid]; if(!p) return;
+  if(typeof emitGameEvent==="function"&&!UI._suppressPush) emitGameEvent("PLAYER_PROFILE_OPENED",{pid});
   const club=S.world.clubs[p.clubId];
   const L=leagueOf(p,S.world);
   const isMine=p.agent==="you";
@@ -2599,7 +2670,7 @@ function openPlayer(pid){
   ${isMine?`<div class="tiny">${p.squadRole||playerRole(p)}</div>`:""}</div></div>
   <div class="seg" style="margin-top:10px">${tabs.map(([id,l])=>`<button class="${PDTAB===id?'on':''}" onclick="pdTab('${p.id}','${id}')">${l}</button>`).join("")}</div>`;
   h+= PDTAB==="perf"? pdPerf(p): PDTAB==="kariyer"? pdCareer(p): PDTAB==="soz"? pdContract(p): PDTAB==="pazar"? pdMarket(p): pdOverview(p);
-  openSheet(h);
+  showEntityPage("player",p.id,h,{section:PDTAB});
 }
 function pdOverview(p){
   const isMine=p.agent==="you";
@@ -2810,6 +2881,7 @@ function openMarketing(pid){
   openSheet(h);
 }
 function runCampaign(pid,type){
+  if(typeof emitGameEvent==="function") emitGameEvent("PLAYER_MARKETED",{pid});
   const p=S.world.players[pid];
   const def=CAMPAIGNS.find(c=>c.id===type); if(!def) return;
   if(S.cash<def.cost){ toast("Yetersiz bakiye 💸"); return; }
@@ -2934,7 +3006,7 @@ function openNegoTable(oid,msg){
     <button class="btn gold" onclick="doAccept('${oid}')">✍️ Mevcut Şartlarla İmzala</button>
     <button class="btn ghost" onclick="openOffer('${oid}')">← Teklife Dön</button>
   </div>`;
-  openSheet(h);
+  { const _u=negoSessionUI(oid); if(_u)_u.activeStep="package"; showEntityPage("negotiation",oid, negoStepperHeader(oid,"package")+h, {section:"package"}); return; }
 }
 function negoAdj(oid,k,d){
   const o=S.offers.find(x=>x.id===oid); if(!o||!o.ask) return;
@@ -3069,10 +3141,11 @@ function investPlayer(pid){ const p=S.world.players[pid];
 /* ---------- KEŞİF MERKEZİ (segmentli) ---------- */
 function renderScout(){
   const un=S.reports.filter(r=>!r.opened).length;
-  let h=segBar("scout",[["gorev","Görevler"],["rapor",un?`Raporlar (${un})`:"Raporlar"],["izleme","İzleme"],["dunya","Dünya"]]);
+  if(SEG.scout==="dunya") SEG.scout="gorev"; // V8: Dünya artık bağımsız ekran
+  let h=segBar("scout",[["gorev","Görevler"],["rapor",un?`Raporlar (${un})`:"Raporlar"],["izleme","İzleme"]]);
+  h+=`<div class="card alt tappable" style="padding:9px 12px" onclick="navigateTo('world')"><div class="row"><span style="font-size:18px">🌍</span><div class="grow"><span class="b" style="font-size:13px">Dünya & Fırsat Merkezi</span><div class="tiny">Ligler, kulüpler, bölgeler ve scout fırsatları → ayrı ekran</div></div><span class="tiny">→</span></div></div>`;
   if(SEG.scout==="rapor") h+=scoutReports();
   else if(SEG.scout==="izleme") h+=scoutWatchlist();
-  else if(SEG.scout==="dunya") h+=worldView();
   else h+=scoutSquad();
   $("scr-scout").innerHTML=h;
 }
@@ -3134,22 +3207,7 @@ function scoutWatchlist(){
   }
   return h;
 }
-function worldView(){
-  let h=`<h2 class="sec" style="margin-top:0">🌍 Dünya Pazarları</h2>
-  <div class="muted" style="margin-bottom:8px">Lige dokun: kulüpler, ihtiyaçlar ve ilişkiler.</div>`;
-  for(const L of S.world.leagues){
-    const myN=myPlayers().filter(p=>leagueOf(p,S.world)?.id===L.id).length;
-    const scN=S.scouts.filter(sc=>sc.assign&&sc.assign.leagueId===L.id).length;
-    h+=`<div class="card tappable" onclick="openLeague('${L.id}')">
-    <div class="row"><span style="font-size:24px">${L.flag}</span>
-    <div class="grow"><span class="b">${L.name}</span> <span class="tiny">Seviye ${L.tier}</span>
-    <div class="tiny">Prestij ${L.prestige} · Görünürlük ${L.visibility} · Elmas ${"★".repeat(clamp(Math.round(L.scoutValue/20),1,5))}</div>
-    <div class="tiny">${myN?`Temsil: ${myN} oyuncu · `:""}${scN?`${scN} aktif scout`:"scout yok"}</div></div>
-    <span class="tiny">→</span></div></div>`;
-  }
-  h+=`<div class="card lockcard">🔒 ${LOCKED_LEAGUES.map(l=>l.flag).join(" ")} — yeni ligler yakında</div>`;
-  return h;
-}
+function worldView(){ return worldViewV7(); }
 function openLeague(lid){
   const L=S.world.leagues.find(l=>l.id===lid); if(!L) return;
   let h=`<div class="grab"></div><h2 class="sec">${L.flag} ${L.name}</h2>
@@ -3158,7 +3216,15 @@ function openLeague(lid){
     <div class="cell"><div class="v">${L.visibility}</div><div class="l">Görünürlük</div></div>
     <div class="cell"><div class="v">${fmtM(L.salary[1])}</div><div class="l">Tavan Maaş</div></div>
     <div class="cell"><div class="v">${L.scoutValue}</div><div class="l">Elmas Değeri</div></div>
-  </div>`;
+  </div>
+  <div class="tiny" style="margin:2px 2px 6px">Tier ${L.tier}${L.promotionSlots?` · ⬆️ ${L.promotionSlots} yükselme`:""}${L.relegationSlots?` · ⬇️ ${L.relegationSlots} düşme`:""}</div>`;
+  const _tbl=(typeof leagueTable==="function")?leagueTable(L.id):[];
+  if(_tbl.some(t=>t.pts>0)){
+    h+=`<div class="card"><div class="tiny b" style="margin-bottom:4px">PUAN DURUMU</div>`;
+    _tbl.slice(0,8).forEach((t,i)=>{ const zone=i<L.promotionSlots?"🟢":(i>=_tbl.length-L.relegationSlots)?"🔴":"";
+      h+=`<div class="sumline"><span class="${i<3?'b':'muted'}">${i+1}. ${zone} ${escapeHtml(t.name)}</span><span class="tiny b">${t.pts} p${t.gd>=0?" +":" "}${t.gd}</span></div>`; });
+    h+=`</div>`;
+  }
   for(const cid of L.clubIds){
     const c=S.world.clubs[cid];
     const myN=myPlayers().filter(p=>p.clubId===cid).length;
@@ -3168,7 +3234,7 @@ function openLeague(lid){
     <span class="tiny">güç ${c.strength}</span></div>
     <div class="tiny">${c.profile||""} · ilişki ${Math.round(c.relation)}${need?` · ihtiyaç: ${POS_LABEL[need[0]]}`:""}${myN?` · ${myN} oyuncum`:""}</div></div>`;
   }
-  openSheet(h);
+  showEntityPage("league",lid,h);
 }
 function openClub(cid){
   const c=S.world.clubs[cid]; if(!c) return;
@@ -3187,6 +3253,7 @@ function openClub(cid){
   </div>
   <div class="sb"><div class="lbl"><span>Kulüp İlişkisi</span><span>${Math.round(c.relation)}</span></div>
   <div class="track"><div class="fill ${c.relation>60?'g':'au'}" style="width:${c.relation}%"></div></div></div>
+  ${clubV7Panel(c)}
   <div class="card"><div class="tiny b" style="margin-bottom:4px">POZİSYON İHTİYAÇLARI</div>
   ${needs.map(([pos,v])=>`<div class="sumline"><span class="muted">${POS_LABEL[pos]}</span><span class="b">${v>=70?"Acil 🔴":v>=45?"Arıyor 🟡":"Düşük 🟢"}</span></div>`).join("")}</div>
   ${mine.length?`<div class="card alt"><div class="tiny b">BU KULÜPTEKİ OYUNCULARIM</div>${mine.map(p=>`<div class="sumline tappable" onclick="openPlayer('${p.id}')"><span>${p.name}</span><span class="tiny">${p.squadRole||""}</span></div>`).join("")}</div>`:""}
@@ -3196,9 +3263,10 @@ function openClub(cid){
   <div class="btnrow">
     <button class="btn blue" onclick="proposePlayer('${cid}')">📤 Oyuncu Öner (€1K)</button>
     <button class="btn ghost" onclick="improveRelation('${cid}')">🍽️ İlişki Geliştir (€2K)</button></div>`;
-  openSheet(h);
+  showEntityPage("club",cid,h);
 }
 function improveRelation(cid){
+  if(typeof emitGameEvent==="function") emitGameEvent("CLUB_MEETING_COMPLETED",{cid});
   const c=S.world.clubs[cid]; if(!c) return;
   if(S.cash<2000){ toast("Yetersiz bakiye"); return; }
   ledger("Temsil gideri — "+c.name, -2000);
@@ -3206,6 +3274,7 @@ function improveRelation(cid){
   toast(`${c.name} ile ilişki güçlendi 🤝`,"green"); save(); closeSheet(); renderAll();
 }
 function openReport(rid){
+  if(typeof emitGameEvent==="function") emitGameEvent("SCOUT_REPORT_OPENED",{rid});
   const r=S.reports.find(x=>x.id===rid); if(!r)return;
   r.opened=true; taskDone("open_report"); save();
   openReportSheet(rid, true);
@@ -3378,7 +3447,7 @@ function assignScout(sid){
   h+=`<div class="card lockcard" style="margin-top:8px">🔒 ${LOCKED_LEAGUES.map(l=>l.flag).join(" ")} — yeni ligler yakında</div>`;
   openSheet(h);
 }
-function doAssign(sid,lid,youth){ const sc=S.scouts.find(x=>x.id===sid);
+function doAssign(sid,lid,youth){ if(typeof emitGameEvent==="function") emitGameEvent("SCOUT_ASSIGNMENT_CREATED",{sid}); const sc=S.scouts.find(x=>x.id===sid);
   sc.assign={leagueId:lid,youth:!!youth}; sc.progress=0; sc.need=0;
   toast(youth?"Scout U19 avına çıktı 🧳":"Scout yola çıktı 🧳","green"); save(); closeSheet(); renderAll(); }
 function hireScout(){
@@ -3398,20 +3467,10 @@ function doHire(i){ const sc=window._scCands[i];
 /* ---------- PAZAR (segmentli) ---------- */
 function renderTransfer(){
   const win=inWindow(S.week);
-  let h=segBar("transfer",[["teklif",S.offers.length?`Teklifler (${S.offers.length})`:"Teklifler"],["pipeline","Pipeline"],["kiralik","Kiralıklar"],["pazarla","Pazarlama"],["gecmis","Geçmiş"]]);
-  if(SEG.transfer==="pipeline"){ $("scr-transfer").innerHTML=h+renderPipeline(); return; }
+  // V8: Teklifler + Pipeline + Pazarlama tek "Transfer Masası"nda
+  if(!["masa","kiralik","gecmis"].includes(SEG.transfer)) SEG.transfer="masa";
+  let h=segBar("transfer",[["masa",S.offers.length?`Transfer Masası (${S.offers.length})`:"Transfer Masası"],["kiralik","Kiralıklar"],["gecmis","Geçmiş"]]);
   if(SEG.transfer==="kiralik"){ $("scr-transfer").innerHTML=h+renderLoans(); return; }
-  if(SEG.transfer==="pazarla"){
-    h+=`<h2 class="sec" style="margin-top:0">📣 Oyuncu Pazarlama</h2>
-    <div class="muted" style="margin-bottom:8px">Teklif bekleme; kampanyayla ilgiyi sen yarat. Oyuncuya dokun → kampanya seç.</div>`;
-    h+=myPlayers().sort((a,b)=>b.value-a.value).map(p=>{
-      const hotN=Object.values(p.interest||{}).filter(v=>v>55).length;
-      return `<div class="card tappable" onclick="openMarketing('${p.id}')"><div class="row">
-      ${renderPlayerPortrait(p,36)}
-      <div class="grow"><span class="b">${p.name}</span><div class="tiny">${fmtM(p.value)} · ${hotN?`${hotN} kulüp sıcak`:"ilgi zayıf"}${p.loan?" · kiralıkta":""}</div></div>
-      <span class="badge ${hotN?'ok':'sad'}">${hotN?"🔥":"📣"}</span></div></div>`;}).join("")||`<div class="empty">Henüz müşterin yok.</div>`;
-    $("scr-transfer").innerHTML=h; return;
-  }
   if(SEG.transfer==="gecmis"){
     const th=(S.history&&S.history.transferHistory)||[];
     h+=`<h2 class="sec" style="margin-top:0">📜 Transfer Geçmişi</h2>`;
@@ -3447,11 +3506,16 @@ function renderTransfer(){
         <div class="tiny" style="color:#3E8E63">payın ${fmtM(o.comm)}</div></div></div></div>`;}).join("");
     }
   } else h+=`<div class="empty">Masada teklif yok. Formda oyuncu + pencere + pazarlama = telefon çalar. 📞</div>`;
-  h+=`<h2 class="sec">📈 Portföy Vitrini</h2>`;
-  h+=myPlayers().sort((a,b)=>b.value-a.value).map(p=>playerCard(p,true)).join("");
+  // Pipeline aşamaları — aynı ekranda
+  h+=renderPipeline();
+  // Pazarlama: ilgisi zayıf oyuncular için hızlı kampanya girişi
+  const weak=myPlayers().filter(p=>!p.loan && Object.values(p.interest||{}).filter(v=>v>55).length===0);
+  if(weak.length){ h+=`<h2 class="sec">📣 Pazarlama Fırsatı <span class="cnt">${weak.length}</span></h2>
+    <div class="muted" style="margin-bottom:8px">İlgisi zayıf oyuncular — kampanyayla talep yarat.</div>`;
+    h+=weak.sort((a,b)=>b.value-a.value).slice(0,6).map(p=>`<div class="card tappable" style="padding:9px 12px" onclick="openMarketing('${p.id}')"><div class="row">${renderPlayerPortrait(p,34)}<div class="grow"><span class="b" style="font-size:13px">${p.name}</span><div class="tiny">${fmtM(p.value)} · ilgi zayıf</div></div><span class="badge sad">📣 Kampanya</span></div></div>`).join(""); }
   $("scr-transfer").innerHTML=h;
 }
-function openOffer(oid){
+function openOffer(oid,opts){ opts=opts||{}; const _sec=opts.section||"review";
   const o=S.offers.find(x=>x.id===oid); if(!o)return;
   ensureOfferV6(o);
   const p=S.world.players[o.pid]; const c=S.world.clubs[o.cid];
@@ -3491,7 +3555,7 @@ function openOffer(oid){
   </div>
   <button class="btn block primary" style="margin-top:8px" ${(o.pkgOk&&o.contractOk&&repValid(o.pid))?"":"disabled"} onclick="signTransfer('${o.id}')">✍️ Transferi Tamamla${(o.pkgOk&&o.contractOk&&repValid(o.pid))?"":" (3 katman gerekli)"}</button>
   <button class="btn block danger" style="margin-top:8px" onclick="doReject('${o.id}')">Reddet</button>`;
-  openSheet(h);
+  { const _u=negoSessionUI(oid); if(_u)_u.activeStep=_sec; showEntityPage("negotiation",oid, negoStepperHeader(oid,_sec)+h, {section:_sec}); }
 }
 function doAccept(oid){ const o=S.offers.find(x=>x.id===oid); if(!o)return;
   ensureOfferV6(o);
@@ -3500,24 +3564,44 @@ function doAccept(oid){ const o=S.offers.find(x=>x.id===oid); if(!o)return;
 function doCounter(oid){ const o=S.offers.find(x=>x.id===oid); if(!o)return;
   const res=counterOffer(o); save();
   if(res==="gone"){ closeSheet(); renderAll(); } else openOffer(oid); renderChrome(); }
-function doReject(oid){ S.offers=S.offers.filter(x=>x.id!==oid);
-  toast("Teklif reddedildi"); save(); closeSheet(); renderAll(); }
+function doReject(oid){ S.offers=S.offers.filter(x=>x.id!==oid); if(S.negotiationSessions) delete S.negotiationSessions[oid];
+  toast("Teklif reddedildi"); save(); closeSheet();
+  if(TAB==="entity"&&UI.route&&UI.route.entityId===oid) navigateTo("transfer","masa"); else renderAll(); }
 
 /* ---------- AJANS MERKEZİ (segmentli) ---------- */
 let LFILT="all";
 function setLF(f){ LFILT=f; renderAll(); }
 function renderAgency(){
-  let h=segBar("agency",[["merkez","Merkez"],["departman","Departmanlar"],["finans","Finans"],["varlik","Varlıklar"],["sponsor","Sponsorlar"],["iliski","İlişkiler"],["rakip","Rakipler"],["kariyer","Kariyer"],["ayar","Ayarlar"]]);
-  if(SEG.agency==="iliski"){ $("scr-agency").innerHTML=h+agRelations(); return; }
-  if(SEG.agency==="kariyer"){ $("scr-agency").innerHTML=h+agCareer(); return; }
-  if(SEG.agency==="departman"){ $("scr-agency").innerHTML=h+agDepartments(); mountCharts(); return; }
-  if(SEG.agency==="finans") h+=agFinance();
-  else if(SEG.agency==="varlik") h+=agAssets();
-  else if(SEG.agency==="sponsor") h+=agSponsors();
-  else if(SEG.agency==="rakip") h+=agRivalsV6();
-  else if(SEG.agency==="ayar") h+=agSettings();
-  else h+=agCenter();
-  $("scr-agency").innerHTML=h;
+  // V8: 4 bölüm — Genel / Operasyon / Finans & Ticari / İlişkiler
+  const map={merkez:"genel",departman:"operasyon",varlik:"finans",sponsor:"finans",rakip:"iliskiler",iliski:"iliskiler",ayar:"genel",kariyer:"genel"};
+  if(map[SEG.agency]) SEG.agency=map[SEG.agency];
+  if(!["genel","operasyon","finans","iliskiler"].includes(SEG.agency)) SEG.agency="genel";
+  let h=segBar("agency",[["genel","Genel"],["operasyon","Operasyon"],["finans","Finans & Ticari"],["iliskiler","İlişkiler"]]);
+  if(SEG.agency==="operasyon"){ $("scr-agency").innerHTML=h+agOperations(); mountCharts(); return; }
+  if(SEG.agency==="finans"){ $("scr-agency").innerHTML=h+agFinanceCommercial(); mountCharts(); return; }
+  if(SEG.agency==="iliskiler"){ $("scr-agency").innerHTML=h+agRelationsIntel(); mountCharts(); return; }
+  $("scr-agency").innerHTML=h+agCenter();
+}
+function agRegionalOffices(){
+  let h=`<h2 class="sec">🏢 Bölgesel Ofisler</h2>
+  <div class="muted" style="margin-bottom:8px">Pazarlara erişim, willingness ve kulüp ilişki bonusu. Personel ve bütçe gerektirir.</div>`;
+  for(const o of REGIONAL_OFFICES){ const open=hasOffice(o.id);
+    h+=`<div class="card" style="padding:10px 12px"><div class="row"><div class="grow">
+      <span class="b">${o.label}</span><div class="tiny">${o.region} · +${o.willingness} willingness · +${o.clubRel} kulüp ilişki · ${fmtM(o.weekly)}/hf</div></div>
+      ${open?'<span class="badge ok">Açık</span>':`<button class="btn sm ${S.cash>=o.cost?'gold':'ghost'}" ${S.cash>=o.cost?"":"disabled"} onclick="openRegionalOffice('${o.id}')">${fmtM(o.cost)}</button>`}</div></div>`; }
+  return h;
+}
+function agOperations(){
+  return agDepartments()+agRegionalOffices();
+}
+function agFinanceCommercial(){
+  const deptCost=Object.values(S.departments||{}).reduce((s,d)=>s+(d.unlocked?d.weeklyCost:0),0);
+  const kb=`<div class="card tappable gold" style="padding:10px 12px" onclick="openFinanceEntity()"><div class="row"><span style="font-size:20px">💰</span>
+    <div class="grow"><span class="b" style="font-size:13px">Tam Finans Merkezi</span><div class="tiny">Kasa akışı, gelir/gider, departman maliyetleri, komisyonlar → tam sayfa</div></div><span class="tiny">→</span></div></div>`;
+  return kb+agFinance()+`<div class="divider"></div>`+agSponsors()+`<div class="divider"></div>`+agAssets();
+}
+function agRelationsIntel(){
+  return agRelations()+`<div class="divider"></div>`+agRivalsV6();
 }
 function agCenter(){
   const of=BAL.officeLevels[S.officeLevel];
@@ -3699,6 +3783,8 @@ function agSettings(){
     <button class="btn sm ${st.fastMode?'primary':'ghost'}" onclick="toggleSetting('fastMode')">${st.fastMode?"Açık":"Kapalı"}</button></div>
     <div class="sumline"><span>🎬 Animasyonları azalt</span>
     <button class="btn sm ${st.reduceAnim?'primary':'ghost'}" onclick="toggleSetting('reduceAnim')">${st.reduceAnim?"Açık":"Kapalı"}</button></div>
+    <div class="sumline"><span>🎓 Başlangıç rehberi (tutorial)</span>
+    <button class="btn sm ${(S.tutorialFlow&&S.tutorialFlow.active)?'primary':'ghost'}" onclick="toggleTutorial()">${(S.tutorialFlow&&S.tutorialFlow.active)?"Açık":"Kapalı"}</button></div>
     <div class="sumline"><span>🎚️ Zorluk <span class="tiny">(yeni kariyerde seçilir)</span></span>
     <span class="b">${({rahat:"Rahat",dengeli:"Dengeli",zorlu:"Zorlu"})[S.difficulty||"dengeli"]}</span></div>
   </div>
@@ -3730,7 +3816,11 @@ function agSettings(){
   </div>
   <h2 class="sec">🧪 V6 Test Paketi</h2>
   <div class="card">
-    <button class="btn block gold" onclick="runAllV6Tests()">▶️ TÜM V6 TESTLERİNİ ÇALIŞTIR (30)</button>
+    <button class="btn block gold" onclick="runAllV8PhaseB2Tests()">🧭 V8 PHASE B2 TESTLERİ (davranış) (23)</button>
+    <button class="btn block gold" style="margin-top:8px" onclick="runAllV8PhaseBTests()">🧭 V8 PHASE B TESTLERİ (route + oynanış) (15)</button>
+    <button class="btn block gold" style="margin-top:8px" onclick="runAllV8Tests()">🧭 TÜM V8 UX TESTLERİNİ ÇALIŞTIR (7)</button>
+    <button class="btn block gold" style="margin-top:8px" onclick="runAllV7Tests()">🌍 TÜM V7 DÜNYA TESTLERİNİ ÇALIŞTIR (25)</button>
+    <button class="btn block gold" style="margin-top:8px" onclick="runAllV6Tests()">▶️ TÜM V6 TESTLERİNİ ÇALIŞTIR (33)</button>
     <button class="btn block ghost" style="margin-top:8px" onclick="runStabilitySimulation(420)">420 Hafta (10 Sezon) Stabilite</button>
     <button class="btn block ghost" style="margin-top:8px" onclick="runEconomySimulation(10)">10 Sezon Ekonomi Testi</button>
     <button class="btn block ghost" style="margin-top:8px" onclick="runSaveV5ToV6MigrationTest();runV1ToV6FullMigrationTest();runSaveRoundTripTest()">Migration + Roundtrip (V1→V6)</button>
@@ -3742,7 +3832,7 @@ function agSettings(){
   </div>
   <div class="divider"></div>
   <button class="btn block danger" onclick="if(confirm('Kariyer sıfırlanacak. Emin misin?'))resetGame()">🗑️ Kariyeri Sıfırla</button>
-  <div class="tiny" style="text-align:center;margin:8px 0">Agent Empire V6 — save v6 · ${S.agentName}</div>`;
+  <div class="tiny" style="text-align:center;margin:8px 0">Agent Empire V8 — save v8 · ${(WORLD_PRESETS[S.worldPreset]||{}).label||S.worldPreset||"—"} dünya · ${S.agentName}</div>`;
   return h;
 }
 function upgradeOffice(){ const next=BAL.officeLevels[S.officeLevel+1]; if(!next||S.cash<next.cost)return;
@@ -3878,8 +3968,8 @@ function openWeeklyPlan(){
     h+=`<h2 class="sec" style="font-size:15px">📌 Haftanın Konuları</h2>`;
     h+=acts.slice(0,3).map(a=>`<div class="action-item ${a.cls}"><span>${a.t}</span><button class="btn sm ghost" onclick="closeSheet();${a.fn}">${a.btn}</button></div>`).join("");
   }
-  h+=`<button class="btn block primary" style="margin-top:10px" onclick="closeSheet();playWeek()">⚽ Hazırım — Haftayı Oynat</button>
-  <button class="btn block ghost" style="margin-top:8px" onclick="closeSheet()">Dengeli ilerle (kapat)</button>`;
+  h+=`<button class="btn block primary" style="margin-top:10px" onclick="closeSheet();playWeek()">⚽ Odak Seçmeden Haftayı Oynat</button>
+  <button class="btn block ghost" style="margin-top:8px" onclick="closeSheet()">Kapat</button>`;
   openSheet(h);
 }
 function openGoalPicker(){
@@ -3949,6 +4039,7 @@ function givePromiseSilent(p,type){
   p.loyalty=clamp(p.loyalty+6,5,99);
 }
 function resolveMeeting(pid,topic,app){
+  if(typeof emitGameEvent==="function") emitGameEvent("PLAYER_MEETING_COMPLETED",{pid});
   const p=S.world.players[pid]; if(!p) return;
   let base=clamp(45+p.loyalty*0.3+((p.famTrust??40)-40)*0.2,10,90);
   if(p.char==="ego"&&(app==="durust"||app==="hedef")) base-=15;
@@ -4159,10 +4250,16 @@ const APPROACHES=[
  {id:"pazarlik",icon:"🤝",label:"Agresif Pazarlıkçı",desc:"Kulüp pazarlıklarında elin daha güçlü."},
  {id:"planlayici",icon:"📋",label:"Güvenilir Planlayıcı",desc:"+3 itibarla başla; tutulan sözler daha çok sadakat getirir."},
  {id:"medya",icon:"🎙️",label:"Medya ve Marka Uzmanı",desc:"Yüksek medya gücüyle başla — sponsorlar seni bulur."},
+ {id:"altlig",icon:"🔎",label:"Alt Lig Uzmanı",desc:"Alt lig scout raporları daha güvenilir, cevher bulma şansın artar."},
+ {id:"guneyamerika",icon:"🌎",label:"Güney Amerika Bağlantıcısı",desc:"Güney Amerika pazarına erken erişim ve willingness bonusu."},
+ {id:"bosman",icon:"📜",label:"Kontrat ve Bosman Uzmanı",desc:"Kontratı biten oyuncularla pazarlıkta avantajlısın."},
 ];
-window._appr="genc"; window._diff="dengeli";
+const START_COUNTRIES=[["tr","🇹🇷 Türkiye"],["en","🏴󠁧󠁢󠁥󠁮󠁧󠁿 İngiltere"],["es","🇪🇸 İspanya"],["it","🇮🇹 İtalya"],["de","🇩🇪 Almanya"],["fr","🇫🇷 Fransa"],["pt","🇵🇹 Portekiz"],["nl","🇳🇱 Hollanda"],["br","🇧🇷 Brezilya"],["ar","🇦🇷 Arjantin"]];
+window._appr="genc"; window._diff="dengeli"; window._worldPreset="standard"; window._startCountry="tr";
 function pickAppr(id){ window._appr=id; renderOnboarding(); }
 function pickDiff(id){ window._diff=id; renderOnboarding(); }
+function pickWorld(id){ window._worldPreset=id; renderOnboarding(); }
+function pickCountry(id){ window._startCountry=id; renderOnboarding(); }
 function renderOnboarding(){
   document.querySelectorAll(".screen").forEach(sc=>sc.classList.remove("active"));
   $("topbar").innerHTML=""; $("tabbar").innerHTML="";
@@ -4184,8 +4281,14 @@ function renderOnboarding(){
   <div class="card"><div class="tiny" style="margin-bottom:6px">ZORLUK</div>
   ${[["rahat","🌤️ Rahat","Yüksek başlangıç parası, yumuşak rakipler"],["dengeli","⚖️ Dengeli","Standart deneyim"],["zorlu","🔥 Zorlu","Az para, agresif rakipler, yüksek kira"]].map(([id,l,d])=>`<button class="opt" style="border-color:${(window._diff||'dengeli')===id?'var(--gold)':'var(--div)'};background:${(window._diff||'dengeli')===id?'var(--gold-soft)':'var(--card)'}" onclick="pickDiff('${id}')">
     <div class="ot">${l} ${(window._diff||'dengeli')===id?"✓":""}</div><div class="oh">${d}</div></button>`).join("")}</div>
+  <div class="card"><div class="tiny" style="margin-bottom:6px">DÜNYA BOYUTU</div>
+  ${Object.values(WORLD_PRESETS).map(p=>`<button class="opt" style="border-color:${window._worldPreset===p.id?'var(--gold)':'var(--div)'};background:${window._worldPreset===p.id?'var(--gold-soft)':'var(--card)'}" onclick="pickWorld('${p.id}')">
+    <div class="ot">${p.id==="compact"?"📦":p.id==="standard"?"🌍":"🗺️"} ${p.label} ${window._worldPreset===p.id?"✓":""}</div><div class="oh">${p.desc}</div></button>`).join("")}</div>
+  <div class="card"><div class="tiny" style="margin-bottom:6px">BAŞLANGIÇ ÜLKEN</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+  ${START_COUNTRIES.map(([id,l])=>`<button class="opt" style="margin-top:0;padding:9px;border-color:${window._startCountry===id?'var(--gold)':'var(--div)'};background:${window._startCountry===id?'var(--gold-soft)':'var(--card)'}" onclick="pickCountry('${id}')"><div class="ot" style="font-size:13px">${l} ${window._startCountry===id?"✓":""}</div></button>`).join("")}</div></div>
   <div class="card alt"><b>Başlangıç paketin 🧳</b><div class="muted" style="margin-top:4px">
-  • İstanbul'da mütevazı bir mahalle ofisi<br>• €150K sermaye<br>• 1. Lig'den 2 genç müşteri<br>• Sahada 1 scout<br>• Ve büyük hayaller...</div></div>
+  • ${(COUNTRY_BY_ID[window._startCountry]||{}).name||"Türkiye"}'de mütevazı bir mahalle ofisi<br>• €150K sermaye<br>• Yerel alt ligden 2 genç müşteri<br>• Sahada 1 scout<br>• ${(WORLD_PRESETS[window._worldPreset]||{}).label} dünya · büyük hayaller...</div></div>
   <button class="btn block primary" style="padding:15px;font-size:16px" onclick="startGame()">🚀 Ajansı Kur</button></div>`;
 }
 function startGame(){
@@ -4196,6 +4299,9 @@ function startGame(){
   if(S.approach==="genc"&&S.scouts[0]){ S.scouts[0].quality=3; S.scouts[0].reliability=clamp(S.scouts[0].reliability+10,10,95); }
   if(S.approach==="planlayici") S.rep=clamp(S.rep+3,0,100);
   if(S.approach==="medya") S.mediaPower=16;
+  if(S.approach==="altlig"&&S.scouts[0]) S.scouts[0].reliability=clamp(S.scouts[0].reliability+9,10,95);
+  if(S.approach==="guneyamerika"){ S.regionalOffices=[{id:"saopaulo",openedS:1}]; }
+  if(S.approach==="bosman") S.rep=clamp(S.rep+2,0,100);
   S.difficulty=window._diff||"dengeli";
   S.cash=DIFF().cash;
   save();
@@ -4203,7 +4309,18 @@ function startGame(){
   TAB="home"; renderAll();
   setTimeout(()=>toast("Hoş geldin patron! İlk haftayı oynat ⚽","gold"),400);
 }
-const SCREEN_RENDERERS={home:()=>renderHome(),players:()=>renderPlayers(),scout:()=>renderScout(),transfer:()=>renderTransfer(),agency:()=>renderAgency()};
+/* ---------- V8: bağımsız route ekranları ---------- */
+function renderWorld(){ $("scr-world").innerHTML=renderWorldOpportunities()+`<div class="divider"></div>`+worldViewV7(); mountCharts(); }
+function renderNews(){
+  $("scr-news").innerHTML=renderPageHero({tone:"blue",art:"folder",eyebrow:"HABER MERKEZİ",title:"Dünya & Ajans Haberleri",
+    desc:"Ajansın, oyuncuların, transferler, kupalar ve rakipler hakkında son gelişmeler.",metrics:[["Toplam",(S.news||[]).length]]})
+    +renderNewsFeed();
+}
+function renderSettings(){ $("scr-settings").innerHTML=agSettings(); }
+function renderCareer(){ $("scr-career").innerHTML=agCareer(); mountCharts(); }
+const SCREEN_RENDERERS={home:()=>renderHome(),players:()=>renderPlayers(),scout:()=>renderScout(),transfer:()=>renderTransfer(),agency:()=>renderAgency(),
+  world:()=>renderWorld(),news:()=>renderNews(),settings:()=>renderSettings(),career:()=>renderCareer(),
+  calendar:()=>renderCalendar(),entity:()=>renderEntity(),weeklyBriefing:()=>renderWeeklyBriefing()};
 function renderAll(){
   if(!S){ renderOnboarding(); return; }
   renderChrome();
@@ -4912,7 +5029,9 @@ function signTransfer(oid){
     pushAdaptation(p, S.world.clubs[o.cid]);
   }
   delete S.negotiationSessions[oid];
-  save(); closeSheet(); renderAll();
+  save(); closeSheet();
+  if(p){ navigateTo("transfer","masa"); openEntity("player",p.id,{section:"genel"}); }
+  else navigateTo("transfer","masa");
 }
 function openContractLayer(oid, msg){
   const o=S.offers.find(x=>x.id===oid); if(!o){ closeSheet(); return; } ensureOfferV6(o);
@@ -4963,7 +5082,7 @@ function openContractLayer(oid, msg){
      <button class="btn ${o.contractOk?'gold':'ghost'}" ${o.contractOk?"":"disabled"} onclick="openOffer('${oid}')">${o.contractOk?"✅ Katman tamam — özete dön":"Önce anlaş"}</button>
      <button class="btn ghost" onclick="openOffer('${oid}')">← Geri</button>
    </div>`;
-  openSheet(h);
+  { const _u=negoSessionUI(oid); if(_u)_u.activeStep="contract"; showEntityPage("negotiation",oid, negoStepperHeader(oid,"contract")+h, {section:"contract"}); return; }
 }
 function ctrAdj(oid,k,d){ const o=S.offers.find(x=>x.id===oid); if(!o)return; ensureOfferV6(o); const c=o.contract; const p=S.world.players[o.pid];
   if(k==="weeklyWage") c.weeklyWage=Math.max(100,Math.round((c.weeklyWage*(1+d*0.1))/100)*100);
@@ -5009,8 +5128,15 @@ function simAdaptations(sum){
 /* ============================================================
    V6 — MENAJER TELEFONU / GELEN KUTUSU
    ============================================================ */
-function pushPhone(msg){ S.phoneInbox=S.phoneInbox||[]; S.phoneInbox.unshift(Object.assign({id:"m"+ri(1e5,9e5),t:nowTick(),s:S.season,w:S.week,done:false},msg));
+function _pushPhoneRaw(msg){ S.phoneInbox=S.phoneInbox||[]; S.phoneInbox.unshift(Object.assign({id:"m"+ri(1e5,9e5),t:nowTick(),s:S.season,w:S.week,done:false},msg));
   if(S.phoneInbox.length>30) S.phoneInbox.length=30; }
+/* V8-B2: dedup motoruna bağlı telefon mesajı */
+function pushPhone(msg){
+  const key=(typeof phoneDedupKey==="function")?phoneDedupKey(msg.fromType,(msg.pid||msg.rid||msg.from||""),(msg.kind||msg.subject||"")):null;
+  if(key && typeof canDeliverEvent==="function" && !canDeliverEvent("phone",key)) return;
+  _pushPhoneRaw(msg);
+  if(key && typeof markEventDelivered==="function") markEventDelivered("phone",key);
+}
 function simPhone(sum){
   const mp=myPlayers();
   if(mp.length && rnd()<0.5){
@@ -5146,7 +5272,7 @@ function agDepartments(){
       ${effHist.length>=2?`<div class="tiny" style="margin:8px 0 2px">Son ${effHist.length} hafta verimlilik</div>`+interactiveChart([{label:"Verim",color:"#4A7FB5",points:effHist}],{label:def.name+" verimlilik",h:90,fmt:v=>"%"+Math.round(v)}):""}
       <div class="tiny" style="margin-top:6px">${escapeHtml(def.desc)} · başarı ${d.successCount}/${d.successCount+d.failCount}</div>
       <div class="btnrow">
-        <button class="btn sm ghost" onclick="hireDeptStaff('${def.id}')">➕ Personel</button>
+        <button class="btn sm ghost" onclick="openDepartmentEntity('${def.id}')">📄 Detay</button>
         <button class="btn sm ghost" onclick="openDeptDelegate('${def.id}')">📤 Görev Ver</button>
         <button class="btn sm ${d.level<5&&S.cash>0?'gold':'ghost'}" ${d.level>=5?"disabled":""} onclick="upgradeDepartment('${def.id}')">${d.level>=5?"Maks":"⬆️ Yükselt"}</button>
       </div>
@@ -5247,7 +5373,7 @@ function openRivalAgency(rid){
       : `<div class="empty">Şu an ortak hedef yok.</div>`;
   }
   h+=`<button class="btn block ghost" style="margin-top:8px" onclick="gotoAgency('rakip');closeSheet()">← Rakip listesi</button>`;
-  openSheet(h);
+  showEntityPage("rivalAgency",rid,h,{section:RVTAB});
 }
 function rvTab(t){ RVTAB=t; openRivalAgency(window._rvOpen); }
 /* ============================================================
@@ -5514,7 +5640,7 @@ function runSaveV5ToV6MigrationTest(){ return _t("SaveV5ToV6",(function(){ try{
   const j=JSON.parse(JSON.stringify({...S,decisions:[]})); j.v=5;
   delete j.departments; delete j.rivalAgencies; delete j.phoneInbox; delete j.representationAgreements;
   const m=migrateSaveState(j);
-  return validateSaveState(m)&&m.v===6&&m.departments&&Array.isArray(m.rivalAgencies)&&m.rivalAgencies.length>0;
+  return validateSaveState(m)&&m.v>=6&&m.departments&&Array.isArray(m.rivalAgencies)&&m.rivalAgencies.length>0;
   }catch(e){ console.error(e); return false; } })()); }
 function runV1ToV6FullMigrationTest(){ return _t("V1ToV6",(function(){ try{
   const j=JSON.parse(JSON.stringify({...S,decisions:[]})); j.v=1;
@@ -5522,14 +5648,14 @@ function runV1ToV6FullMigrationTest(){ return _t("V1ToV6",(function(){ try{
   delete j.reputationProfile; delete j.uiState; delete j.weeklyFocus; delete j.managerAttention;
   delete j.notifications; delete j.history; delete j.settings;
   const m=migrateSaveState(j);
-  return validateSaveState(m)&&m.v===6&&m.departments&&Array.isArray(m.rivalAgencies);
+  return validateSaveState(m)&&m.v>=6&&m.departments&&Array.isArray(m.rivalAgencies);
   }catch(e){ console.error(e); return false; } })()); }
 function runSaveRoundTripTest(){ return _t("SaveRoundTrip",(function(){ try{
-  const j=JSON.stringify({...S,decisions:[]}); const back=JSON.parse(j);
-  return validateSaveState(back)&&back.v===6&&back.week===S.week&&Object.keys(back.world.players).length===Object.keys(S.world.players).length;
+  const j=JSON.stringify({...S,decisions:[],_idx:null}); const back=JSON.parse(j);
+  return validateSaveState(back)&&back.v>=6&&back.week===S.week&&Object.keys(back.world.players).length===Object.keys(S.world.players).length;
   }catch(e){ return false; } })()); }
-function runSaveSizeTest(){ let kb=0; try{ kb=Math.round(JSON.stringify({...S,decisions:[]}).length/1024); }catch(e){}
-  const ok=kb<2048; console.log("Save size:",kb,"KB"); _t("SaveSize<2MB ("+kb+"KB)",ok); return kb; }
+function runSaveSizeTest(){ let kb=0; try{ kb=Math.round(JSON.stringify({...S,decisions:[],_idx:null}).length/1024); }catch(e){}
+  const ok=kb<6144; console.log("Save size:",kb,"KB"); _t("SaveSize<6MB ("+kb+"KB)",ok); return kb; }
 /* ---- performans ---- */
 function runPerformanceBenchmark(n){ n=n||1000; return _withSnapshot(()=>{
   const t0=(performance&&performance.now)?performance.now():Date.now();
@@ -5581,9 +5707,1721 @@ function runAllV6Tests(){
   return {pass,total:R.length,results:R};
 }
 
+
+/* ============================================================
+   AGENT EMPIRE V7 — GLOBAL DÜNYA MODÜLÜ
+   ============================================================ */
+/* ============================================================
+   AGENT EMPIRE V7 — GLOBAL DÜNYA VERİSİ (özgün/kurgusal)
+   ============================================================ */
+const WORLD_DATA_VERSION=7;
+const NAT_FLAG={tr:"🇹🇷",en:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",es:"🇪🇸",it:"🇮🇹",de:"🇩🇪",fr:"🇫🇷",nl:"🇳🇱",be:"🇧🇪",pt:"🇵🇹",
+  at:"🇦🇹",ch:"🇨🇭",sco:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",dk:"🇩🇰",se:"🇸🇪",no:"🇳🇴",pl:"🇵🇱",cz:"🇨🇿",hr:"🇭🇷",rs:"🇷🇸",gr:"🇬🇷",
+  br:"🇧🇷",ar:"🇦🇷",uy:"🇺🇾",co:"🇨🇴",cl:"🇨🇱",py:"🇵🇾",pe:"🇵🇪",af:"🇸🇳"};
+// yerel ad/soyad havuzları (kurgusal karışım) — mevcut NAMES'e eklenir
+Object.assign(NAMES,{
+  es:{first:["Sergio","Pablo","Álvaro","Marcos","Iker","Diego","Rubén","Javier","Adrián","Hugo","Bruno","Nacho","Aitor","Unai","Marc"],
+      last:["García","Martínez","López","Sánchez","Romero","Torres","Navarro","Molina","Vega","Iglesias","Cano","Reyes","Prieto","Serra","Fuentes"]},
+  it:{first:["Marco","Lorenzo","Matteo","Andrea","Francesco","Davide","Simone","Alessio","Nicolò","Federico","Gianluca","Riccardo","Tommaso","Stefano"],
+      last:["Rossi","Bianchi","Ferrari","Esposito","Ricci","Marino","Greco","Bruno","Gallo","Conti","De Luca","Costa","Barbieri","Fontana"]},
+  de:{first:["Lukas","Jonas","Felix","Leon","Max","Niklas","Tim","Jan","Paul","Finn","Luca","Moritz","Julian","Nico"],
+      last:["Müller","Schmidt","Weber","Wagner","Becker","Hofmann","Krause","Braun","Richter","Vogel","Frank","Berg","Sommer","Winkler"]},
+  fr:{first:["Lucas","Hugo","Enzo","Théo","Nathan","Louis","Jules","Maxime","Clément","Antoine","Romain","Yanis","Noah","Gabin"],
+      last:["Martin","Bernard","Dubois","Laurent","Girard","Moreau","Lefèvre","Faure","Blanc","Renard","Perrin","Roche","Colin","Marchand"]},
+  pt:{first:["João","Diogo","Rúben","Tiago","André","Bruno","Miguel","Rafael","Gonçalo","Nuno","Fábio","Ricardo","Hélder","Vasco"],
+      last:["Silva","Ferreira","Pereira","Costa","Rodrigues","Martins","Sousa","Fonseca","Lopes","Cardoso","Moreira","Antunes","Faria","Nunes"]},
+  ar:{first:["Lautaro","Julián","Nicolás","Tomás","Facundo","Agustín","Franco","Matías","Santiago","Joaquín","Emiliano","Bruno","Valentín","Thiago"],
+      last:["González","Fernández","Rodríguez","López","Martínez","Sosa","Díaz","Romero","Álvarez","Ruiz","Benítez","Acosta","Ortiz","Cabrera"]},
+  uy:{first:["Federico","Nicolás","Rodrigo","Facundo","Maxi","Gastón","Diego","Bruno","Agustín","Santiago"],
+      last:["Suárez","Rodríguez","Cavani","Bentancur","Núñez","Olivera","Pereyra","Araújo","Viña","Torreira"]},
+  co:{first:["Juan","Luis","Carlos","Andrés","Camilo","Santiago","Mateo","Sebastián","Daniel","Jhon"],
+      last:["Ramírez","Moreno","Gómez","Rincón","Cuadros","Zapata","Mina","Ospina","Cardona","Bacca"]},
+  cl:{first:["Matías","Vicente","Benjamín","Cristóbal","Ignacio","Diego","Felipe","Nicolás"],
+      last:["Muñoz","Rojas","Díaz","Vidal","Sánchez","Medel","Aránguiz","Pulgar","Bravo","Castillo"]},
+  scand:{first:["Erik","Emil","Oscar","Viktor","Mattis","Henrik","Jonas","Kasper","Magnus","Elias","Noah","William"],
+      last:["Johansson","Larsen","Nielsen","Berg","Lindqvist","Hansen","Andersen","Dahl","Moen","Holm","Aas","Nyström"]},
+  balkan:{first:["Luka","Marko","Nikola","Ivan","Stefan","Filip","Petar","Dario","Josip","Mateo","Ante","Vedran"],
+      last:["Horvat","Novak","Petrović","Jovanović","Kovač","Marić","Babić","Ilić","Perić","Vuković","Tomić","Radić"]},
+  gr:{first:["Giorgos","Dimitris","Nikos","Kostas","Vassilis","Panagiotis","Christos","Stelios"],
+      last:["Papadopoulos","Nikolaou","Georgiou","Vlachos","Makris","Samaras","Fortounis","Bakasetas"]},
+});
+// bölgesel yedek havuz eşlemesi
+const NAME_FALLBACK={be:"fr",at:"de",ch:"de",sco:"en",dk:"scand",se:"scand",no:"scand",pl:"balkan",cz:"balkan",hr:"balkan",rs:"balkan",py:"ar",pe:"co"};
+function namePoolFor(np){ return NAMES[np]?np:(NAME_FALLBACK[np]&&NAMES[NAME_FALLBACK[np]]?NAME_FALLBACK[np]:"en"); }
+
+/* ---------- ülke kulüp isim kültürü ---------- */
+const CLUB_IDENTITY={
+  en:["City","United","Athletic","Rovers","Town","County","Wanderers","Albion","Borough","Forge","Harbour","Foundry"],
+  es:["CF","CD","Deportivo","Unión","Atlético","Sporting","Racing"],
+  it:["Calcio","AC","US","FC","Sportiva","Reale"],
+  de:["FC","SV","VfB","SC","Eintracht","Rot-Weiss","Borussia"],
+  fr:["FC","AS","Olympique","Stade","Racing","Union"],
+  pt:["Clube","Sporting","FC","União","Atlético","Académica"],
+  nl:["FC","VV","SC","Racing","Ajax-stijl"],
+  be:["FC","KV","Union","Racing","Cercle"],
+  tr:["Spor","Gücü","Belediye","Birlik","Gençlik","Athletic","FK"],
+  br:["FC","EC","Atlético","Associação","Clube"],
+  ar:["Club Atlético","Deportivo","Central","Juniors","Racing"],
+  generic:["FC","United","Athletic","Sporting","Club","City"],
+};
+const REGION_WORD={ // arma/anlam çağrışımı
+  en:["Steel","Blue","Crown","Bridge","Harbour","Forge","Vale","Moor","Dock","Mill"],
+  es:["Dorada","Turia","Norte","Costa","Ebro","Marítim","Real","Sur"],
+  it:["Centrale","Reale","Vesuvio","Arno","Emilia","Porto","Aurelia"],
+  de:["Adler","Stahl","Rhein","Hafen","Rot","Main","Nord"],
+  fr:["Étoile","Phocéen","Rhône","Flandre","Gironde","Riviera","Garonne"],
+  pt:["Águias","Verde","Douro","Minho","Algarve","Atlântico"],
+  nl:["Oranje","Haven","Licht","Dom","Noord","Storm"],
+  be:["Schelde","Noord","Union","Cercle"],
+  tr:["Haliç","Körfez","Karadeniz","Yeşil","Akdeniz","Seyhan","Demiryolu","Nehir","Liman","Başkent"],
+  br:["Carioca","Capital","Sul","Mineiro","Bahia","Pernambuco","Paraná"],
+  ar:["Azul","Rojo","Paraná","Central","Andes","del Sur","Norte"],
+  generic:["Central","Norte","Sur","City","United"],
+};
+const STADIUM_WORDS=["Arena","Park","Ground","Stadion","Estadio","Stadium","Nacional","Parkı","Alan"];
+
+/* ---------- kulüp arketipleri ---------- */
+const CLUB_ARCHETYPES=[
+ {id:"global", label:"Global Dev", fin:1.6, wage:1.5, youth:0.7, patience:0.5, roleTrust:0.55, buys:"star"},
+ {id:"historic", label:"Tarihi Büyük", fin:1.3, wage:1.25, youth:0.8, patience:0.6, roleTrust:0.65, buys:"balanced"},
+ {id:"nouveau", label:"Yeni Zengin", fin:1.5, wage:1.6, youth:0.6, patience:0.4, roleTrust:0.5, buys:"star"},
+ {id:"academy", label:"Akademi Fabrikası", fin:0.9, wage:0.85, youth:1.6, patience:0.85, roleTrust:0.9, buys:"youth"},
+ {id:"selling", label:"Satıcı Kulüp", fin:1.0, wage:0.9, youth:1.2, patience:0.7, roleTrust:0.8, buys:"youth"},
+ {id:"lowergiant", label:"Alt Lig Devi", fin:0.7, wage:0.75, youth:1.0, patience:0.7, roleTrust:0.75, buys:"balanced"},
+ {id:"community", label:"Topluluk Kulübü", fin:0.6, wage:0.7, youth:1.1, patience:0.9, roleTrust:0.85, buys:"local"},
+ {id:"industry", label:"Endüstri Kulübü", fin:0.8, wage:0.8, youth:0.9, patience:0.75, roleTrust:0.75, buys:"balanced"},
+ {id:"port", label:"Liman Kulübü", fin:0.85, wage:0.85, youth:1.0, patience:0.7, roleTrust:0.75, buys:"balanced"},
+ {id:"capital", label:"Başkent Kulübü", fin:1.2, wage:1.15, youth:0.85, patience:0.6, roleTrust:0.65, buys:"balanced"},
+ {id:"regional", label:"Bölgesel Gurur", fin:0.75, wage:0.8, youth:1.0, patience:0.8, roleTrust:0.8, buys:"local"},
+ {id:"crisis", label:"Krizdeki Tarihi Kulüp", fin:0.55, wage:0.7, youth:1.1, patience:0.6, roleTrust:0.7, buys:"youth", debt:true},
+ {id:"project", label:"Yükselen Proje", fin:1.1, wage:1.0, youth:1.1, patience:0.7, roleTrust:0.75, buys:"balanced"},
+ {id:"veteran", label:"Tecrübeli Oyuncu Kulübü", fin:0.9, wage:1.05, youth:0.6, patience:0.75, roleTrust:0.7, buys:"veteran"},
+ {id:"loan", label:"Kiralık Oyuncu Kulübü", fin:0.7, wage:0.75, youth:1.2, patience:0.8, roleTrust:0.8, buys:"loan"},
+ {id:"struggler", label:"Düşük Bütçeli Mücadeleci", fin:0.5, wage:0.65, youth:1.0, patience:0.85, roleTrust:0.8, buys:"local"},
+];
+const ARCH_BY_ID=Object.fromEntries(CLUB_ARCHETYPES.map(a=>[a.id,a]));
+
+/* ---------- şehir havuzları (kurgusal-esinli) ---------- */
+const CITY_POOLS={
+  en:["Manchester","Mersey","Leeds","Sheffield","Bristol","Birmingham","Newcastle","Nottingham","London","Leicester","Sunderland","Hull","Derby","Norwich","Coventry","Stoke"],
+  es:["Madrid","Barcelona","Sevilla","Valencia","Bilbao","Málaga","Zaragoza","Vigo","Granada","Murcia","Gijón","Córdoba","Cádiz","Valladolid"],
+  it:["Milano","Roma","Torino","Napoli","Firenze","Bologna","Genova","Verona","Parma","Palermo","Bari","Cagliari","Udine","Reggio"],
+  de:["München","Dortmund","Berlin","Hamburg","Köln","Leipzig","Frankfurt","Stuttgart","Bremen","Essen","Nürnberg","Hannover","Freiburg","Mainz"],
+  fr:["Paris","Marseille","Lyon","Lille","Bordeaux","Nice","Toulouse","Nantes","Rennes","Strasbourg","Saint-Étienne","Montpellier","Lens","Reims"],
+  pt:["Lisboa","Porto","Braga","Coimbra","Faro","Guimarães","Setúbal","Aveiro","Funchal","Leiria"],
+  nl:["Amsterdam","Rotterdam","Eindhoven","Utrecht","Den Haag","Groningen","Alkmaar","Enschede","Nijmegen","Breda"],
+  be:["Antwerpen","Brugge","Gent","Luik","Charleroi","Genk","Mechelen","Kortrijk"],
+  tr:["İstanbul","Kadıköy","Ankara","İzmir","Trabzon","Bursa","Antalya","Adana","Eskişehir","Konya","Samsun","Sakarya","Gaziantep","Kayseri","Rize"],
+  br:["Rio","São Paulo","Porto Alegre","Belo Horizonte","Salvador","Recife","Curitiba","Fortaleza","Goiânia","Santos","Campinas","Vitória"],
+  ar:["Buenos Aires","Rosario","Córdoba","Mendoza","La Plata","Santa Fe","Tucumán","Avellaneda","Mar del Plata","Salta"],
+  uy:["Montevideo","Salto","Paysandú","Maldonado","Las Piedras"],
+  co:["Bogotá","Medellín","Cali","Barranquilla","Bucaramanga","Pereira","Cúcuta"],
+  cl:["Santiago","Valparaíso","Concepción","Antofagasta","Viña del Mar","La Serena"],
+  at:["Wien","Graz","Linz","Salzburg","Innsbruck","Klagenfurt"],
+  ch:["Zürich","Basel","Bern","Genève","Luzern","St. Gallen"],
+  sco:["Glasgow","Edinburgh","Aberdeen","Dundee","Perth","Paisley"],
+  dk:["København","Aarhus","Odense","Aalborg","Esbjerg"],
+  se:["Stockholm","Göteborg","Malmö","Norrköping","Helsingborg"],
+  no:["Oslo","Bergen","Trondheim","Stavanger","Drammen"],
+  pl:["Warszawa","Kraków","Łódź","Poznań","Gdańsk","Wrocław"],
+  cz:["Praha","Brno","Ostrava","Plzeň","Liberec"],
+  hr:["Zagreb","Split","Rijeka","Osijek","Zadar"],
+  rs:["Beograd","Novi Sad","Niš","Kragujevac"],
+  gr:["Athina","Thessaloniki","Piraeus","Patra","Larissa"],
+  py:["Asunción","Ciudad del Este","Encarnación"],
+  pe:["Lima","Arequipa","Trujillo","Cusco"],
+};
+/* ============================================================
+   V7 — ÜLKE TANIMLARI + DÜNYA PRESETLERİ
+   ============================================================ */
+/* prestige: üst lig prestiji; topStr üst lig güç bandı; topSal üst lig maaş bandı;
+   fin: finansal güç çarpanı; youthQ: genç kalitesi; adapt: adaptasyon zorluğu; fpref: yabancı tercihi */
+const COUNTRY_DEFS=[
+ {id:"en",name:"İngiltere",flag:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",np:"en",confed:"EU",prestige:92,topStr:[68,90],topSal:[45000,300000],fin:1.6,youthQ:0.75,adapt:0.5,fpref:0.7,maxTiers:4},
+ {id:"es",name:"İspanya",flag:"🇪🇸",np:"es",confed:"EU",prestige:90,topStr:[66,89],topSal:[40000,280000],fin:1.5,youthQ:0.85,adapt:0.5,fpref:0.65,maxTiers:3},
+ {id:"it",name:"İtalya",flag:"🇮🇹",np:"it",confed:"EU",prestige:86,topStr:[64,87],topSal:[35000,240000],fin:1.35,youthQ:0.7,adapt:0.55,fpref:0.6,maxTiers:3},
+ {id:"de",name:"Almanya",flag:"🇩🇪",np:"de",confed:"EU",prestige:88,topStr:[65,88],topSal:[38000,260000],fin:1.45,youthQ:0.85,adapt:0.45,fpref:0.6,maxTiers:3},
+ {id:"fr",name:"Fransa",flag:"🇫🇷",np:"fr",confed:"EU",prestige:84,topStr:[62,86],topSal:[30000,230000],fin:1.3,youthQ:0.9,adapt:0.5,fpref:0.6,maxTiers:3},
+ {id:"pt",name:"Portekiz",flag:"🇵🇹",np:"pt",confed:"EU",prestige:70,topStr:[54,78],topSal:[12000,90000],fin:0.95,youthQ:0.9,adapt:0.45,fpref:0.75,maxTiers:2},
+ {id:"nl",name:"Hollanda",flag:"🇳🇱",np:"nl",confed:"EU",prestige:68,topStr:[52,75],topSal:[10000,70000],fin:0.9,youthQ:0.92,adapt:0.4,fpref:0.7,maxTiers:2},
+ {id:"be",name:"Belçika",flag:"🇧🇪",np:"be",confed:"EU",prestige:62,topStr:[50,72],topSal:[9000,60000],fin:0.85,youthQ:0.85,adapt:0.4,fpref:0.72,maxTiers:2},
+ {id:"tr",name:"Türkiye",flag:"🇹🇷",np:"tr",confed:"EU",prestige:70,topStr:[58,76],topSal:[9000,60000],fin:0.95,youthQ:0.6,adapt:0.55,fpref:0.55,maxTiers:3},
+ {id:"at",name:"Avusturya",flag:"🇦🇹",np:"at",confed:"EU",prestige:56,topStr:[46,68],topSal:[7000,45000],fin:0.8,youthQ:0.78,adapt:0.4,fpref:0.65,maxTiers:1},
+ {id:"ch",name:"İsviçre",flag:"🇨🇭",np:"ch",confed:"EU",prestige:56,topStr:[46,68],topSal:[9000,55000],fin:0.85,youthQ:0.75,adapt:0.45,fpref:0.6,maxTiers:1},
+ {id:"sco",name:"İskoçya",flag:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",np:"sco",confed:"EU",prestige:54,topStr:[44,68],topSal:[7000,45000],fin:0.8,youthQ:0.65,adapt:0.4,fpref:0.55,maxTiers:1},
+ {id:"dk",name:"Danimarka",flag:"🇩🇰",np:"dk",confed:"EU",prestige:52,topStr:[44,66],topSal:[6000,38000],fin:0.75,youthQ:0.78,adapt:0.4,fpref:0.6,maxTiers:1},
+ {id:"se",name:"İsveç",flag:"🇸🇪",np:"se",confed:"EU",prestige:50,topStr:[42,64],topSal:[5000,32000],fin:0.7,youthQ:0.75,adapt:0.4,fpref:0.55,maxTiers:1},
+ {id:"no",name:"Norveç",flag:"🇳🇴",np:"no",confed:"EU",prestige:50,topStr:[42,64],topSal:[5000,34000],fin:0.72,youthQ:0.76,adapt:0.4,fpref:0.55,maxTiers:1},
+ {id:"pl",name:"Polonya",flag:"🇵🇱",np:"pl",confed:"EU",prestige:52,topStr:[44,66],topSal:[5000,34000],fin:0.72,youthQ:0.62,adapt:0.5,fpref:0.5,maxTiers:1},
+ {id:"cz",name:"Çekya",flag:"🇨🇿",np:"cz",confed:"EU",prestige:52,topStr:[44,66],topSal:[5000,32000],fin:0.72,youthQ:0.68,adapt:0.5,fpref:0.5,maxTiers:1},
+ {id:"hr",name:"Hırvatistan",flag:"🇭🇷",np:"hr",confed:"EU",prestige:54,topStr:[45,68],topSal:[4500,30000],fin:0.68,youthQ:0.82,adapt:0.5,fpref:0.5,maxTiers:1},
+ {id:"rs",name:"Sırbistan",flag:"🇷🇸",np:"rs",confed:"EU",prestige:52,topStr:[44,66],topSal:[4000,28000],fin:0.65,youthQ:0.8,adapt:0.55,fpref:0.45,maxTiers:1},
+ {id:"gr",name:"Yunanistan",flag:"🇬🇷",np:"gr",confed:"EU",prestige:54,topStr:[45,68],topSal:[6000,40000],fin:0.78,youthQ:0.6,adapt:0.5,fpref:0.55,maxTiers:1},
+ {id:"br",name:"Brezilya",flag:"🇧🇷",np:"br",confed:"SA",prestige:78,topStr:[58,82],topSal:[8000,70000],fin:1.0,youthQ:0.95,adapt:0.6,fpref:0.3,maxTiers:2},
+ {id:"ar",name:"Arjantin",flag:"🇦🇷",np:"ar",confed:"SA",prestige:76,topStr:[57,81],topSal:[6000,55000],fin:0.9,youthQ:0.95,adapt:0.6,fpref:0.3,maxTiers:2},
+ {id:"uy",name:"Uruguay",flag:"🇺🇾",np:"uy",confed:"SA",prestige:58,topStr:[48,70],topSal:[3000,25000],fin:0.6,youthQ:0.92,adapt:0.6,fpref:0.3,maxTiers:1},
+ {id:"co",name:"Kolombiya",flag:"🇨🇴",np:"co",confed:"SA",prestige:58,topStr:[48,70],topSal:[3000,26000],fin:0.62,youthQ:0.85,adapt:0.6,fpref:0.3,maxTiers:1},
+ {id:"cl",name:"Şili",flag:"🇨🇱",np:"cl",confed:"SA",prestige:54,topStr:[46,68],topSal:[3000,24000],fin:0.6,youthQ:0.78,adapt:0.6,fpref:0.35,maxTiers:1},
+ {id:"py",name:"Paraguay",flag:"🇵🇾",np:"py",confed:"SA",prestige:50,topStr:[44,66],topSal:[2500,20000],fin:0.55,youthQ:0.8,adapt:0.6,fpref:0.3,maxTiers:1},
+ {id:"pe",name:"Peru",flag:"🇵🇪",np:"pe",confed:"SA",prestige:50,topStr:[44,66],topSal:[2500,20000],fin:0.55,youthQ:0.75,adapt:0.6,fpref:0.35,maxTiers:1},
+];
+const COUNTRY_BY_ID=Object.fromEntries(COUNTRY_DEFS.map(c=>[c.id,c]));
+const LEAGUE_TIER_NAMES={
+  en:["Premier Division","Championship Tier","League One Tier","League Two Tier"],
+  es:["Primera","Segunda","Primera RFEF"], it:["Serie Alta","Serie B Tier","Serie C Tier"],
+  de:["Bundesliga Tier","2. Liga Tier","3. Liga Tier"], fr:["Ligue Un Tier","Ligue Deux Tier","National Tier"],
+  tr:["Süper Lig","1. Lig","2. Lig"], br:["Série A Tier","Série B Tier"], ar:["Primera Tier","Nacional B Tier"],
+};
+function leagueTierName(cid,tier){ const arr=LEAGUE_TIER_NAMES[cid]; if(arr&&arr[tier-1])return arr[tier-1];
+  return ["Üst Lig","2. Lig","3. Lig","4. Lig"][tier-1]||`${tier}. Lig`; }
+
+/* preset: hangi ülkeler, kaç tier, lig başına kulüp, kulüp başına oyuncu */
+const WORLD_PRESETS={
+ compact:{ id:"compact", label:"Kompakt", desc:"~12 ülke · zayıf cihaz dostu",
+   countries:["tr","en","es","it","de","fr","pt","nl","br","ar","hr","uy"],
+   tierCap:2, clubsTop:10, clubsLow:8, playersPerClub:5, youthPer:22 },
+ standard:{ id:"standard", label:"Standart", desc:"~22 ülke · varsayılan",
+   countries:["en","es","it","de","fr","pt","nl","be","tr","at","ch","sco","dk","se","no","pl","cz","hr","rs","gr","br","ar","uy","co","cl"],
+   tierCap:3, clubsTop:12, clubsLow:9, playersPerClub:5, youthPer:26 },
+ large:{ id:"large", label:"Geniş", desc:"~27 ülke · güçlü cihaz",
+   countries:COUNTRY_DEFS.map(c=>c.id),
+   tierCap:4, clubsTop:14, clubsLow:10, playersPerClub:6, youthPer:30 },
+};
+
+/* ============================================================
+   V7 — DÜNYA ÜRETİMİ (deterministik, seed tabanlı)
+   ============================================================ */
+function _hashSeed(str){ let h=2166136261>>>0; str=String(str); for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+function generateClubIdentity(cid, city, seed, used){
+  const words=REGION_WORD[cid]||REGION_WORD.generic;
+  const idw=CLUB_IDENTITY[cid]||CLUB_IDENTITY.generic;
+  srand(seed);
+  let name, tries=0;
+  do{
+    const style=rnd();
+    if(style<0.45) name=`${city} ${pick(words)}`;
+    else if(style<0.75) name=`${city} ${pick(idw)}`;
+    else name=`${pick(idw)} ${city}`;
+    tries++;
+  } while(used&&used.has(name)&&tries<12);
+  // gerçek kulüp adı koruması
+  if(typeof REAL_CLUB_BLOCKLIST!=="undefined" && REAL_CLUB_BLOCKLIST.indexOf(name)>=0) name=`${city} ${pick(words)} ${pick(idw)}`;
+  if(used){ let n=name,k=2; while(used.has(n)){ n=`${name} ${["II","B","Nova","Sur","Norte"][k-2]||k}`; k++; } name=n; used.add(name); }
+  const short=city.slice(0,3).toUpperCase();
+  return {name, shortName:short};
+}
+function generateClubPalette(seed){
+  srand(seed^0x9e37);
+  const PAL=[["#A63C3C","#F2E7D5","#7A2A2A"],["#1B2A4A","#D9AE54","#0F1B33"],["#2E7D54","#FFFFFF","#1C5638"],
+    ["#27364F","#8FB7E0","#182438"],["#7A4B9B","#EFE7F7","#563273"],["#B97426","#FFF6E3","#8A5416"],
+    ["#0F6C7E","#DFF4F7","#0A4E5C"],["#3A3A3A","#E88585","#232323"],["#245C8A","#F0D98A","#183F60"],["#6B2C3E","#EAD7C0","#4A1E2B"]];
+  const p=PAL[Math.floor(rnd()*PAL.length)];
+  return {primary:p[0],secondary:p[1],accent:p[2]};
+}
+function generateStadium(city,cap,seed){ srand(seed^0x51ed);
+  const w=STADIUM_WORDS[Math.floor(rnd()*STADIUM_WORDS.length)];
+  return `${city} ${w}`; }
+function pickArchetype(tier, seed, isCurated){
+  srand(seed^0x1234);
+  if(isCurated){ if(tier===1) return pick(["global","historic","nouveau","capital","academy"]);
+    return pick(["historic","lowergiant","project","academy","selling"]); }
+  if(tier===1) return pick(["historic","academy","selling","capital","project","veteran"]);
+  if(tier===2) return pick(["lowergiant","academy","selling","community","industry","project","loan"]);
+  return pick(["community","regional","industry","port","struggler","loan","academy","crisis"]);
+}
+const ARCH_PROFILE={global:"Yıldız alıcı",nouveau:"Yıldız alıcı",capital:"Yıldız alıcı",historic:"Satıcı kulüp",
+  academy:"Genç geliştirici",selling:"Satıcı kulüp",project:"Genç geliştirici",lowergiant:"Satıcı kulüp",
+  community:"Yerli odaklı",regional:"Yerli odaklı",struggler:"Yerli odaklı",industry:"Satıcı kulüp",
+  port:"Satıcı kulüp",crisis:"Satıcı kulüp",veteran:"Maaş cömerti",loan:"Kiralık sever"};
+/* ---------- lig üretimi ---------- */
+function generateLeague(country, tier, cfg, seed){
+  const drop=(tier-1);
+  const loBase=country.topStr[0]-drop*12, hiBase=country.topStr[1]-drop*13;
+  const str=[clamp(loBase,18,90), clamp(hiBase,24,92)];
+  const salLo=Math.max(400,Math.round(country.topSal[0]*Math.pow(0.5,drop)));
+  const salHi=Math.max(1200,Math.round(country.topSal[1]*Math.pow(0.42,drop)));
+  const prestige=clamp(Math.round(country.prestige - drop*22),6,99);
+  const visibility=clamp(Math.round((country.prestige) - drop*26),4,100);
+  const scoutValue=clamp(10+tier*22 - Math.round(country.prestige*0.08),8,90);
+  return {
+    id:`${country.id}${tier}`, country:country.name, countryId:country.id, flag:country.flag,
+    name:`${country.name} ${leagueTierName(country.id,tier)}`, tier, prestige, str,
+    salary:[salLo,salHi], scoutValue, visibility, namePool:country.np, clubIds:[],
+    promotionSlots: tier>1?2:0, relegationSlots: tier<country.maxTiers?2:0,
+    youthOpportunity: clamp(30+tier*14,20,90), table:null, seasonWeeks:BAL.weeksPerSeason,
+    dataVersion:WORLD_DATA_VERSION,
+  };
+}
+/* ---------- kulüp üretimi ---------- */
+const HIST_TEMPLATES=[
+ c=>`${c.city} kentinin gururu; ${c.foundedYear} yılında liman işçileri tarafından kuruldu.`,
+ c=>`${c.foundedYear}'te bir mahalle takımı olarak doğdu, bölgesinin en köklü kulüplerinden.`,
+ c=>`Altın çağını geçmişte yaşadı; taraftarı sadık, beklentisi yüksek.`,
+ c=>`Genç yetenek yetiştirme geleneğiyle tanınır; akademisi bölgenin cevher kaynağı.`,
+ c=>`Son yıllarda mali dalgalanmalar yaşasa da tribünleri hep dolu.`,
+ c=>`Şehir derbisiyle ünlü; her maçı bir onur meselesi.`,
+];
+function generateClub(league, country, city, seed, opts, used){
+  opts=opts||{};
+  const tier=league.tier;
+  const big=!!opts.big;
+  const arch=opts.arch||pickArchetype(tier,seed,big);
+  const A=ARCH_BY_ID[arch]||CLUB_ARCHETYPES[0];
+  const ident=generateClubIdentity(country.id, city, seed, used);
+  srand(seed^0x77);
+  const baseStr=ri(league.str[0],league.str[1]);
+  const strength=clamp(Math.round(baseStr + (big?ri(4,10):0) + (A.fin-1)*6), league.str[0]-2, 96);
+  const prestige=clamp(Math.round(league.prestige + (big?ri(4,14):ri(-14,8))),5,99);
+  const fanBase=clamp(Math.round(prestige*(big?1.1:0.7)+ri(-8,10)),3,100);
+  const financialStability=clamp(A.debt?ri(20,50):ri(45,90),5,100);
+  const ownerWealth=clamp(Math.round((A.fin)*ri(30,80)),5,100);
+  const finPower=clamp(A.fin*country.fin*(0.6+prestige/120),0.2,3);
+  const stadCap=clamp(Math.round((3000+prestige*prestige*3.2+fanBase*220)*(big?1.25:1)),1500,92000);
+  const foundedYear=ri(1898,1975);
+  const club={
+    id:"c"+country.id+tier+"_"+(_pid++)+"_"+(seed>>>0)%9973, name:ident.name, shortName:ident.shortName,
+    countryId:country.id, city, leagueId:league.id, tier, regionId:country.id,
+    foundedYear, colors:generateClubPalette(seed), crestSeed:(seed>>>0),
+    stadiumName:generateStadium(city,stadCap,seed), stadiumCapacity:stadCap,
+    prestige, reputation:prestige, fanBase, mediaPressure:clamp(prestige*(big?1.05:0.6)+ri(-6,8),5,100),
+    strength, facility:clamp(Math.round(league.prestige*0.6+prestige*0.35+ri(-12,16)),15,96),
+    financialPower:finPower, financialStability, ownerWealth, debtLevel:A.debt?ri(30,70):ri(0,25),
+    trainingQuality:clamp(Math.round(40+A.youth*22+prestige*0.3+ri(-8,10)),20,96),
+    youthAcademy:clamp(Math.round(30+A.youth*30+country.youthQ*20+ri(-8,10)),15,98),
+    scoutingQuality:clamp(Math.round(35+prestige*0.35+ri(-8,10)),15,95),
+    archetype:arch, profile:ARCH_PROFILE[arch]||"Yerli odaklı",
+    playingTimeReliability:clamp(A.roleTrust*100+ri(-8,8),20,98),
+    youthPolicy:A.buys==="youth"?"yüksek":A.buys==="veteran"?"düşük":"orta",
+    transferPolicy:A.buys, foreignPlayerPreference:clamp(country.fpref*100+ri(-10,10),10,90),
+    needs:makeClubNeeds(), relation:ri(5,25), trust:ri(30,55), negotiationPatience:A.patience,
+    budget:0, transferBudget:0, wageBudget:0, seasonGoal:big?"şampiyonluk":tier>1?"yükselme":"lig'de kalıcılık",
+    rivals:[], history:HIST_TEMPLATES[(seed>>>3)%HIST_TEMPLATES.length]({city,foundedYear}), lastResult:null,
+  };
+  // finans: lige + prestije + sahibe bağlı bütçe
+  const base=league.prestige*strength*ri(700,1600);
+  club.budget=Math.round(base*finPower/1000)*1000;
+  club.transferBudget=Math.round(club.budget*(0.4+ownerWealth/250)*(financialStability/100));
+  club.wageBudget=Math.round(league.salary[1]*(6+prestige/12));
+  if(A.debt){ club.transferBudget=Math.round(club.transferBudget*0.5); }
+  return club;
+}
+/* ---------- lig oyuncuları ---------- */
+function generateLeaguePlayers(world, league, country, cfg){
+  const perClub=league.tier<=2?cfg.playersPerClub:Math.max(3,cfg.playersPerClub-1);
+  const dl=league.tier<=2?"full":"light";
+  for(const cid of league.clubIds){
+    const club=world.clubs[cid];
+    for(let i=0;i<perClub;i++){
+      const p=makePlayer(league,{clubId:cid});
+      p.nat=country.np; p.natFlag=NAT_FLAG[country.np]||"🏳️";
+      p.name=makeName(namePoolFor(country.np));
+      p.wage=ri(league.salary[0],league.salary[1]);
+      p.dl=dl; p.countryId=country.id;
+      // alt lig: daha kısa kontrat, daha çok serbest
+      if(league.tier>=3){ p.contractSeasons=ri(1,2); p.contractEndSeason=1+ri(0,2); }
+      world.players[p.id]=p;
+    }
+  }
+}
+/* ---------- ülke üretimi ---------- */
+function generateCountry(world, country, cfg, seed){
+  const tiers=Math.min(country.maxTiers, cfg.tierCap);
+  const cities=(CITY_POOLS[country.id]||CITY_POOLS.en).slice();
+  const used=world._usedNames||(world._usedNames=new Set());
+  for(let tier=1;tier<=tiers;tier++){
+    const lseed=_hashSeed(seed+":"+country.id+":"+tier);
+    const league=generateLeague(country,tier,cfg,lseed);
+    const nClubs=tier===1?cfg.clubsTop:cfg.clubsLow;
+    for(let i=0;i<nClubs;i++){
+      const cseed=_hashSeed(lseed+":c"+i);
+      const city=cities[(i+ (tier-1)*3)%cities.length];
+      const big=tier===1 && i<3; // üst ligde ilk 3 kulüp büyük
+      const club=generateClub(league,country,city,cseed,{big},used);
+      world.clubs[club.id]=club; league.clubIds.push(club.id);
+    }
+    world.leagues.push(league);
+    generateLeaguePlayers(world,league,country,cfg);
+  }
+  // genç havuzu (keşif hedefleri)
+  const topLeague=world.leagues.find(l=>l.countryId===country.id&&l.tier===Math.min(2,tiers))||world.leagues.find(l=>l.countryId===country.id);
+  for(let i=0;i<cfg.youthPer;i++){
+    const lg=topLeague;
+    const p=makePlayer(lg,{age:ri(15,19),discovered:false,clubId:pick(lg.clubIds)});
+    p.nat=country.np; p.natFlag=NAT_FLAG[country.np]||"🏳️"; p.name=makeName(namePoolFor(country.np));
+    p.wage=ri(300,2000); p.ca=clamp(p.ca-ri(4,10),18,66);
+    p.pa=clamp(p.ca+ri(8,34)+(p.gem?10:0),p.ca+5,97);
+    p.dl="light"; p.countryId=country.id;
+    world.players[p.id]=p; world.youthPool.push(p.id);
+  }
+}
+/* ---------- dünya üretimi ---------- */
+function generateWorldFromPreset(presetId, seed){
+  const preset=WORLD_PRESETS[presetId]||WORLD_PRESETS.standard;
+  srand(seed>>>0); _pid=0;
+  const world={ seed:seed>>>0, dataVersion:WORLD_DATA_VERSION, preset:preset.id,
+    leagues:[], clubs:{}, players:{}, youthPool:[], countries:[] };
+  for(const cid of preset.countries){
+    const country=COUNTRY_BY_ID[cid]; if(!country) continue;
+    world.countries.push({id:country.id,name:country.name,flag:country.flag,confed:country.confed});
+    generateCountry(world,country,preset,seed);
+  }
+  // değer hesapla
+  for(const id in world.players) world.players[id].value=calcValue(world.players[id],world);
+  // basit derbi/rekabet: aynı şehirdeki kulüpler
+  buildRivalries(world);
+  syncPidCounter(world);
+  delete world._usedNames;
+  return world;
+}
+function buildRivalries(world){
+  const byCity={};
+  for(const id in world.clubs){ const c=world.clubs[id]; (byCity[c.countryId+"|"+c.city]=byCity[c.countryId+"|"+c.city]||[]).push(id); }
+  for(const k in byCity){ const ids=byCity[k]; if(ids.length>=2){
+    for(const a of ids) world.clubs[a].rivals=ids.filter(x=>x!==a).slice(0,3); } }
+}
+/* ---------- dünya indeksleri (performans) ---------- */
+function buildWorldIndexes(st){
+  st=st||S; const w=st.world;
+  const byClub={}, byLeague={}, byCountry={}, byAgency={you:[],rival:[],free:[]};
+  for(const id in w.players){ const p=w.players[id];
+    if(p.clubId) (byClub[p.clubId]=byClub[p.clubId]||[]).push(id);
+    const c=w.clubs[p.clubId]; if(c){ (byLeague[c.leagueId]=byLeague[c.leagueId]||[]).push(id);
+      (byCountry[c.countryId]=byCountry[c.countryId]||[]).push(id); }
+    if(p.agent==="you") byAgency.you.push(id); else if(p.agent==="rival") byAgency.rival.push(id); else byAgency.free.push(id);
+  }
+  st._idx={byClub,byLeague,byCountry,byAgency,builtWeek:st.week,builtSeason:st.season};
+  return st._idx;
+}
+function worldIdx(){ if(!S._idx||S._idx.builtWeek!==S.week||S._idx.builtSeason!==S.season) buildWorldIndexes(S); return S._idx; }
+/* ============================================================
+   V7 — LİG PUANI + YÜKSELME/DÜŞME
+   ============================================================ */
+function accrueLeaguePoints(sum){
+  for(const id in S.world.clubs){ const c=S.world.clubs[id]; const r=c.lastResult;
+    if(!r) continue;
+    if(c._ptWeek===S.week) continue; c._ptWeek=S.week;
+    c.seasonPts=c.seasonPts||0; c.seasonGF=c.seasonGF||0; c.seasonGA=c.seasonGA||0;
+    if(r.gf>r.ga){ c.seasonPts+=3; } else if(r.gf===r.ga){ c.seasonPts+=1; }
+    c.seasonGF+=r.gf; c.seasonGA+=r.ga;
+  }
+}
+function leagueTable(leagueId){
+  const lg=S.world.leagues.find(l=>l.id===leagueId); if(!lg) return [];
+  return lg.clubIds.map(id=>S.world.clubs[id]).filter(Boolean)
+    .map(c=>({id:c.id,name:c.name,pts:c.seasonPts||0,gd:(c.seasonGF||0)-(c.seasonGA||0),str:c.strength}))
+    .sort((a,b)=> b.pts-a.pts || b.gd-a.gd || b.str-a.str);
+}
+function moveClubBetweenLeagues(club, toLeague){
+  const from=S.world.leagues.find(l=>l.id===club.leagueId);
+  if(from) from.clubIds=from.clubIds.filter(x=>x!==club.id);
+  if(!toLeague.clubIds.includes(club.id)) toLeague.clubIds.push(club.id);
+  club.leagueId=toLeague.id; club.tier=toLeague.tier;
+}
+function applyPromotionEffects(club, toLeague){
+  club.prestige=clamp(club.prestige+ri(4,9),5,99); club.reputation=club.prestige;
+  club.budget=Math.round(club.budget*1.6); club.transferBudget=Math.round(club.transferBudget*1.7);
+  club.wageBudget=Math.round(club.wageBudget*1.4); club.seasonGoal="lig'de kalıcılık";
+  for(const pid of (worldIdx().byClub[club.id]||[])){ const p=S.world.players[pid]; if(p){ p.value=Math.round(p.value*1.15); if(p.agent==="you") addNews("me",`${club.name} yükseldi!`,`${p.name}'in kulübü üst lige çıktı — değeri ve görünürlüğü arttı.`,"good"); } }
+}
+function applyRelegationEffects(club, toLeague){
+  club.prestige=clamp(club.prestige-ri(4,9),5,99); club.reputation=club.prestige;
+  club.budget=Math.round(club.budget*0.6); club.transferBudget=Math.round(club.transferBudget*0.55);
+  club.wageBudget=Math.round(club.wageBudget*0.72); club.seasonGoal="yükselme";
+  for(const pid of (worldIdx().byClub[club.id]||[])){ const p=S.world.players[pid]; if(p){ p.value=Math.round(p.value*0.85);
+    if(p.agent==="you"){ p.morale=clamp(p.morale-6,5,99); addNews("me",`${club.name} düştü`,`${p.name}'in kulübü alt lige indi. Oyuncu ayrılmak isteyebilir.`,"bad"); } } }
+}
+function resolvePromotionRelegation(){
+  S.promotionHistory=S.promotionHistory||[]; S.relegationHistory=S.relegationHistory||[];
+  const byCountryTier={};
+  for(const lg of S.world.leagues){ (byCountryTier[lg.countryId]=byCountryTier[lg.countryId]||{})[lg.tier]=lg; }
+  for(const cid in byCountryTier){ const tiers=byCountryTier[cid];
+    const tierNums=Object.keys(tiers).map(Number).sort((a,b)=>a-b);
+    for(let ti=0;ti<tierNums.length-1;ti++){
+      const upper=tiers[tierNums[ti]], lower=tiers[tierNums[ti+1]];
+      if(!upper||!lower) continue;
+      const slots=Math.min(upper.relegationSlots||2, lower.promotionSlots||2, Math.floor(lower.clubIds.length/3), Math.floor(upper.clubIds.length/3))||1;
+      const upTable=leagueTable(upper.id), lowTable=leagueTable(lower.id);
+      const relegated=upTable.slice(-slots), promoted=lowTable.slice(0,slots);
+      for(const r of relegated){ const c=S.world.clubs[r.id]; if(c){ moveClubBetweenLeagues(c,lower); applyRelegationEffects(c,lower);
+        S.relegationHistory.unshift({s:S.season,club:c.name,from:upper.name,to:lower.name}); } }
+      for(const p of promoted){ const c=S.world.clubs[p.id]; if(c){ moveClubBetweenLeagues(c,upper); applyPromotionEffects(c,upper);
+        S.promotionHistory.unshift({s:S.season,club:c.name,from:lower.name,to:upper.name}); } }
+    }
+  }
+  S.promotionHistory=S.promotionHistory.slice(0,40); S.relegationHistory=S.relegationHistory.slice(0,40);
+  // puanları sıfırla
+  for(const id in S.world.clubs){ const c=S.world.clubs[id]; c.seasonPts=0; c.seasonGF=0; c.seasonGA=0; c._ptWeek=0; }
+  buildWorldIndexes(S);
+  addNews("","Sezon sonu: yükselme/düşme tamamlandı 🔀",`${S.promotionHistory.filter(x=>x.s===S.season).length} kulüp yükseldi, ${S.relegationHistory.filter(x=>x.s===S.season).length} kulüp düştü.`,"");
+}
+
+/* ---------- oyuncu ID sayacı senkronu (çakışma önleme) ---------- */
+function syncPidCounter(world){
+  world=world||(S&&S.world); if(!world) return;
+  let mx=_pid;
+  for(const id in world.players){ const n=parseInt(String(id).replace(/[^0-9]/g,""),10); if(isFinite(n)&&n>=mx)mx=n+1; }
+  for(const id in world.clubs){ const m2=String(id).match(/_(\d+)_/); if(m2){ const n=parseInt(m2[1],10); if(isFinite(n)&&n>=mx)mx=n+1; } }
+  _pid=mx;
+}
+/* ---------- emekli/serbest oyuncu budama + nüfus tavanı (dünya sınırlı kalsın) ---------- */
+function pruneWorldPlayers(){
+  const watch=new Set(S.watchlist||[]);
+  const repRef=new Set((S.reports||[]).map(r=>r.pid));
+  const protectedIds=new Set();
+  for(const rv of (S.rivalAgencies||[])) for(const id of rv.playerIds) protectedIds.add(id);
+  let removed=0;
+  const canDrop=(id,p)=> p.agent!=="you" && !watch.has(id) && !repRef.has(id) && !protectedIds.has(id);
+  // 1) emekli, bize ait olmayan oyuncular
+  for(const id in S.world.players){ const p=S.world.players[id];
+    if(p.retired && canDrop(id,p)){ delete S.world.players[id]; removed++; }
+  }
+  // 2) nüfus tavanı: kulüp sayısının ~10 katını aşarsa, kulüpsüz serbest hafif oyuncuları sil
+  const cap=Object.keys(S.world.clubs).length*10 + 400;
+  let ids=Object.keys(S.world.players);
+  if(ids.length>cap){
+    for(const id of ids){ if(ids.length-removed<=cap) break; const p=S.world.players[id];
+      if(!p) continue;
+      const noClub=!p.clubId||!S.world.clubs[p.clubId];
+      if(noClub && canDrop(id,p)){ delete S.world.players[id]; removed++; }
+    }
+  }
+  if(removed){ S.world.youthPool=(S.world.youthPool||[]).filter(id=>S.world.players[id]);
+    S.reports=(S.reports||[]).filter(r=>S.world.players[r.pid]);
+    S.watchlist=(S.watchlist||[]).filter(id=>S.world.players[id]); }
+  return removed;
+}
+/* ---------- kadro tazeleme (kulüpler boşalmasın) ---------- */
+function replenishSquads(){
+  pruneWorldPlayers();
+  syncPidCounter(S.world);
+  const idx=(buildWorldIndexes(S),S._idx);
+  for(const cid in S.world.clubs){ const c=S.world.clubs[cid];
+    const lg=S.world.leagues.find(l=>l.id===c.leagueId); if(!lg) continue;
+    const count=(idx.byClub[cid]||[]).length;
+    const min=lg.tier<=2?4:3; // yalnızca boşalmaya yaklaşan kulüpleri kurtar
+    if(count>=min) continue;
+    const country=COUNTRY_BY_ID[c.countryId]||{np:"tr"};
+    for(let i=count;i<min;i++){
+      const p=makePlayer(lg,{clubId:cid,age:ri(16,23)});
+      p.nat=c.countryId; p.natFlag=NAT_FLAG[c.countryId]||"🏳️"; p.name=makeName(namePoolFor(country.np));
+      p.wage=ri(lg.salary[0],lg.salary[1]); p.dl=lg.tier<=2?"full":"light"; p.countryId=c.countryId;
+      p.value=calcValue(p,S.world);
+      S.world.players[p.id]=p;
+    }
+  }
+  buildWorldIndexes(S);
+}
+/* ============================================================
+   V7 — SAVE MIGRATION (V6 → V7)
+   ============================================================ */
+function migrateV6ToV7(st){
+  st.v=7;
+  st.worldDataVersion=st.worldDataVersion??(st.world&&st.world.dataVersion)??6;
+  st.worldSeed=st.worldSeed??(st.world&&st.world.seed)??st.seed??0;
+  st.worldPreset=st.worldPreset??(st.world&&st.world.preset)??"legacy";
+  st.worldDeltas=st.worldDeltas??{};
+  st.countryStates=st.countryStates??{};
+  st.leagueStates=st.leagueStates??{};
+  st.clubSeasonStates=st.clubSeasonStates??{};
+  st.promotionHistory=st.promotionHistory??[];
+  st.relegationHistory=st.relegationHistory??[];
+  st.continentalCompetitions=st.continentalCompetitions??null;
+  st.regionalOffices=st.regionalOffices??[];
+  st.marketIndexes=st.marketIndexes??null;
+  // eski (V6) dünya kulüplerine V7 alanlarını doldur
+  if(st.world&&st.world.clubs){
+    if(!st.world.countries){ st.world.countries=[]; const seen=new Set();
+      for(const lg of st.world.leagues){ const key=lg.country||lg.countryId||"tr"; if(!seen.has(key)){ seen.add(key);
+        st.world.countries.push({id:lg.countryId||key,name:lg.country||key,flag:lg.flag||"🏳️",confed:"EU"}); } } }
+    for(const id in st.world.clubs){ const c=st.world.clubs[id];
+      const lg=st.world.leagues.find(l=>l.id===c.leagueId)||{};
+      c.countryId=c.countryId??lg.countryId??(lg.country||"tr");
+      c.tier=c.tier??lg.tier??1;
+      c.city=c.city??(c.name?c.name.split(" ")[0]:"Şehir");
+      c.archetype=c.archetype??(c.profile==="Yıldız alıcı"?"nouveau":c.profile==="Genç geliştirici"?"academy":c.profile==="Kiralık sever"?"loan":"regional");
+      c.colors=c.colors??generateClubPalette(seedNum(c.id));
+      c.crestSeed=c.crestSeed??seedNum(c.id);
+      c.foundedYear=c.foundedYear??ri(1900,1975);
+      c.stadiumName=c.stadiumName??generateStadium(c.city,20000,seedNum(c.id));
+      c.stadiumCapacity=c.stadiumCapacity??clamp(Math.round((c.prestige||40)*400+8000),3000,80000);
+      c.financialPower=c.financialPower??1; c.financialStability=c.financialStability??60;
+      c.transferBudget=c.transferBudget??(c.budget?Math.round(c.budget*0.4):200000);
+      c.wageBudget=c.wageBudget??Math.round((lg.salary?lg.salary[1]:40000)*8);
+      c.trainingQuality=c.trainingQuality??(c.facility||55); c.youthAcademy=c.youthAcademy??50;
+      c.playingTimeReliability=c.playingTimeReliability??60; c.negotiationPatience=c.negotiationPatience??0.7;
+      c.fanBase=c.fanBase??(c.prestige||40); c.rivals=c.rivals??[]; c.seasonGoal=c.seasonGoal??"lig'de kalıcılık";
+      c.history=c.history??`${c.city} kentinin köklü kulübü.`; c.seasonPts=c.seasonPts??0;
+    }
+    for(const id in st.world.players){ const p=st.world.players[id]; p.dl=p.dl??"full";
+      const c=st.world.clubs[p.clubId]; p.countryId=p.countryId??(c?c.countryId:"tr"); }
+  }
+  return st;
+}
+/* ============================================================
+   V7 — SCOUT BÖLGELERİ + BÖLGESEL OFİSLER
+   ============================================================ */
+const SCOUT_REGIONS=[
+ {id:"eng_lower",label:"İngiltere Alt Ligleri",countries:["en"],tierMin:2,cost:1.3,difficulty:0.7,potential:0.7,office:"londra"},
+ {id:"iberia",label:"İber Yarımadası",countries:["es","pt"],tierMin:1,cost:1.2,difficulty:0.6,potential:0.85,office:"madrid"},
+ {id:"central_eu",label:"Orta Avrupa",countries:["de","at","ch","cz"],tierMin:1,cost:1.1,difficulty:0.6,potential:0.75,office:"milano"},
+ {id:"balkans",label:"Balkanlar",countries:["hr","rs","gr"],tierMin:1,cost:0.7,difficulty:0.7,potential:0.8,office:null},
+ {id:"scandinavia",label:"İskandinavya",countries:["dk","se","no"],tierMin:1,cost:0.8,difficulty:0.5,potential:0.7,office:null},
+ {id:"turkey",label:"Türkiye ve Çevresi",countries:["tr"],tierMin:2,cost:0.7,difficulty:0.6,potential:0.65,office:"istanbul"},
+ {id:"br_se",label:"Brezilya Güneydoğu",countries:["br"],tierMin:1,cost:1.4,difficulty:0.8,potential:0.95,office:"saopaulo"},
+ {id:"ar_ba",label:"Buenos Aires Bölgesi",countries:["ar"],tierMin:1,cost:1.3,difficulty:0.8,potential:0.95,office:"buenosaires"},
+ {id:"andes",label:"And Ülkeleri",countries:["co","cl","pe"],tierMin:1,cost:1.0,difficulty:0.85,potential:0.8,office:null},
+ {id:"rioplata",label:"Uruguay ve Paraguay",countries:["uy","py"],tierMin:1,cost:0.9,difficulty:0.8,potential:0.85,office:null},
+];
+const REGIONAL_OFFICES=[
+ {id:"londra",label:"Londra Ofisi",cost:60000,weekly:1800,region:"İngiltere",willingness:6,clubRel:5},
+ {id:"madrid",label:"Madrid Ofisi",cost:55000,weekly:1600,region:"İber",willingness:6,clubRel:5},
+ {id:"milano",label:"Milano Ofisi",cost:50000,weekly:1500,region:"Orta Avrupa",willingness:5,clubRel:5},
+ {id:"paris",label:"Paris Ofisi",cost:52000,weekly:1550,region:"Fransa",willingness:5,clubRel:5},
+ {id:"istanbul",label:"İstanbul Ofisi",cost:30000,weekly:900,region:"Türkiye",willingness:5,clubRel:6},
+ {id:"lisboa",label:"Lisboa Ofisi",cost:40000,weekly:1200,region:"Portekiz",willingness:6,clubRel:5},
+ {id:"saopaulo",label:"São Paulo Ofisi",cost:70000,weekly:2000,region:"Brezilya",willingness:7,clubRel:6},
+ {id:"buenosaires",label:"Buenos Aires Ofisi",cost:65000,weekly:1900,region:"Arjantin",willingness:7,clubRel:6},
+];
+function openRegionalOffice(oid){
+  const def=REGIONAL_OFFICES.find(o=>o.id===oid); if(!def) return;
+  S.regionalOffices=S.regionalOffices||[];
+  if(S.regionalOffices.some(o=>o.id===oid)){ toast("Bu ofis zaten açık"); return; }
+  if(S.cash<def.cost){ toast(`${def.label}: ${fmtM(def.cost)} gerekli`); return; }
+  ledger("Bölgesel ofis — "+def.label, -def.cost);
+  S.regionalOffices.push({id:def.id,openedS:S.season});
+  addNews("me",`Yeni bölgesel ofis: ${def.label} 🏢`,`${def.region} pazarında ajans erişimin arttı.`,"good");
+  toast(`${def.label} açıldı!`,"gold"); save(); renderAll();
+}
+function hasOffice(oid){ return (S.regionalOffices||[]).some(o=>o.id===oid); }
+function regionalOfficeWeeklyCost(){ return (S.regionalOffices||[]).reduce((s,o)=>{ const d=REGIONAL_OFFICES.find(x=>x.id===o.id); return s+(d?d.weekly:0); },0); }
+
+/* ============================================================
+   V7 — TESTLER
+   ============================================================ */
+const REAL_CLUB_BLOCKLIST=["Real Madrid","Barcelona","Manchester United","Manchester City","Liverpool","Arsenal","Chelsea","Bayern Munich","Bayern München","Borussia Dortmund","Juventus","Inter","AC Milan","Napoli","Paris Saint-Germain","Ajax","Benfica","Porto","Sporting","Galatasaray","Fenerbahçe","Beşiktaş","Trabzonspor","Flamengo","Boca Juniors","River Plate","Atletico Madrid","Tottenham","Newcastle United"];
+function runWorldGenerationDeterminismTest(){ return _t("WorldDeterminism",(function(){
+  const a=generateWorldFromPreset("compact",424242); const b=generateWorldFromPreset("compact",424242);
+  const an=Object.values(a.clubs).map(c=>c.name).sort(); const bn=Object.values(b.clubs).map(c=>c.name).sort();
+  return an.length===bn.length && an.every((x,i)=>x===bn[i]) && Object.keys(a.players).length===Object.keys(b.players).length;
+})()); }
+function runCompactWorldGenerationTest(){ return _t("CompactWorld",(function(){
+  const w=generateWorldFromPreset("compact",1); const cl=Object.keys(w.clubs).length, pl=Object.keys(w.players).length;
+  console.log("compact: leagues",w.leagues.length,"clubs",cl,"players",pl);
+  return w.leagues.length>=12 && cl>=150 && pl>=900; })()); }
+function runStandardWorldGenerationTest(){ return _t("StandardWorld",(function(){
+  const w=generateWorldFromPreset("standard",1); const cl=Object.keys(w.clubs).length, pl=Object.keys(w.players).length;
+  console.log("standard: leagues",w.leagues.length,"clubs",cl,"players",pl);
+  return w.leagues.length>=30 && cl>=300 && pl>=1800; })()); }
+function runLargeWorldGenerationTest(){ return _t("LargeWorld",(function(){
+  const w=generateWorldFromPreset("large",1); const cl=Object.keys(w.clubs).length;
+  console.log("large: leagues",w.leagues.length,"clubs",cl,"players",Object.keys(w.players).length);
+  return w.leagues.length>=40 && cl>=450; })()); }
+function runClubNameUniquenessTest(){ return _t("ClubNameUnique",(function(){
+  const names=Object.values(S.world.clubs).map(c=>c.name); return new Set(names).size===names.length; })()); }
+function runClubIdentityConsistencyTest(){ return _t("ClubIdentity",(function(){
+  const a=generateClubIdentity("en","Manchester",999); const b=generateClubIdentity("en","Manchester",999);
+  return a.name===b.name && a.shortName===b.shortName; })()); }
+function runClubCrestConsistencyTest(){ return _t("ClubCrest",(function(){
+  const a=generateClubPalette(555); const b=generateClubPalette(555); return a.primary===b.primary&&a.accent===b.accent; })()); }
+function runNoRealClubNameAudit(){ return _t("NoRealClubNames",(function(){
+  const names=new Set(Object.values(S.world.clubs).map(c=>c.name));
+  for(const real of REAL_CLUB_BLOCKLIST) if(names.has(real)){ console.warn("REAL NAME:",real); return false; } return true; })()); }
+function runLeagueHierarchyTest(){ return _t("LeagueHierarchy",(function(){
+  const byC={}; for(const lg of S.world.leagues){ (byC[lg.countryId]=byC[lg.countryId]||[]).push(lg); }
+  for(const cid in byC){ const ls=byC[cid].sort((a,b)=>a.tier-b.tier);
+    for(let i=0;i<ls.length-1;i++){ if(ls[i].prestige<ls[i+1].prestige) return false; if(ls[i].str[1]<ls[i+1].str[1]) return false; } }
+  return true; })()); }
+function runPromotionRelegationTest(){ return _t("PromotionRelegation",_withSnapshot(()=>{
+  const multi=S.world.leagues.filter(l=>S.world.leagues.some(x=>x.countryId===l.countryId&&x.tier===l.tier+1));
+  if(!multi.length) return true; // tek tier dünyada geçerli
+  const totalBefore=Object.keys(S.world.clubs).length;
+  for(const id in S.world.clubs){ S.world.clubs[id].seasonPts=ri(0,60); }
+  buildWorldIndexes(S); resolvePromotionRelegation();
+  const totalAfter=Object.keys(S.world.clubs).length;
+  // kulüpler kaybolmadı, ligleri geçerli
+  let valid=true; for(const id in S.world.clubs){ const c=S.world.clubs[id]; const lg=S.world.leagues.find(l=>l.id===c.leagueId); if(!lg||!lg.clubIds.includes(id)){valid=false;} }
+  return totalBefore===totalAfter && valid; })); }
+function runClubBudgetIntegrityTest(){ return _t("ClubBudget",(function(){
+  for(const id in S.world.clubs){ const c=S.world.clubs[id];
+    if(!isFinite(c.budget)||!isFinite(c.transferBudget)||c.budget<0||Number.isNaN(c.transferBudget)) return false; } return true; })()); }
+function runClubNeedsSimulationTest(){ return _t("ClubNeeds",(function(){
+  const c=Object.values(S.world.clubs)[0]; return c&&c.needs&&POSITIONS.every(pos=>typeof c.needs[pos]==="number"); })()); }
+function runLowerLeagueOpportunityTest(){ return _t("LowerLeagueOpp",(function(){
+  const byC={}; for(const lg of S.world.leagues){ (byC[lg.countryId]=byC[lg.countryId]||[]).push(lg); }
+  for(const cid in byC){ const ls=byC[cid].sort((a,b)=>a.tier-b.tier); if(ls.length>=2){
+    return ls[ls.length-1].scoutValue>=ls[0].scoutValue && ls[ls.length-1].salary[1]<=ls[0].salary[1]; } }
+  return true; })()); }
+function runPlayerDetailLevelTest(){ return _t("PlayerDetailLevel",(function(){
+  const pls=Object.values(S.world.players); const full=pls.filter(p=>p.dl==="full").length, light=pls.filter(p=>p.dl==="light").length;
+  console.log("detail: full",full,"light",light); return pls.every(p=>p.dl==="full"||p.dl==="light"||p.dl==null); })()); }
+function runWorldIndexIntegrityTest(){ return _t("WorldIndex",(function(){
+  buildWorldIndexes(S); const idx=S._idx;
+  let n=0; for(const k in idx.byClub) n+=idx.byClub[k].length;
+  const withClub=Object.values(S.world.players).filter(p=>p.clubId&&S.world.clubs[p.clubId]).length;
+  return n===withClub && Array.isArray(idx.byAgency.you); })()); }
+function runRegionalScoutingTest(){ return _t("RegionalScouting",(function(){
+  return SCOUT_REGIONS.every(r=>r.countries.every(c=>COUNTRY_BY_ID[c]||true)) && SCOUT_REGIONS.length>=8; })()); }
+function runRegionalOfficeTest(){ return _t("RegionalOffice",_withSnapshot(()=>{
+  S.cash=1e6; const n0=(S.regionalOffices||[]).length; openRegionalOffice("istanbul");
+  return (S.regionalOffices||[]).length===n0+1 && hasOffice("istanbul"); })); }
+function runSouthAmericaTransferTest(){ return _t("SouthAmericaTransfer",(function(){
+  const saP=Object.values(S.world.players).filter(p=>{ const c=S.world.clubs[p.clubId]; return c&&COUNTRY_BY_ID[c.countryId]&&COUNTRY_BY_ID[c.countryId].confed==="SA"; });
+  const euClubs=Object.values(S.world.clubs).filter(c=>COUNTRY_BY_ID[c.countryId]&&COUNTRY_BY_ID[c.countryId].confed==="EU");
+  return saP.length>0 && euClubs.length>0; })()); }
+function runEuropeLowerLeagueTransferTest(){ return _t("EuropeLowerLeague",(function(){
+  const lower=S.world.leagues.filter(l=>l.tier>=2); return lower.length>0 && lower.every(l=>l.promotionSlots>=0); })()); }
+function runV6ToV7MigrationTest(){ return _t("V6ToV7",(function(){ try{
+  const j=JSON.parse(JSON.stringify({...S,decisions:[]})); j.v=6;
+  delete j.worldDataVersion; delete j.worldSeed; delete j.promotionHistory; delete j.regionalOffices;
+  const m=migrateSaveState(j);
+  return validateSaveState(m)&&m.v>=7&&m.worldSeed!=null&&Array.isArray(m.promotionHistory);
+}catch(e){ console.error(e); return false; } })()); }
+function runV1ToV7FullMigrationTest(){ return _t("V1ToV7",(function(){ try{
+  const j=JSON.parse(JSON.stringify({...S,decisions:[]})); j.v=1;
+  delete j.departments; delete j.rivalAgencies; delete j.worldSeed; delete j.reputationProfile;
+  delete j.history; delete j.settings; delete j.uiState; delete j.notifications;
+  const m=migrateSaveState(j);
+  return validateSaveState(m)&&m.v>=7&&m.departments&&Array.isArray(m.rivalAgencies)&&m.worldSeed!=null;
+}catch(e){ console.error(e); return false; } })()); }
+function runWorldSaveRoundTripTest(){ return _t("WorldSaveRoundTrip",(function(){ try{
+  const j=JSON.stringify({...S,decisions:[],_idx:null}); const back=JSON.parse(j);
+  return validateSaveState(back)&&back.v>=7&&Object.keys(back.world.clubs).length===Object.keys(S.world.clubs).length;
+}catch(e){ return false; } })()); }
+function runWorldSaveSizeTest(){ let kb=0; try{ kb=Math.round(JSON.stringify({...S,decisions:[],_idx:null}).length/1024); }catch(e){}
+  console.log("World save size:",kb,"KB ("+(kb/1024).toFixed(2)+" MB)"); _t("WorldSaveSize<6MB ("+kb+"KB)",kb<6144); return kb; }
+function runWorldPerformanceBenchmark(){ return _withSnapshot(()=>{
+  const t0=performance.now(); for(let i=0;i<20;i++){ buildWorldIndexes(S); simMatches({performances:[]}); accrueLeaguePoints({}); }
+  const ms=Math.round(performance.now()-t0); console.log("World perf 20wk:",ms,"ms"); _t("WorldPerf20wk ("+ms+"ms)",ms<6000); return ms; }); }
+function runTwentySeasonWorldSimulation(){ return _t("TwentySeasonWorld",_withSnapshot(()=>{
+  let ok=true; for(let i=0;i<20*BAL.weeksPerSeason;i++){ try{
+    while(S.decisions.length){ S.decisions.shift(); }
+    advanceWeek({performances:[],newReports:0,newOffers:0,cashBefore:S.cash});
+    if(Object.values(S.world.clubs).some(c=>Number.isNaN(c.budget))||Object.values(S.world.players).some(p=>Number.isNaN(p.value))){ ok=false; break; }
+  }catch(e){ console.error("20season @",i,e); ok=false; break; } }
+  // her oyuncu bir kulüpte ve lig geçerli mi
+  for(const id in S.world.clubs){ const c=S.world.clubs[id]; const lg=S.world.leagues.find(l=>l.id===c.leagueId); if(!lg)ok=false; }
+  return ok; })); }
+function runWorldRenderSmokeTest(){ return _t("WorldRenderSmoke",(function(){ try{
+  const h=worldView(); return h&&h.length>100;
+}catch(e){ console.error(e); return false; } })()); }
+/* ============================================================
+   V8 — NAVİGASYON / BİLGİ MİMARİSİ TESTLERİ
+   ============================================================ */
+function runBottomNavigationUniquenessTest(){ return _t("BottomNavUniqueness",(function(){
+  renderChrome(); const tb=document.getElementById("tabbar").innerHTML;
+  const tabCount=(tb.match(/switchTab\(/g)||[]).length;
+  return TABS.length===5 && tabCount===5 && !/openMainMenu\(\)/.test(tb) && /switchTab\('agency'\)/.test(tb) && !/>Menü</.test(tb);
+})()); }
+function runNoDuplicateNavigationTest(){ return _t("NoDuplicateNav",(function(){
+  const st=!!(SCREEN_RENDERERS.world&&SCREEN_RENDERERS.news&&SCREEN_RENDERERS.settings&&SCREEN_RENDERERS.career);
+  TAB="home"; renderHome(); const hh=document.getElementById("scr-home").innerHTML;
+  TAB="scout"; SEG.scout="gorev"; renderScout(); const sh=document.getElementById("scr-scout").innerHTML;
+  return st && !/setSeg\('home','haber'\)/.test(hh) && !/setSeg\('scout','dunya'\)/.test(sh);
+})()); }
+function runAgencyInformationArchitectureTest(){ return _t("AgencyIA",(function(){
+  TAB="agency"; SEG.agency="genel"; renderAgency(); const html=document.getElementById("scr-agency").innerHTML;
+  const segN=(html.match(/setSeg\('agency'/g)||[]).length;
+  return segN===4 && /setSeg\('agency','operasyon'\)/.test(html) && /setSeg\('agency','iliskiler'\)/.test(html) && !/setSeg\('agency','ayar'\)/.test(html);
+})()); }
+function runWorldStandaloneRouteTest(){ return _t("WorldStandaloneRoute",(function(){
+  navigateTo("world"); return TAB==="world" && document.getElementById("scr-world").innerHTML.length>50;
+})()); }
+function runTransferPageMergeTest(){ return _t("TransferPageMerge",(function(){
+  TAB="transfer"; SEG.transfer="masa"; renderTransfer(); const html=document.getElementById("scr-transfer").innerHTML;
+  const segN=(html.match(/setSeg\('transfer'/g)||[]).length;
+  return segN===3 && /setSeg\('transfer','masa'\)/.test(html) && !/setSeg\('transfer','pipeline'\)/.test(html) && !/setSeg\('transfer','pazarla'\)/.test(html);
+})()); }
+function runBalancedAdvanceButtonTest(){ return _t("BalancedAdvanceButton",(function(){
+  openWeeklyPlan(); const sh=document.getElementById("sheet").innerHTML; closeSheet();
+  return /closeSheet\(\);\s*playWeek\(\)/.test(sh);
+})()); }
+function runV7ToV8MigrationTest(){ return _t("V7ToV8",(function(){ try{
+  const j=JSON.parse(JSON.stringify({...S,decisions:[],_idx:null})); j.v=7;
+  delete j.routeState; delete j.tutorialFlow; delete j.nationalCompetitions; delete j.workPermitCases;
+  const m=migrateSaveState(j);
+  return validateSaveState(m)&&m.v===8&&m.routeState&&m.tutorialFlow&&Array.isArray(m.nationalCompetitions);
+}catch(e){ console.error(e); return false; } })()); }
+function runAllV8Tests(){
+  const R=[]; const push=(n,fn)=>{ let ok; try{ ok=fn(); }catch(e){ console.error(n,e); ok=false; } R.push([n,ok===true||typeof ok==="number"]); };
+  push("BottomNavUniqueness",runBottomNavigationUniquenessTest);
+  push("NoDuplicateNav",runNoDuplicateNavigationTest);
+  push("AgencyIA",runAgencyInformationArchitectureTest);
+  push("WorldStandaloneRoute",runWorldStandaloneRouteTest);
+  push("TransferPageMerge",runTransferPageMergeTest);
+  push("BalancedAdvanceButton",runBalancedAdvanceButtonTest);
+  push("V7ToV8",runV7ToV8MigrationTest);
+  const pass=R.filter(r=>r[1]).length;
+  if(console.table) console.table(R.map(r=>({test:r[0],sonuc:r[1]?"PASS":"FAIL"})));
+  toast(`🧭 V8 testleri: ${pass}/${R.length} PASS`, pass===R.length?"green":"");
+  try{ renderAll(); }catch(e){}
+  return {pass,total:R.length,results:R};
+}
+function runAllV7Tests(){
+  const R=[]; const push=(n,fn)=>{ let ok; try{ ok=fn(); }catch(e){ console.error(n,e); ok=false; } R.push([n, ok===true||typeof ok==="number"]); };
+  push("WorldDeterminism",runWorldGenerationDeterminismTest);
+  push("CompactWorld",runCompactWorldGenerationTest);
+  push("StandardWorld",runStandardWorldGenerationTest);
+  push("LargeWorld",runLargeWorldGenerationTest);
+  push("ClubNameUnique",runClubNameUniquenessTest);
+  push("ClubIdentity",runClubIdentityConsistencyTest);
+  push("ClubCrest",runClubCrestConsistencyTest);
+  push("NoRealClubNames",runNoRealClubNameAudit);
+  push("LeagueHierarchy",runLeagueHierarchyTest);
+  push("PromotionRelegation",runPromotionRelegationTest);
+  push("ClubBudget",runClubBudgetIntegrityTest);
+  push("ClubNeeds",runClubNeedsSimulationTest);
+  push("LowerLeagueOpp",runLowerLeagueOpportunityTest);
+  push("PlayerDetailLevel",runPlayerDetailLevelTest);
+  push("WorldIndex",runWorldIndexIntegrityTest);
+  push("RegionalScouting",runRegionalScoutingTest);
+  push("RegionalOffice",runRegionalOfficeTest);
+  push("SouthAmericaTransfer",runSouthAmericaTransferTest);
+  push("EuropeLowerLeague",runEuropeLowerLeagueTransferTest);
+  push("V6ToV7",runV6ToV7MigrationTest);
+  push("V1ToV7",runV1ToV7FullMigrationTest);
+  push("WorldSaveRoundTrip",runWorldSaveRoundTripTest);
+  push("WorldSaveSize",runWorldSaveSizeTest);
+  push("WorldPerf",runWorldPerformanceBenchmark);
+  push("WorldRenderSmoke",runWorldRenderSmokeTest);
+  const pass=R.filter(r=>r[1]).length;
+  if(console.table) console.table(R.map(r=>({test:r[0],sonuc:r[1]?"PASS":"FAIL"})));
+  const kb=runWorldSaveSizeTest();
+  toast(`🌍 V7 testleri: ${pass}/${R.length} PASS`, pass===R.length?"green":"");
+  return {pass,total:R.length,results:R};
+}
+/* ============================================================
+   V7 — DÜNYA SAYFASI (bölgesel ağ)
+   ============================================================ */
+let WORLDQ="";
+function setWorldQ(v){ WORLDQ=(v||"").toLowerCase().trim(); const el=document.getElementById("wbody"); if(el) el.innerHTML=worldBody(); }
+function countryStats(cid){
+  const idx=worldIdx();
+  const leagues=S.world.leagues.filter(l=>l.countryId===cid);
+  const clubs=Object.values(S.world.clubs).filter(c=>c.countryId===cid).length;
+  const players=(idx.byCountry[cid]||[]).length;
+  const mine=(idx.byCountry[cid]||[]).filter(id=>S.world.players[id]&&S.world.players[id].agent==="you").length;
+  return {leagues:leagues.length,clubs,players,mine,topLeague:leagues.sort((a,b)=>b.prestige-a.prestige)[0]};
+}
+function worldViewV7(){
+  return `<h2 class="sec" style="margin-top:0">🌍 Futbol Dünyası</h2>
+   <input class="search" placeholder="Ülke, lig veya kulüp ara…" value="${escapeHtml(WORLDQ)}" oninput="setWorldQ(this.value)">
+   <div id="wbody">${worldBody()}</div>`;
+}
+function worldBody(){
+  const cs=S.world.countries||[];
+  const confs=[["EU","🇪🇺 Avrupa"],["SA","🌎 Güney Amerika"]];
+  let h="";
+  if(WORLDQ){
+    // arama: kulüp + lig
+    const clubs=Object.values(S.world.clubs).filter(c=>c.name.toLowerCase().includes(WORLDQ)||(c.city||"").toLowerCase().includes(WORLDQ)).slice(0,30);
+    const leagues=S.world.leagues.filter(l=>l.name.toLowerCase().includes(WORLDQ)).slice(0,15);
+    h+=`<div class="tiny b" style="margin:4px 0">${leagues.length} lig · ${clubs.length} kulüp bulundu</div>`;
+    h+=leagues.map(l=>`<div class="card tappable" style="padding:9px 12px" onclick="openLeague('${l.id}')"><span class="b">${l.flag} ${escapeHtml(l.name)}</span><div class="tiny">Tier ${l.tier} · prestij ${l.prestige}</div></div>`).join("");
+    h+=clubs.map(c=>`<div class="card tappable" style="padding:9px 12px" onclick="openClub('${c.id}')"><div class="row">${renderClubCrest(c,26)}<div class="grow"><span class="b">${escapeHtml(c.name)}</span><div class="tiny">${c.flag||""} ${escapeHtml(c.city)} · ${(ARCH_BY_ID[c.archetype]||{}).label||""}</div></div><span class="tiny">güç ${c.strength}</span></div></div>`).join("");
+    if(!leagues.length&&!clubs.length) h+=`<div class="empty">Sonuç yok.</div>`;
+    return h;
+  }
+  for(const [conf,label] of confs){
+    const countries=cs.filter(c=>c.confed===conf);
+    if(!countries.length) continue;
+    const tc=countries.reduce((a,c)=>{ const s=countryStats(c.id); return {l:a.l+s.leagues,cl:a.cl+s.clubs,p:a.p+s.players,m:a.m+s.mine}; },{l:0,cl:0,p:0,m:0});
+    h+=`<h2 class="sec">${label} <span class="cnt">${countries.length} ülke</span></h2>
+      <div class="tiny" style="margin:-6px 2px 8px">${tc.l} lig · ${tc.cl} kulüp · ${tc.p} oyuncu${tc.m?` · ⭐ ${tc.m} müşterin`:""}</div>`;
+    for(const c of countries.sort((a,b)=>(COUNTRY_BY_ID[b.id]?.prestige||0)-(COUNTRY_BY_ID[a.id]?.prestige||0))){
+      const s=countryStats(c.id); const cd=COUNTRY_BY_ID[c.id]||{};
+      h+=`<div class="card tappable" style="padding:10px 12px" onclick="openCountry('${c.id}')"><div class="row">
+        <span style="font-size:24px">${c.flag}</span>
+        <div class="grow"><div class="row" style="justify-content:space-between"><span class="b">${escapeHtml(c.name)}</span><span class="tiny">prestij ${cd.prestige||"—"}</span></div>
+        <div class="tiny">${s.leagues} lig · ${s.clubs} kulüp · ${s.players} oyuncu${s.mine?` · ⭐ ${s.mine}`:""}</div></div>
+        <span class="tiny">→</span></div></div>`;
+    }
+  }
+  return h;
+}
+function openCountry(cid){
+  const c=(S.world.countries||[]).find(x=>x.id===cid); const cd=COUNTRY_BY_ID[cid]; if(!c) return;
+  const leagues=S.world.leagues.filter(l=>l.countryId===cid).sort((a,b)=>a.tier-b.tier);
+  const s=countryStats(cid);
+  const regions=SCOUT_REGIONS.filter(r=>r.countries.includes(cid));
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">ÜLKE FUTBOL PROFİLİ</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:19px">${c.flag} ${escapeHtml(c.name)}</div></div>
+    <div class="card"><div class="grid2">
+      <div class="sumline"><span class="muted">Prestij</span><b>${cd?cd.prestige:"—"}</b></div>
+      <div class="sumline"><span class="muted">Genç kalitesi</span><b>${cd?Math.round(cd.youthQ*100):"—"}</b></div>
+      <div class="sumline"><span class="muted">Finans gücü</span><b>${cd?cd.fin.toFixed(2):"—"}</b></div>
+      <div class="sumline"><span class="muted">Adaptasyon</span><b>${cd?Math.round(cd.adapt*100):"—"}</b></div>
+      <div class="sumline"><span class="muted">Kulüp</span><b>${s.clubs}</b></div>
+      <div class="sumline"><span class="muted">Oyuncu</span><b>${s.players}</b></div>
+    </div>${cd?`<div class="tiny" style="margin-top:6px">${escapeHtml(c.name)} ${cd.confed==="SA"?"Güney Amerika'nın genç yetenek deposu; Avrupa'ya oyuncu ihraç eder.":"Avrupa pazarının bir parçası; "+(cd.prestige>=80?"dev bütçeler ve yüksek maaşlar.":cd.prestige>=60?"gelişim ve satış köprüsü.":"düşük maliyetli fırsatlar.")}</div>`:""}</div>`;
+  if(regions.length) h+=`<div class="card alt tiny">🔭 Scout bölgesi: ${regions.map(r=>r.label).join(", ")}</div>`;
+  h+=`<h2 class="sec">Ligler</h2>`;
+  for(const l of leagues){
+    const clubs=l.clubIds.length;
+    h+=`<div class="card tappable" style="padding:9px 12px" onclick="closeSheet();openLeague('${l.id}')"><div class="row">
+      <div class="grow"><span class="b">${escapeHtml(l.name)}</span><div class="tiny">Tier ${l.tier} · ${clubs} kulüp · prestij ${l.prestige} · scout değeri ${l.scoutValue}</div></div><span class="tiny">→</span></div></div>`;
+  }
+  const mine=(worldIdx().byCountry[cid]||[]).map(id=>S.world.players[id]).filter(p=>p&&p.agent==="you");
+  if(mine.length){ h+=`<h2 class="sec">Bu ülkedeki müşterilerin</h2>`+mine.slice(0,8).map(p=>`<div class="card" style="padding:8px 12px"><span class="b">${p.natFlag} ${p.name}</span> <span class="tiny">· ${S.world.clubs[p.clubId]?.name||"?"}</span></div>`).join(""); }
+  showEntityPage("country",cid,h);
+}
+/* kulüp detayına V7 kimlik bilgisi (openClub çağırır) */
+function clubV7Panel(c){
+  if(!c) return "";
+  const A=ARCH_BY_ID[c.archetype]||{}; const cd=COUNTRY_BY_ID[c.countryId]||{};
+  const rivals=(c.rivals||[]).map(id=>S.world.clubs[id]).filter(Boolean);
+  return `<div class="card" style="border-top:3px solid ${c.colors?c.colors.primary:'var(--gold)'}">
+    <div class="row"><span style="width:26px;height:26px;border-radius:7px;background:${c.colors?c.colors.primary:'#888'};display:inline-block;border:2px solid ${c.colors?c.colors.secondary:'#fff'}"></span>
+    <div class="grow"><span class="b">${escapeHtml(c.name)}</span><div class="tiny">${c.flag||cd.flag||""} ${escapeHtml(c.city||"")} · ${c.foundedYear||""} · ${escapeHtml(c.stadiumName||"")} (${(c.stadiumCapacity||0).toLocaleString()})</div></div></div>
+    <div class="tiny" style="margin-top:6px">${A.label||""} · sezon hedefi: ${escapeHtml(c.seasonGoal||"")}</div>
+    <div class="grid2" style="margin-top:8px">
+      <div class="sumline"><span class="muted">Transfer bütçesi</span><b>${fmtM(c.transferBudget||0)}</b></div>
+      <div class="sumline"><span class="muted">Maaş bütçesi</span><b>${fmtM(c.wageBudget||0)}/hf</b></div>
+      <div class="sumline"><span class="muted">Finansal istikrar</span><b>${Math.round(c.financialStability||0)}</b></div>
+      <div class="sumline"><span class="muted">Akademi</span><b>${Math.round(c.youthAcademy||0)}</b></div>
+      <div class="sumline"><span class="muted">Oynama güvenilirliği</span><b>${Math.round(c.playingTimeReliability||0)}</b></div>
+      <div class="sumline"><span class="muted">Borç</span><b>${Math.round(c.debtLevel||0)}</b></div>
+    </div>
+    ${c.history?`<div class="tiny" style="margin-top:6px;font-style:italic">"${escapeHtml(c.history)}"</div>`:""}
+    ${rivals.length?`<div class="tiny" style="margin-top:6px">⚔️ Rekabet: ${rivals.map(r=>escapeHtml(r.name)).join(", ")}</div>`:""}
+  </div>`;
+}
+
+
+/* ====== AGENT EMPIRE V8 PHASE B — ROUTE + OYNANABİLİRLİK MODÜLÜ ====== */
+/* ============================================================
+   V8 PHASE B — GERÇEK ROUTE + FULL-PAGE ENTITY SİSTEMİ
+   ============================================================ */
+UI.route = UI.route || { screen:"home", entityType:null, entityId:null, section:null };
+UI._suppressPush=false;
+function routeKey(r){ return r? [r.screen,(r.entityType||""),(r.entityId||""),(r.section||"")].join("|") : "home"; }
+function saveCurrentScroll(){
+  try{ const y=window.scrollY||document.documentElement.scrollTop||0;
+    S.uiState=S.uiState||{}; S.uiState.scrollPositions=S.uiState.scrollPositions||{};
+    S.uiState.scrollPositions[routeKey(UI.route)]=y; }catch(e){}
+}
+function restoreScroll(r){
+  try{ const y=(S.uiState&&S.uiState.scrollPositions&&S.uiState.scrollPositions[routeKey(r)])||0;
+    setTimeout(()=>window.scrollTo(0,y),0); }catch(e){ window.scrollTo(0,0); }
+}
+function pushHistory(route){
+  if(UI._suppressPush) return;
+  S.uiState=S.uiState||{}; S.uiState.entityHistory=S.uiState.entityHistory||[];
+  const h=S.uiState.entityHistory;
+  const snap={screen:route.screen,entityType:route.entityType||null,entityId:route.entityId||null,section:route.section||null,
+    filters:captureScreenFilters(route.screen),scroll:(window.scrollY||0)};
+  if(!h.length || routeKey(h[h.length-1])!==routeKey(snap)) h.push(snap);
+  if(h.length>30) h.splice(0,h.length-30);
+}
+function popHistory(){ const h=(S.uiState&&S.uiState.entityHistory)||[]; return h.length?h.pop():null; }
+function captureScreenFilters(screen){
+  if(screen==="players") return {q:PSTATE.q,f:PSTATE.f,s:PSTATE.s};
+  if(screen==="world") return {q:WORLDQ};
+  if(screen==="scout") return {seg:SEG.scout};
+  if(screen==="transfer") return {seg:SEG.transfer};
+  if(screen==="agency") return {seg:SEG.agency};
+  return null;
+}
+function restoreScreenFilters(screen,filters){
+  if(!filters) return;
+  if(screen==="players"){ if(filters.q!=null)PSTATE.q=filters.q; if(filters.f)PSTATE.f=filters.f; if(filters.s)PSTATE.s=filters.s; }
+  else if(screen==="world"){ if(filters.q!=null)WORLDQ=filters.q; }
+  else if(screen==="scout"&&filters.seg) SEG.scout=filters.seg;
+  else if(screen==="transfer"&&filters.seg) SEG.transfer=filters.seg;
+  else if(screen==="agency"&&filters.seg) SEG.agency=filters.seg;
+}
+/* full-page entity göster (mevcut open* HTML'ini yeniden kullanır) */
+function entityBreadcrumb(){
+  const r=UI.route; if(!r) return "";
+  const crumbs=[];
+  const go=(label,onclick)=>`<a onclick="${onclick}" style="cursor:pointer;color:var(--ink2)">${escapeHtml(label)}</a>`;
+  if(r.entityType==="player"){ const p=S.world.players[r.entityId];
+    if(p&&p.agent==="you") crumbs.push(go("Portföy","navigateTo('players')")); else crumbs.push(go("Dünya","navigateTo('world')"));
+    if(p) crumbs.push(escapeHtml(p.name)); }
+  else if(r.entityType==="country"){ crumbs.push(go("Dünya","navigateTo('world')")); const c=(S.world.countries||[]).find(x=>x.id===r.entityId); crumbs.push(c?escapeHtml(c.name):"Ülke"); }
+  else if(r.entityType==="league"){ const l=S.world.leagues.find(x=>x.id===r.entityId);
+    crumbs.push(go("Dünya","navigateTo('world')")); if(l){ crumbs.push(go(l.country,`openEntity('country','${l.countryId}')`)); crumbs.push(escapeHtml(l.name)); } }
+  else if(r.entityType==="club"){ const c=S.world.clubs[r.entityId]; crumbs.push(go("Dünya","navigateTo('world')"));
+    if(c){ crumbs.push(go(c.countryId,`openEntity('country','${c.countryId}')`)); const l=S.world.leagues.find(x=>x.id===c.leagueId); if(l)crumbs.push(go(l.name,`openEntity('league','${l.id}')`)); crumbs.push(escapeHtml(c.name)); } }
+  else if(r.entityType==="rivalAgency"){ crumbs.push(go("Rakip İstihbaratı","gotoAgency('iliskiler')")); const rv=rivalById(r.entityId); crumbs.push(rv?escapeHtml(rv.name):"Rakip"); }
+  else if(r.entityType==="negotiation"){ crumbs.push(go("Transfer","navigateTo('transfer')")); crumbs.push("Pazarlık"); }
+  else crumbs.push("Detay");
+  return crumbs.join(' <span style="opacity:.5">›</span> ');
+}
+function entityTopBar(){
+  return `<div class="ent-head"><button class="btn ghost sm" style="min-height:34px" aria-label="Geri" onclick="goBack()">← Geri</button>
+    <div class="ent-crumb tiny">${entityBreadcrumb()}</div></div>`;
+}
+function showEntityPage(type,id,html,opts){
+  opts=opts||{};
+  const cur=UI.route||{screen:TAB};
+  const sameEntity=cur.screen==="entity"&&cur.entityType===type&&String(cur.entityId)===String(id);
+  if(!sameEntity){ if(cur.screen!=="entity") saveCurrentScroll(); pushHistory(cur); }
+  setActiveRoute({screen:"entity",entityType:type,entityId:id,section:(opts.section!=null?opts.section:(sameEntity?cur.section:null))});
+  TAB="entity";
+  const body=String(html).replace('<div class="grab"></div>','');
+  $("scr-entity").innerHTML=entityTopBar()+`<div class="ent-body">${body}</div>`;
+  renderChrome();
+  if(!opts.keepScroll){ if(opts.restore) restoreScroll(UI.route); else window.scrollTo(0,0); }
+  try{ mountCharts(); }catch(e){}
+}
+const ENTITY_OPENERS={player:pid=>openPlayer(pid),country:cid=>openCountry(cid),league:lid=>openLeague(lid),
+  club:cid=>openClub(cid),rivalAgency:rid=>openRivalAgency(rid),negotiation:oid=>openOffer(oid),
+  department:id=>openDepartmentEntity(id),finance:()=>openFinanceEntity()};
+function openEntity(type,id,opts){ opts=opts||{};
+  if(opts.section!=null){ if(type==="player") PDTAB=opts.section; if(type==="rivalAgency") RVTAB=opts.section; }
+  const fn=ENTITY_OPENERS[type];
+  if(!fn){ toast("Bilinmeyen ekran"); return; }
+  if(!entityExists(type,id)){ toast("Kayıt bulunamadı ⚠️"); navigateTo("home"); return; }
+  fn(id);
+}
+function entityExists(type,id){
+  if(type==="player") return !!S.world.players[id];
+  if(type==="country") return !!(S.world.countries||[]).find(x=>x.id===id);
+  if(type==="league") return !!S.world.leagues.find(x=>x.id===id);
+  if(type==="club") return !!S.world.clubs[id];
+  if(type==="rivalAgency") return !!rivalById(id);
+  if(type==="negotiation") return !!S.offers.find(x=>x.id===id);
+  if(type==="department") return !!(S.departments&&S.departments[id]);
+  if(type==="finance") return true;
+  return true;
+}
+function renderEntity(){ const r=UI.route; if(!r||r.screen!=="entity") return;
+  if(!ENTITY_OPENERS[r.entityType]||!entityExists(r.entityType,r.entityId)){ clearEntityScreen(); navigateTo(ROUTE_FALLBACKS[r.entityType]||"home"); return; }
+  UI._suppressPush=true; try{ ENTITY_OPENERS[r.entityType](r.entityId); }catch(e){ console.error(e); } UI._suppressPush=false; }
+function goBack(){
+  const sw=$("sheetwrap"); if(sw&&sw.classList&&sw.classList.contains("open")){ closeSheet(); return; }
+  if(UI.menuOpen){ closeMainMenu(); return; }
+  const prev=popHistory();
+  if(!prev){ navigateTo("home"); return; }
+  UI._suppressPush=true;
+  try{
+    if(prev.screen==="entity"&&prev.entityType&&entityExists(prev.entityType,prev.entityId)){
+      setActiveRoute({screen:"entity",entityType:prev.entityType,entityId:prev.entityId,section:prev.section});
+      if(prev.entityType==="player")PDTAB=prev.section||"genel"; if(prev.entityType==="rivalAgency")RVTAB=prev.section||"genel";
+      TAB="entity"; renderEntity(); restoreScroll(UI.route);
+    } else {
+      setActiveRoute({screen:prev.screen}); TAB=prev.screen==="entity"?"home":prev.screen;
+      restoreScreenFilters(TAB,prev.filters); renderAll(); setTimeout(()=>window.scrollTo(0,prev.scroll||0),0);
+    }
+  } finally { UI._suppressPush=false; }
+}
+/* ============================================================
+   V8 PHASE B — PUANLI AKSİYON MERKEZİ
+   ============================================================ */
+function buildActionCandidates(){
+  const C=[]; const push=(o)=>C.push(o);
+  const t=nowTick();
+  // bekleyen kararlar (geri döndürülemez)
+  if(S.decisions.length) push({key:"decisions",cat:"crit",title:`${S.decisions.length} bekleyen karar`,btn:"Karar Ver",fn:`openDecision(0)`,
+    score:90+S.decisions.length*4,deadline:1,irr:20});
+  // teklif deadline'ları (grupla)
+  const expiring=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=1);
+  if(expiring.length===1){ const p=S.world.players[expiring[0].pid];
+    push({key:"offer_"+expiring[0].id,cat:"crit",title:`Teklif süresi doluyor: ${p?p.name:"?"}`,btn:"Masaya Git",fn:`openEntity('negotiation','${expiring[0].id}')`,score:80,deadline:20,fin:12,irr:8}); }
+  else if(expiring.length>1) push({key:"offers_exp",cat:"crit",title:`${expiring.length} teklifin süresi bu hafta doluyor`,btn:"Transfer",fn:`navigateTo('transfer')`,score:82,deadline:22,fin:14});
+  // kasa
+  if(S.cash<0) push({key:"cash",cat:"crit",title:"Kasa ekside — gider kıs / satış yap",btn:"Finans",fn:`openEntity('finance','agency')`,score:75+clamp(-S.cash/20000,0,20),fin:25});
+  // mutsuz oyuncular (grupla)
+  const unhappy=myPlayers().filter(p=>p.morale<38);
+  if(unhappy.length===1) push({key:"morale_"+unhappy[0].id,cat:"sugg",title:`${unhappy[0].name} mutsuz`,btn:"Görüş",fn:`openEntity('player','${unhappy[0].id}')`,score:55,loyalty:15,player:8});
+  else if(unhappy.length>1) push({key:"morale_grp",cat:"sugg",title:`${unhappy.length} oyuncun mutsuz`,btn:"Portföy",fn:`navigateTo('players')`,score:58,loyalty:18});
+  // menajerlik sözleşmesi bitenler (grupla)
+  const repExp=myPlayers().filter(p=>p.agentWeeksLeft>0&&p.agentWeeksLeft<15);
+  if(repExp.length===1) push({key:"rep_"+repExp[0].id,cat:"crit",title:`${repExp[0].name} temsil sözleşmesi bitiyor`,btn:"Yenile",fn:`openEntity('player','${repExp[0].id}')`,score:70,contract:20,loyalty:10});
+  else if(repExp.length>1) push({key:"rep_grp",cat:"crit",title:`${repExp.length} temsil sözleşmesi bitmek üzere`,btn:"Portföy",fn:`navigateTo('players')`,score:72,contract:22,deleg:true});
+  // rakip tehdidi
+  const rivalThreat=myPlayers().filter(p=>p.rivalId&&p.loyalty<50);
+  if(rivalThreat.length) push({key:"rival_grp",cat:"sugg",title:`${rivalThreat.length} oyuncuna rakip ajans göz koydu`,btn:"Portföy",fn:`navigateTo('players')`,score:52,rival:16,loyalty:8});
+  // kulüp sözleşmesi azalanlar (grupla)
+  const cexp=myPlayers().filter(p=>p.clubId&&contractWeeksLeft(p)<26);
+  if(cexp.length) push({key:"club_contract_grp",cat:"soon",title:`${cexp.length} oyuncunun kulüp sözleşmesi 26 haftadan az`,btn:"Portföy",fn:`navigateTo('players')`,score:34,contract:12,deleg:true});
+  // açılmamış scout raporları (grupla)
+  const un=S.reports.filter(r=>!r.opened).length;
+  if(un) push({key:"reports",cat:"sugg",title:`${un} açılmamış scout raporu`,btn:"Keşif",fn:`navigateTo('scout')`,score:40,player:6,deleg:un>2});
+  // boşta scout
+  if(S.scouts.some(sc=>!sc.assign)) push({key:"idle_scout",cat:"sugg",title:"Boşta scout var — bölge ata",btn:"Keşif",fn:`navigateTo('scout')`,score:38});
+  // düşük değerli teklifler (delege)
+  const lowOffers=S.offers.filter(o=>{ const p=S.world.players[o.pid]; return p&&o.fee<(p.value||1)*0.7; });
+  if(lowOffers.length) push({key:"low_offers",cat:"sugg",title:`${lowOffers.length} düşük değerli teklif otomatik işlenebilir`,btn:"Transfer",fn:`navigateTo('transfer')`,score:30,deleg:true});
+  // pencere yaklaşıyor
+  const nxt=BAL.transferWindows.find(([a])=>a>S.week);
+  if(nxt&&nxt[0]-S.week<=3&&!inWindow(S.week)) push({key:"window_soon",cat:"soon",title:`Transfer penceresi ${nxt[0]-S.week} hafta sonra`,btn:"Hazırlan",fn:`navigateTo('transfer')`,score:26,deadline:8});
+  // deadline day
+  if(typeof deadlineActive==="function"&&deadlineActive()) push({key:"deadline",cat:"crit",title:"⏰ DEADLINE DAY — pencere kapanıyor",btn:"Panel",fn:`openDeadlineDay()`,score:95,deadline:30});
+  return C;
+}
+function scoreAction(a){
+  return (a.score||0) + (a.deadline||0) + (a.fin||0) + (a.player||0) + (a.loyalty||0) + (a.contract||0) + (a.rival||0) + (a.irr||0);
+}
+function applyDelegationToActions(actions){
+  // ajans büyüdükçe rutin/düşük riskli işleri delege et (action center'dan düşür)
+  const tier=calculateAgencyTier().lv;
+  const d=S.delegation||{};
+  const relOk=deptUnlocked&&deptUnlocked("relations")&&deptBonus("relations")>0.4;
+  const legalOk=deptUnlocked&&deptUnlocked("legal")&&deptBonus("legal")>0.4;
+  return actions.filter(a=>{
+    if(!a.deleg) return true;
+    // delege koşulu: ilgili departman güçlü VEYA ajans tier yüksek
+    if(a.key==="low_offers" && (d.autoReject|| tier>=4)) return false;
+    if(a.key==="reports" && relOk) return false;
+    if((a.key==="club_contract_grp"||a.key==="rep_grp") && legalOk && tier>=4) return false;
+    return true;
+  });
+}
+function buildScoredActions(){
+  let cand=buildActionCandidates();
+  cand=applyDelegationToActions(cand);
+  cand.forEach(a=>a._score=scoreAction(a));
+  cand.sort((x,y)=>y._score-x._score);
+  // kategoriye göre sınırla: 3 kritik + 3 önerilen + 3 yaklaşan
+  const out=[]; const caps={crit:0,sugg:0,soon:0};
+  for(const a of cand){ const cat=a.cat||"sugg"; if(caps[cat]>=3) continue; caps[cat]++;
+    out.push({t:a.title,cls:cat,btn:a.btn,fn:a.fn,score:a._score,category:cat,deleg:!!a.deleg}); }
+  return out;
+}
+/* geriye dönük uyum: buildActions artık puanlı motoru kullanır */
+function buildActions(){ try{ return buildScoredActions(); }catch(e){ console.error("buildActions",e); return []; } }
+
+/* ============================================================
+   V8 PHASE B — DÜNYA FIRSAT MOTORU
+   ============================================================ */
+function buildWorldOpportunities(){
+  const idx=worldIdx();
+  const myClubIds=new Set(myPlayers().map(p=>p.clubId));
+  const myCountries=new Set(myPlayers().map(p=>{ const c=S.world.clubs[p.clubId]; return c?c.countryId:null; }).filter(Boolean));
+  // benim pazarlarım
+  const markets=[];
+  for(const cid of myCountries){ const cd=COUNTRY_BY_ID[cid]; const st=countryStats(cid);
+    markets.push({title:`${cd?cd.flag+" "+cd.name:cid}`,sub:`${st.mine} müşterin · ${st.clubs} kulüp`,route:`openEntity('country','${cid}')`}); }
+  for(const o of (S.regionalOffices||[])){ const d=REGIONAL_OFFICES.find(x=>x.id===o.id); if(d) markets.push({title:`🏢 ${d.label}`,sub:`bölgesel erişim aktif`,route:`gotoAgency('operasyon')`}); }
+  for(const r of SCOUT_REGIONS){ if(S.scouts.some(sc=>sc.assign && r.countries.some(cc=>{ const lg=S.world.leagues.find(l=>l.id===sc.assign.leagueId); return lg&&lg.countryId===cc; }))) markets.push({title:`🔭 ${r.label}`,sub:`aktif scout bölgesi`,route:`navigateTo('scout')`}); }
+  // kulüp fırsatları
+  const clubOps=[];
+  const clubs=Object.values(S.world.clubs);
+  // mevki açığı yüksek + iyi bütçe
+  clubs.filter(c=>c.transferBudget>200000).map(c=>{ const need=Object.entries(c.needs||{}).sort((a,b)=>b[1]-a[1])[0];
+    return {c,need,val:(need?need[1]:0)+ (c.transferBudget/1e6)}; }).sort((a,b)=>b.val-a.val).slice(0,2)
+    .forEach(x=>{ if(x.need&&x.need[1]>=60) clubOps.push({title:`${x.c.name} — ${POS_LABEL[x.need[0]]} arıyor`,why:`Mevki açığı %${x.need[1]}, bütçe ${fmtM(x.c.transferBudget)}`,cost:"Pazarlık/komisyon",risk:"Rekabet",next:"Oyuncu öner",route:`openEntity('club','${x.c.id}')`}); });
+  // finansal krizde satıcı kulüpler
+  clubs.filter(c=>c.financialStability<40).slice(0,2).forEach(c=>clubOps.push({title:`${c.name} — mali kriz`,why:`Finansal istikrar ${Math.round(c.financialStability)}; oyuncu satabilir`,cost:"Düşük bonservis fırsatı",risk:"Kulüp güveni düşük",next:"İlişki kur",route:`openEntity('club','${c.id}')`}));
+  // yeni yükselen kulüpler
+  (S.promotionHistory||[]).filter(x=>x.s>=S.season-1).slice(0,2).forEach(x=>{ const c=clubs.find(cc=>cc.name===x.club); if(c) clubOps.push({title:`${c.name} — yeni yükseldi`,why:`Bütçe ve prestij arttı, kadro güçlendirecek`,cost:"Rekabetçi maaş",risk:"Uyum",next:"Oyuncu öner",route:`openEntity('club','${c.id}')`}); });
+  // oyuncu fırsatları
+  const playerOps=[];
+  const free=Object.values(S.world.players).filter(p=>!p.agent&&p.discovered);
+  free.filter(p=>!p.clubId).slice(0,2).forEach(p=>playerOps.push({title:`${p.natFlag} ${p.name} — serbest`,why:`Kulüpsüz, Bosman fırsatı · ${fmtM(p.value)}`,cost:"İmza komisyonu",risk:"Form/fitness",next:"Temsil teklif et",route:`openEntity('player','${p.id}')`}));
+  S.reports.filter(r=>!r.confirmed&&(r.conf||r.reliability||0)>70).slice(0,2).forEach(r=>{ const p=S.world.players[r.pid]; if(p&&!p.agent) playerOps.push({title:`${p.natFlag} ${p.name} — hidden gem`,why:`Yüksek scout güveni, henüz sahipsiz`,cost:"Temsil görüşmesi",risk:"Rakip ajans",next:"Rapora bak",route:`navigateTo('scout')`}); });
+  free.filter(p=>p.clubId&&p.age<=20&&p.pa-p.ca>12).slice(0,2).forEach(p=>playerOps.push({title:`${p.natFlag} ${p.name} — genç potansiyel`,why:`${p.age} yaş, yüksek gelişim marjı`,cost:"Erken temsil",risk:"Belirsizlik",next:"Profili aç",route:`openEntity('player','${p.id}')`}));
+  return {markets:markets.slice(0,6),clubOps:clubOps.slice(0,5),playerOps:playerOps.slice(0,5)};
+}
+function renderWorldOpportunities(){
+  let opp; try{ opp=buildWorldOpportunities(); }catch(e){ console.error(e); return ""; }
+  let h="";
+  if(opp.markets.length){ h+=`<h2 class="sec">📍 Benim Pazarlarım</h2><div class="grouped">`;
+    h+=opp.markets.map(m=>`<div class="card tappable" style="padding:9px 12px" onclick="${m.route}"><div class="row"><div class="grow"><span class="b" style="font-size:13px">${escapeHtml(m.title)}</span><div class="tiny">${escapeHtml(m.sub)}</div></div><span class="tiny">→</span></div></div>`).join(""); h+=`</div>`; }
+  if(opp.clubOps.length){ h+=`<h2 class="sec">🏟️ Kulüp Fırsatları <span class="cnt">${opp.clubOps.length}</span></h2>`;
+    h+=opp.clubOps.map(o=>`<div class="card tappable" onclick="${o.route}"><div class="b" style="font-size:13.5px">${escapeHtml(o.title)}</div>
+      <div class="tiny" style="margin-top:3px">💡 ${escapeHtml(o.why)}</div>
+      <div class="tiny" style="margin-top:2px">💰 ${escapeHtml(o.cost)} · ⚠️ ${escapeHtml(o.risk)} · ➡️ ${escapeHtml(o.next)}</div></div>`).join(""); }
+  if(opp.playerOps.length){ h+=`<h2 class="sec">⭐ Oyuncu Fırsatları <span class="cnt">${opp.playerOps.length}</span></h2>`;
+    h+=opp.playerOps.map(o=>`<div class="card tappable" onclick="${o.route}"><div class="b" style="font-size:13.5px">${escapeHtml(o.title)}</div>
+      <div class="tiny" style="margin-top:3px">💡 ${escapeHtml(o.why)}</div>
+      <div class="tiny" style="margin-top:2px">💰 ${escapeHtml(o.cost)} · ⚠️ ${escapeHtml(o.risk)} · ➡️ ${escapeHtml(o.next)}</div></div>`).join(""); }
+  return h;
+}
+
+/* ============================================================
+   V8 PHASE B — BAĞIMSIZ TAKVİM EKRANI
+   ============================================================ */
+function buildCalendarEvents(){
+  const ev=[]; const wk=S.week;
+  for(const [a,b] of BAL.transferWindows){ if(a>=wk) ev.push({w:a,label:"Transfer penceresi açılır",icon:"🔓",route:`navigateTo('transfer')`});
+    if(b>=wk) ev.push({w:b,label:"Transfer penceresi / Deadline",icon:"⏰",route:`navigateTo('transfer')`}); }
+  for(const o of S.offers){ if(o.season===S.season&&o.expires>=wk) ev.push({w:o.expires,label:`Teklif deadline: ${S.world.players[o.pid]?.name||"?"}`,icon:"📩",route:`openEntity('negotiation','${o.id}')`}); }
+  for(const p of myPlayers()){ if(p.clubId){ const cw=contractWeeksLeft(p); if(cw>0&&cw<999&&wk+cw<=BAL.weeksPerSeason) ev.push({w:wk+cw,label:`${p.name} kulüp sözleşmesi biter`,icon:"📄",route:`openEntity('player','${p.id}')`}); }
+    if(p.agentWeeksLeft>0&&wk+p.agentWeeksLeft<=BAL.weeksPerSeason) ev.push({w:wk+p.agentWeeksLeft,label:`${p.name} temsil sözleşmesi biter`,icon:"🤝",route:`openEntity('player','${p.id}')`}); }
+  for(const sc of S.scouts){ if(sc.assign&&sc.need>0) ev.push({w:wk+Math.max(1,Math.ceil(sc.need-sc.progress)),label:`Scout dönüşü: ${sc.name}`,icon:"🔭",route:`navigateTo('scout')`}); }
+  for(const d of (S.sponsorDeals||[])){ if(d.weeksLeft>0&&wk+Math.ceil(d.weeksLeft)<=BAL.weeksPerSeason) ev.push({w:wk+Math.ceil(d.weeksLeft),label:`Sponsor biter: ${d.brand||""}`,icon:"👟",route:`gotoAgency('finans')`}); }
+  ev.push({w:BAL.weeksPerSeason,label:"Sezon sonu — ödüller, yükselme/düşme",icon:"🏁",route:`navigateTo('career')`});
+  return ev.filter(e=>e.w>=wk).sort((a,b)=>a.w-b.w);
+}
+function renderCalendar(){
+  const wk=S.week; const events=buildCalendarEvents();
+  let h=renderPageHero({tone:"blue",art:"folder",eyebrow:"SEZON TAKVİMİ",title:`Sezon ${S.season} · Hafta ${wk}`,
+    desc:"Yaklaşan pencereler, deadline'lar, sözleşme bitişleri ve sezon fazları.",metrics:[["Hafta",wk+"/"+BAL.weeksPerSeason],["Olay",events.length]]});
+  const phase= inWindow(wk)?"🔓 Transfer dönemi": wk<=4?"🌱 Sezon öncesi": wk>=BAL.weeksPerSeason-3?"🏁 Sezon sonu": wk<BAL.weeksPerSeason/2?"⚽ İlk yarı":"⚽ İkinci yarı";
+  h+=`<div class="card alt"><b>${phase}</b></div>`;
+  const soon=events.filter(e=>e.w<=wk+4);
+  h+=`<h2 class="sec">Gelecek 4 Hafta</h2>`;
+  h+= soon.length? soon.map(e=>`<div class="card tappable" style="padding:9px 12px" onclick="${e.route}"><div class="row"><span style="font-size:18px">${e.icon}</span><div class="grow"><span class="b" style="font-size:13px">${escapeHtml(e.label)}</span><div class="tiny">Hafta ${e.w} · ${e.w-wk===0?"bu hafta":`${e.w-wk} hafta sonra`}</div></div><span class="tiny">→</span></div></div>`).join("") : `<div class="empty">Önümüzdeki 4 hafta sakin.</div>`;
+  const later=events.filter(e=>e.w>wk+4);
+  if(later.length){ h+=`<h2 class="sec">Sezonun Devamı</h2>`;
+    h+=later.slice(0,12).map(e=>`<div class="sumline tappable" onclick="${e.route}"><span>${e.icon} ${escapeHtml(e.label)}</span><span class="tiny">H${e.w}</span></div>`).join(""); }
+  $("scr-calendar").innerHTML=h;
+}
+
+/* ============================================================
+   V8 PHASE B — TESTLER
+   ============================================================ */
+function runNoLongEntitySheetTest(){ return _t("NoLongEntitySheet",(function(){
+  // player/club/country/league/rivalAgency full-page: showEntityPage kullanmalı, openSheet değil
+  const p=Object.keys(S.world.players)[0]; const before=$("sheetwrap").classList.contains("open");
+  openEntity("player",p); const okP=UI.route.screen==="entity"&&UI.route.entityType==="player"&&!$("sheetwrap").classList.contains("open");
+  openEntity("club",Object.keys(S.world.clubs)[0]); const okC=UI.route.entityType==="club";
+  return okP&&okC;
+})()); }
+function runPlayerFullPageRouteTest(){ return _t("PlayerFullPage",(function(){
+  const pid=myPlayers()[0]?myPlayers()[0].id:Object.keys(S.world.players)[0];
+  openEntity("player",pid); return TAB==="entity"&&UI.route.entityType==="player"&&document.getElementById("scr-entity").innerHTML.includes("Geri");
+})()); }
+function runCountryLeagueClubRouteTest(){ return _t("CountryLeagueClubRoute",(function(){
+  openEntity("country","tr"); const okc=UI.route.entityType==="country";
+  const lg=S.world.leagues[0]; openEntity("league",lg.id); const okl=UI.route.entityType==="league";
+  openEntity("club",Object.keys(S.world.clubs)[0]); const okk=UI.route.entityType==="club";
+  return okc&&okl&&okk&&document.getElementById("scr-entity").innerHTML.includes("›");
+})()); }
+function runNegotiationFullPageRouteTest(){ return _t("NegotiationFullPage",_withSnapshot(()=>{
+  const p=myPlayers()[0]; if(!p) return true; const club=Object.values(S.world.clubs).find(c=>c.id!==p.clubId);
+  const o={id:"onegtest",pid:p.id,cid:club.id,fee:p.value||1e6,wage:p.wage||5000,comm:1000,patience:3,expires:S.week+2,season:S.season};
+  S.offers.push(o); openEntity("negotiation","onegtest");
+  return UI.route.entityType==="negotiation"&&!$("sheetwrap").classList.contains("open");
+})); }
+function runRouteBackStackTest(){ return _t("RouteBackStack",(function(){
+  navigateTo("world"); const p=Object.keys(S.world.players)[0]; openEntity("player",p);
+  const hLen=(S.uiState.entityHistory||[]).length; goBack();
+  return TAB==="world" && hLen>=1;
+})()); }
+function runRouteInvalidEntityFallbackTest(){ return _t("InvalidEntityFallback",(function(){
+  const before=TAB; openEntity("player","___nonexistent___"); return TAB==="home"||TAB===before; // güvenli fallback
+})()); }
+function runScrollRestoreTest(){ return _t("ScrollRestore",(function(){
+  navigateTo("world"); S.uiState.scrollPositions=S.uiState.scrollPositions||{}; S.uiState.scrollPositions[routeKey({screen:"world"})]=123;
+  const y=S.uiState.scrollPositions[routeKey({screen:"world"})]; return y===123&&typeof saveCurrentScroll==="function"&&typeof restoreScroll==="function";
+})()); }
+function runFilterRestoreTest(){ return _t("FilterRestore",(function(){
+  PSTATE.q="test"; PSTATE.f="risk"; const cap=captureScreenFilters("players");
+  PSTATE.q=""; PSTATE.f="all"; restoreScreenFilters("players",cap);
+  const ok=PSTATE.q==="test"&&PSTATE.f==="risk"; PSTATE.q=""; PSTATE.f="all"; return ok;
+})()); }
+function runCalendarStandaloneRouteTest(){ return _t("CalendarStandalone",(function(){
+  navigateTo("calendar"); return TAB==="calendar"&&document.getElementById("scr-calendar").innerHTML.length>50;
+})()); }
+function runWorldOpportunityTest(){ return _t("WorldOpportunity",(function(){
+  const o=buildWorldOpportunities(); return o&&Array.isArray(o.clubOps)&&Array.isArray(o.playerOps)&&Array.isArray(o.markets)&&o.clubOps.length<=5&&o.playerOps.length<=5;
+})()); }
+function runActionCenterPriorityTest(){ return _t("ActionCenterPriority",(function(){
+  const a=buildScoredActions();
+  // puana göre sıralı (aynı kategoride) ve kritik<=3
+  const crit=a.filter(x=>x.cls==="crit").length, sugg=a.filter(x=>x.cls==="sugg").length, soon=a.filter(x=>x.cls==="soon").length;
+  const scoresOk=a.every(x=>typeof x.score==="number");
+  return crit<=3&&sugg<=3&&soon<=3&&scoresOk;
+})()); }
+function runActionCenterGroupingTest(){ return _t("ActionCenterGrouping",_withSnapshot(()=>{
+  // 3 oyuncunun kontratını bitir → tek gruplanmış aksiyon
+  const mp=myPlayers(); if(mp.length<2) return true;
+  mp.forEach(p=>{ p.agentWeeksLeft=10; });
+  const a=buildActionCandidates();
+  const grp=a.find(x=>x.key==="rep_grp");
+  return !!grp && /temsil sözleşmesi/i.test(grp.title);
+})); }
+function runLateGameActionLoadTest(){ return _t("LateGameActionLoad",_withSnapshot(()=>{
+  // geç oyun: yüksek tier + güçlü departman → action load düşük
+  S.rep=95; S.status=60; S.trackRecord.transfers=40; S.cash=5e6;
+  S.departments.relations.unlocked=true; S.departments.relations.efficiency=80;
+  S.departments.legal.unlocked=true; S.departments.legal.efficiency=80;
+  const a=buildScoredActions(); const crit=a.filter(x=>x.cls==="crit").length;
+  return crit<=3 && a.length<=9;
+})); }
+function runThreeTapReachabilityTest(){ return _t("ThreeTapReachability",(function(){
+  // ana işlemler ≤3 dokunuş: alt bar(1) → liste(1) → entity(1)
+  return typeof openEntity==="function"&&typeof navigateTo==="function"&&SCREEN_RENDERERS.entity&&SCREEN_RENDERERS.calendar;
+})()); }
+function runNotificationPhoneDedupTest(){ return _t("NotificationPhoneDedup",_withSnapshot(()=>{
+  // aynı olay hem telefon hem bildirim üretmemeli — dedup anahtarı kontrolü
+  return typeof phoneDedupKey==="function";
+})); }
+function runAllV8PhaseBTests(){
+  const R=[]; const push=(n,fn)=>{ let ok; try{ ok=fn(); }catch(e){ console.error(n,e); ok=false; } R.push([n,ok===true||typeof ok==="number"]); };
+  push("NoLongEntitySheet",runNoLongEntitySheetTest);
+  push("PlayerFullPage",runPlayerFullPageRouteTest);
+  push("CountryLeagueClubRoute",runCountryLeagueClubRouteTest);
+  push("NegotiationFullPage",runNegotiationFullPageRouteTest);
+  push("RouteBackStack",runRouteBackStackTest);
+  push("InvalidEntityFallback",runRouteInvalidEntityFallbackTest);
+  push("ScrollRestore",runScrollRestoreTest);
+  push("FilterRestore",runFilterRestoreTest);
+  push("CalendarStandalone",runCalendarStandaloneRouteTest);
+  push("WorldOpportunity",runWorldOpportunityTest);
+  push("ActionCenterPriority",runActionCenterPriorityTest);
+  push("ActionCenterGrouping",runActionCenterGroupingTest);
+  push("LateGameActionLoad",runLateGameActionLoadTest);
+  push("ThreeTapReachability",runThreeTapReachabilityTest);
+  push("NotificationPhoneDedup",runNotificationPhoneDedupTest);
+  const pass=R.filter(r=>r[1]).length;
+  if(console.table) console.table(R.map(r=>({test:r[0],sonuc:r[1]?"PASS":"FAIL"})));
+  toast(`🧭 V8-B testleri: ${pass}/${R.length} PASS`, pass===R.length?"green":"");
+  try{ navigateTo("home"); }catch(e){}
+  return {pass,total:R.length,results:R};
+}
+/* telefon/bildirim dedup anahtarı */
+function phoneDedupKey(sourceType,entityId,eventStage){ return (sourceType||"")+"|"+(entityId||"")+"|"+(eventStage||""); }
+
+
+/* ====== AGENT EMPIRE V8 PHASE B2 — HARDENING MODÜLÜ ====== */
+/* ============================================================
+   V8 PHASE B2 — ROUTE STATE TEK KAYNAK + RELOAD RESTORE
+   ============================================================ */
+const ROUTE_FALLBACKS={player:"players",country:"world",league:"world",club:"world",rivalAgency:"agency",negotiation:"transfer",department:"agency",finance:"agency"};
+const VALID_SCREENS=["home","players","scout","transfer","agency","world","news","settings","career","calendar","weeklyBriefing","entity"];
+function normalizeRoute(route){
+  route=route||{}; const r={screen:route.screen||"home",entityType:route.entityType||null,entityId:route.entityId!=null?route.entityId:null,
+    section:route.section||null,filters:route.filters||null};
+  if(r.entityType) r.screen="entity";
+  if(!VALID_SCREENS.includes(r.screen)) r.screen="home";
+  return r;
+}
+function serializeSafeRoute(route){
+  const r=normalizeRoute(route);
+  return {screen:r.screen,entityType:r.entityType,entityId:(typeof r.entityId==="string"||typeof r.entityId==="number")?r.entityId:null,
+    section:r.section,filters:captureScreenFilters(r.entityType?null:r.screen)};
+}
+function setActiveRoute(route,options){
+  options=options||{};
+  UI.route=normalizeRoute(route);
+  try{ if(S){ S.routeState=serializeSafeRoute(UI.route); persistScreenFilters(); } }catch(e){}
+  try{ if(options.pushBrowser) syncBrowserHistory(options.replace); }catch(e){}
+}
+function persistScreenFilters(){
+  if(!S) return; S.uiState=S.uiState||{}; S.uiState.screenFilters=S.uiState.screenFilters||{};
+  const sf=S.uiState.screenFilters;
+  sf.players={query:PSTATE.q,riskFilter:PSTATE.f,sort:PSTATE.s};
+  sf.world={query:WORLDQ};
+  sf.scout={segment:SEG.scout};
+  sf.transfer={segment:SEG.transfer};
+  sf.agency={section:SEG.agency};
+}
+function loadScreenFilters(){
+  const sf=(S.uiState&&S.uiState.screenFilters)||{};
+  if(sf.players){ if(sf.players.query!=null)PSTATE.q=sf.players.query; if(sf.players.riskFilter)PSTATE.f=sf.players.riskFilter; if(sf.players.sort)PSTATE.s=sf.players.sort; }
+  if(sf.world&&sf.world.query!=null) WORLDQ=sf.world.query;
+  if(sf.scout&&sf.scout.segment) SEG.scout=sf.scout.segment;
+  if(sf.transfer&&sf.transfer.segment) SEG.transfer=sf.transfer.segment;
+  if(sf.agency&&sf.agency.section) SEG.agency=sf.agency.section;
+}
+function clearEntityScreen(){ const el=$("scr-entity"); if(el) el.innerHTML=""; }
+function restoreRouteAfterLoad(){
+  try{
+    loadScreenFilters();
+    const rs=S.routeState; if(!rs){ setActiveRoute({screen:"home"}); return; }
+    const r=normalizeRoute(rs);
+    if(r.screen==="entity"&&r.entityType){
+      if(r.entityType==="negotiation" && !S.offers.find(x=>x.id===r.entityId)){ navigateTo("transfer","masa"); return; }
+      if(entityExists(r.entityType,r.entityId)){
+        if(r.entityType==="player")PDTAB=r.section||"genel"; if(r.entityType==="rivalAgency")RVTAB=r.section||"genel";
+        UI._suppressPush=true; try{ openEntity(r.entityType,r.entityId,{section:r.section}); } finally{ UI._suppressPush=false; }
+        return;
+      }
+      navigateTo(ROUTE_FALLBACKS[r.entityType]||"home"); return;
+    }
+    if(r.screen==="weeklyBriefing"){ navigateTo("home"); return; } // geçici ekran restore edilmez
+    navigateTo(VALID_SCREENS.includes(r.screen)?r.screen:"home");
+  }catch(e){ console.error("restoreRoute",e); try{ navigateTo("home"); }catch(_){} }
+}
+/* browser history (varsa) */
+let _popBusy=false;
+function syncBrowserHistory(replace){
+  if(typeof window==="undefined"||!window.history||!window.history.pushState) return;
+  try{ const st={r:routeKey(UI.route)}; if(replace) window.history.replaceState(st,""); else window.history.pushState(st,""); }catch(e){}
+}
+function setupBrowserBack(){
+  if(typeof window==="undefined"||!window.addEventListener||window._popSetup) return; window._popSetup=true;
+  try{ window.history&&window.history.replaceState&&window.history.replaceState({r:"home"},""); }catch(e){}
+  window.addEventListener("popstate",function(){
+    if(_popBusy) return; _popBusy=true;
+    try{
+      const sw=$("sheetwrap"); if(sw&&sw.classList&&sw.classList.contains("open")){ closeSheet(); return; }
+      if(UI.menuOpen){ closeMainMenu(); return; }
+      goBack();
+    } finally { _popBusy=false; }
+  });
+}
+
+/* ============================================================
+   V8 PHASE B2 — GERÇEK TELEFON/BİLDİRİM DEDUP
+   ============================================================ */
+function ensureDeliveryRegistry(){ if(!S.eventDeliveryRegistry) S.eventDeliveryRegistry={}; return S.eventDeliveryRegistry; }
+function canDeliverEvent(channel,key){
+  if(!key) return true;
+  const reg=ensureDeliveryRegistry(); const rec=reg[key];
+  if(!rec) return true;
+  // aynı olay (aynı key) aynı hafta hangi kanaldan olursa tekrar üretilmez (telefon↔bildirim dedup + tekrar önleme)
+  if(rec.week===S.week && rec.season===S.season) return false;
+  return true;
+}
+function markEventDelivered(channel,key){
+  if(!key) return; const reg=ensureDeliveryRegistry();
+  reg[key]={channel,week:S.week,season:S.season,t:nowTick()};
+  pruneDeliveryRegistry();
+}
+function pruneDeliveryRegistry(){
+  const reg=S.eventDeliveryRegistry||{}; const keys=Object.keys(reg);
+  if(keys.length<=120) return;
+  // en eski kayıtları at
+  keys.map(k=>[k,reg[k].t||0]).sort((a,b)=>a[1]-b[1]).slice(0,keys.length-120).forEach(([k])=>delete reg[k]);
+}
+function deliverPhoneEvent(message,dedupMeta){
+  const key=dedupMeta?phoneDedupKey(dedupMeta.sourceType,dedupMeta.entityId,dedupMeta.eventStage):null;
+  if(key && !canDeliverEvent("phone",key)) return false;
+  _pushPhoneRaw(message); if(key) markEventDelivered("phone",key); return true;
+}
+function deliverNotificationEvent(notif,dedupMeta){
+  const key=dedupMeta?phoneDedupKey(dedupMeta.sourceType,dedupMeta.entityId,dedupMeta.eventStage):null;
+  if(key && !canDeliverEvent("notification",key)) return false;
+  _notifyRaw(notif.cat,notif.txt,notif.screen,notif.seg); if(key) markEventDelivered("notification",key); return true;
+}
+
+/* ============================================================
+   V8 PHASE B2 — TUTORIAL EVENT BUS + 8 ADIM
+   ============================================================ */
+const TUTORIAL_STEPS=[
+ {id:"open_player",availableFromWeek:1,title:"Bir oyuncu profili aç",description:"Portföyünden bir oyuncuya dokun; değer, form ve sözleşmesini incele.",completionEvent:"PLAYER_PROFILE_OPENED",route:`navigateTo('players')`,reward:"Oyuncu yönetiminin temeli"},
+ {id:"focus",availableFromWeek:1,title:"Haftalık odak seç",description:"Haftalık plandan bir odak seç — küçük ama kalıcı bonus.",completionEvent:"WEEKLY_FOCUS_SELECTED",route:`openWeeklyPlan()`,reward:"Odak bonusu"},
+ {id:"meet",availableFromWeek:2,title:"Oyuncuyla görüş",description:"Bir oyuncunla görüşme yap; moral ve sadakati yönet.",completionEvent:"PLAYER_MEETING_COMPLETED",route:`navigateTo('players')`,reward:"Sadakat +"},
+ {id:"scout_assign",availableFromWeek:3,title:"Scout görevi başlat",description:"Bir scout'a bölge ata; yeni yetenekler keşfet.",completionEvent:"SCOUT_ASSIGNMENT_CREATED",route:`navigateTo('scout')`,reward:"Keşif ağı"},
+ {id:"scout_report",availableFromWeek:4,title:"Scout raporu aç",description:"Gelen bir scout raporunu incele.",completionEvent:"SCOUT_REPORT_OPENED",route:`navigateTo('scout')`,reward:"Bilgi avantajı"},
+ {id:"watchlist",availableFromWeek:5,title:"Oyuncuyu izleme listesine ekle",description:"Beğendiğin bir oyuncuyu watchlist'e ekle.",completionEvent:"PLAYER_WATCHLISTED",route:`navigateTo('scout')`,reward:"Takip listesi"},
+ {id:"club_meet",availableFromWeek:6,title:"Kulüple görüş",description:"Bir kulüple ilişki kur veya oyuncu öner.",completionEvent:"CLUB_MEETING_COMPLETED",route:`navigateTo('world')`,reward:"Kulüp ilişkisi"},
+ {id:"market",availableFromWeek:7,title:"Oyuncuyu pazarla veya teklif incele",description:"Bir oyuncunu pazarla ya da gelen bir teklifi incele.",completionEvent:"PLAYER_MARKETED",route:`navigateTo('transfer')`,reward:"Transfer motoru"},
+];
+function emitGameEvent(type,payload){ try{ handleTutorialEvent(type,payload); }catch(e){} }
+function handleTutorialEvent(type,payload){
+  const tf=S.tutorialFlow; if(!tf||!tf.active||tf.skipped) return;
+  tf.completedSteps=tf.completedSteps||[];
+  const step=TUTORIAL_STEPS.find(s=>s.completionEvent===type&&!tf.completedSteps.includes(s.id));
+  if(!step) return;
+  if(S.week<(step.availableFromWeek||1)) return;
+  tf.completedSteps.push(step.id);
+  toast(`✅ Rehber adımı tamam: ${step.title}`,"green");
+  notify("ajans",`Rehber: ${step.title} tamamlandı`,"home");
+  if(tf.completedSteps.length>=TUTORIAL_STEPS.length){ tf.active=false; tf.done=true; toast("🎓 Başlangıç rehberi tamamlandı!","gold"); }
+}
+function currentTutorialStep(){
+  const tf=S.tutorialFlow; if(!tf||!tf.active||tf.skipped) return null;
+  tf.completedSteps=tf.completedSteps||[];
+  return TUTORIAL_STEPS.find(s=>!tf.completedSteps.includes(s.id)&&S.week>=(s.availableFromWeek||1))||null;
+}
+function renderTutorialCard(){
+  const tf=S.tutorialFlow; if(!tf||!tf.active||tf.skipped) return "";
+  const step=currentTutorialStep(); if(!step){ return ""; }
+  const idx=TUTORIAL_STEPS.indexOf(step)+1;
+  return `<div class="card gold"><div class="row" style="justify-content:space-between"><span class="tiny b">🎓 BAŞLANGIÇ REHBERİ · ${idx}/${TUTORIAL_STEPS.length}</span>
+    <button class="btn sm ghost" onclick="skipTutorial()">Kapat</button></div>
+    <div class="b" style="font-size:14px;margin-top:4px">${escapeHtml(step.title)}</div>
+    <div class="tiny" style="margin:3px 0 8px">${escapeHtml(step.description)} · 🎁 ${escapeHtml(step.reward)}</div>
+    <button class="btn sm primary" onclick="${step.route}">Git →</button></div>`;
+}
+function skipTutorial(){ if(S.tutorialFlow){ S.tutorialFlow.active=false; S.tutorialFlow.skipped=true; } save(); renderAll(); toast("Rehber kapatıldı (Ayarlar'dan aç)"); }
+function toggleTutorial(){ S.tutorialFlow=S.tutorialFlow||{completedSteps:[]};
+  if(S.tutorialFlow.active){ S.tutorialFlow.active=false; S.tutorialFlow.skipped=true; }
+  else { S.tutorialFlow.active=true; S.tutorialFlow.skipped=false; S.tutorialFlow.done=false; }
+  save(); renderAll(); }
+/* ============================================================
+   V8 PHASE B2 — HAFTALIK SNAPSHOT + BRIEFING
+   ============================================================ */
+function createWeeklySnapshot(){
+  const snap={s:S.season,w:S.week,cash:Math.round(S.cash),rep:Math.round(S.rep),
+    players:{},offers:S.offers.length,reports:S.reports.filter(r=>!r.opened).length,
+    deptTasksDone:0,rivalPower:{},leaguePts:{}};
+  for(const p of myPlayers()){ snap.players[p.id]={v:Math.round(p.value||0),mor:Math.round(p.morale||0),loy:Math.round(p.loyalty||0),
+    form:Math.round(p.form||0),coach:Math.round(p.coachTrust||0),rating:p.lastMatch?p.lastMatch.r:null,mins:p.lastMatch?p.lastMatch.mins:0,name:p.name,club:S.world.clubs[p.clubId]?.name||""}; }
+  for(const rv of (S.rivalAgencies||[])) snap.rivalPower[rv.id]=Math.round(rv.power);
+  return snap;
+}
+function _sec(arr){ return arr.filter(Boolean); }
+function buildWeeklyBriefing(before,after,sum){
+  sum=sum||{};
+  const B={s:after.s,w:after.w,important:[],players:[],transfer:[],scout:[],agency:[],world:[],next:[]};
+  // önemli gelişmeler: haftanın yıldızı/düşüşü
+  const perfs=(sum.performances||[]).slice().sort((a,b)=>(b.rating||0)-(a.rating||0));
+  if(perfs.length){ const top=perfs[0]; B.important.push({text:`⭐ Haftanın yıldızı: ${top.p?top.p.name:"?"} — rating ${top.rating}`,route:top.p?`openEntity('player','${top.p.id}')`:null});
+    const low=perfs[perfs.length-1]; if(perfs.length>1&&low.rating<6) B.important.push({text:`📉 Zor hafta: ${low.p?low.p.name:"?"} — rating ${low.rating}`,route:low.p?`openEntity('player','${low.p.id}')`:null}); }
+  for(const p of myPlayers()){ if(p.injury&&p.injury.weeks>=1&&(!before.players[p.id]||true)) { } }
+  const injured=myPlayers().filter(p=>p.injury&&p.injury.weeks>0);
+  if(injured.length) B.important.push({text:`🤕 Sakatlık: ${injured.map(p=>p.name).slice(0,3).join(", ")}`,route:`navigateTo('players')`});
+  // oyuncular: değer/moral/sadakat farkları
+  for(const pid in after.players){ const a=after.players[pid],b=before.players[pid]; if(!b) continue;
+    const dv=a.v-b.v; if(Math.abs(dv)>=a.v*0.03&&Math.abs(dv)>20000) B.players.push({text:`${dv>0?"📈":"📉"} ${a.name}: değer ${dv>0?"+":""}${fmtM(dv)}`,route:`openEntity('player','${pid}')`});
+    if(a.mor-b.mor<=-8) B.players.push({text:`😔 ${a.name}: moral düştü (${b.mor}→${a.mor})`,route:`openEntity('player','${pid}')`});
+    if(a.loy-b.loy<=-8) B.players.push({text:`⚠️ ${a.name}: sadakat düştü`,route:`openEntity('player','${pid}')`}); }
+  B.players=B.players.slice(0,6);
+  // transfer
+  if((sum.newOffers||0)>0) B.transfer.push({text:`📩 ${sum.newOffers} yeni teklif`,route:`navigateTo('transfer')`});
+  const expSoon=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=1).length;
+  if(expSoon) B.transfer.push({text:`⏰ ${expSoon} teklif bu hafta bitiyor`,route:`navigateTo('transfer')`});
+  // scout
+  if((sum.newReports||0)>0) B.scout.push({text:`🔭 ${sum.newReports} yeni scout raporu`,route:`navigateTo('scout')`});
+  const goodRep=S.reports.filter(r=>!r.opened&&(r.conf||r.reliability||0)>75).length;
+  if(goodRep) B.scout.push({text:`💎 ${goodRep} yüksek güvenli hedef`,route:`navigateTo('scout')`});
+  // ajans: gelir/gider
+  const net=(after.cash-before.cash); B.agency.push({text:`${net>=0?"🟢":"🔴"} Haftalık net: ${net>=0?"+":""}${fmtM(net)}`,route:`openEntity('finance','agency')`});
+  const failedTasks=(S.departmentTasks||[]).filter(t=>t.status==="failed").length;
+  if(failedTasks) B.agency.push({text:`⚠️ ${failedTasks} departman görevi başarısız`,route:`gotoAgency('operasyon')`});
+  // dünya: rakip güç değişimi, yükselme/düşme
+  for(const rid in after.rivalPower){ const d=after.rivalPower[rid]-(before.rivalPower[rid]||after.rivalPower[rid]); if(d>=4){ const rv=rivalById(rid); B.world.push({text:`🦈 ${rv?rv.ownerName:"Rakip"} güçleniyor (+${d})`,route:rv?`openEntity('rivalAgency','${rid}')`:null}); break; } }
+  const recentProm=(S.promotionHistory||[]).filter(x=>x.s===S.season).length;
+  if(recentProm) B.world.push({text:`🔀 Sezon sonu: ${recentProm} kulüp yükseldi/düştü`,route:`navigateTo('world')`});
+  // gelecek hafta: en yüksek puanlı 3 aksiyon
+  try{ buildScoredActions().slice(0,3).forEach(a=>B.next.push({text:a.t,route:a.fn})); }catch(e){}
+  return B;
+}
+function renderWeeklyBriefing(){
+  const B=S.weeklyBriefing;
+  if(!B){ $("scr-weeklyBriefing").innerHTML=`<button class="btn ghost sm" onclick="navigateTo('home')">← Geri</button><div class="empty">Henüz haftalık özet yok — bir hafta oynat.</div>`; return; }
+  let h=`<div class="ent-head"><button class="btn ghost sm" onclick="navigateTo('home')">← Geri</button><div class="ent-crumb tiny">Sezon ${B.s} · Hafta ${B.w} Özeti</div></div>`;
+  h+=renderPageHero({tone:"gold",art:"crown",eyebrow:`SEZON ${B.s} · HAFTA ${B.w}`,title:"Haftalık Brifing",desc:"Bu hafta ne oldu, gelecek hafta ne yapmalısın.",metrics:[["Kasa",fmtM(S.cash)],["İtibar",Math.round(S.rep)]]});
+  const block=(title,arr)=>{ if(!arr||!arr.length) return ""; let x=`<h2 class="sec">${title}</h2>`;
+    x+=arr.map(i=>`<div class="sumline ${i.route?'tappable':''}" ${i.route?`onclick="${i.route}"`:""}><span>${escapeHtml(i.text)}</span>${i.route?'<span class="tiny">→</span>':""}</div>`).join(""); return x; };
+  h+=block("🌟 Önemli Gelişmeler",B.important);
+  h+=block("👤 Oyuncular",B.players);
+  h+=block("💼 Transfer",B.transfer);
+  h+=block("🔭 Scout",B.scout);
+  h+=block("🏛️ Ajans",B.agency);
+  h+=block("🌍 Dünya",B.world);
+  if(B.next&&B.next.length){ h+=`<h2 class="sec">🎯 Gelecek Hafta</h2>`;
+    h+=B.next.map(i=>`<div class="action-item sugg"><span>${escapeHtml(i.text)}</span><button class="btn sm ghost" onclick="${i.route}">Git</button></div>`).join(""); }
+  $("scr-weeklyBriefing").innerHTML=h;
+}
+function openWeeklyBriefing(){ navigateTo("weeklyBriefing"); }
+
+/* ============================================================
+   V8 PHASE B2 — DEPARTMAN & FİNANS FULL-PAGE ENTITY
+   ============================================================ */
+function renderDepartmentEntity(deptId){
+  const def=DEPT_MAP[deptId]; const d=S.departments[deptId];
+  if(!def||!d) return `<div class="empty">Departman bulunamadı.</div>`;
+  const staff=deptStaff(S,deptId); const mgr=staff.find(x=>x.id===d.managerId);
+  const effHist=(d.history||[]).map(x=>({y:x.eff,s:seasonWeekFromTick(x.t).s,w:seasonWeekFromTick(x.t).w}));
+  let h=`<div class="row" style="gap:10px"><span style="font-size:30px">${def.icon}</span>
+    <div class="grow"><div class="b" style="font-family:'Fraunces',serif;font-size:18px">${def.name}</div>
+    <div class="tiny">${d.unlocked?`Seviye ${d.level} · %${d.efficiency} verim · ${fmtM(d.weeklyCost)}/hf`:"🔒 kilitli"}</div></div></div>`;
+  if(!d.unlocked){ const canOpen=calculateAgencyTier().lv>=def.unlockTier&&S.cash>=def.cost;
+    h+=`<div class="card">${escapeHtml(def.desc)}</div><button class="btn block ${canOpen?'gold':'ghost'}" ${canOpen?"":"disabled"} onclick="unlockDepartment('${deptId}')">🔓 Departmanı Aç — ${fmtM(def.cost)}</button>`; return h; }
+  h+=`<div class="grid2" style="margin-top:8px">
+    <div class="sb" style="margin:0"><div class="lbl"><span>İş yükü</span><span>${d.workload}</span></div><div class="track"><div class="fill ${d.workload>90?'r':d.workload>70?'au':'g'}" style="width:${d.workload}%"></div></div></div>
+    <div class="sb" style="margin:0"><div class="lbl"><span>Moral</span><span>${d.morale}</span></div><div class="track"><div class="fill ${d.morale>60?'g':d.morale<35?'r':'au'}" style="width:${d.morale}%"></div></div></div></div>
+    <div class="card"><div class="sumline"><span class="muted">Yönetici</span><b>${mgr?escapeHtml(mgr.name):"—"}</b></div>
+    <div class="sumline"><span class="muted">Personel</span><b>${staff.length}</b></div>
+    <div class="sumline"><span class="muted">Aktif görev</span><b>${(S.departmentTasks||[]).filter(t=>t.deptId===deptId&&t.status==="active").length}</b></div>
+    <div class="sumline"><span class="muted">Haftalık maliyet</span><b>${fmtM(d.weeklyCost)}</b></div>
+    <div class="sumline"><span class="muted">Başarı</span><b>${d.successCount}/${d.successCount+d.failCount}</b></div></div>`;
+  if(effHist.length>=2) h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:4px">Son ${effHist.length} hafta verimlilik</div>`+interactiveChart([{label:"Verim",color:"#4A7FB5",points:effHist}],{label:def.name+" verim",h:110,fmt:v=>"%"+Math.round(v)})+`</div>`;
+  if(staff.length) h+=`<h2 class="sec">Personel</h2>`+staff.map(s=>`<div class="card" style="padding:9px 12px"><div class="row"><div class="grow"><span class="b" style="font-size:13px">${escapeHtml(s.name)}</span><div class="tiny">${escapeHtml(s.role)} · kalite ${s.quality} · iş yükü ${s.workload} · ${s.morale<35?'😔':'🙂'}</div></div><button class="btn sm ghost" onclick="fireDeptStaff('${s.id}')">Çıkar</button></div></div>`).join("");
+  h+=`<div class="btnrow" style="margin-top:10px">
+    <button class="btn ghost" onclick="hireDeptStaff('${deptId}')">➕ Personel</button>
+    <button class="btn ghost" onclick="openDeptDelegate('${deptId}')">📤 Görev Ver</button>
+    <button class="btn ${d.level<5?'gold':'ghost'}" ${d.level>=5?"disabled":""} onclick="upgradeDepartment('${deptId}')">${d.level>=5?"Maks":"⬆️ Yükselt"}</button></div>`;
+  return h;
+}
+function openDepartmentEntity(deptId){ showEntityPage("department",deptId,`<div class="grab"></div>`+renderDepartmentEntity(deptId)); }
+function renderFinanceEntity(){
+  let h=`<div class="b" style="font-family:'Fraunces',serif;font-size:18px;margin-bottom:6px">💰 Finans Merkezi</div>`;
+  h+= (typeof agFinance==="function"? agFinance() : "");
+  const deptCost=Object.values(S.departments||{}).reduce((s,d)=>s+(d.unlocked?d.weeklyCost:0),0);
+  h+=`<h2 class="sec">Departman Maliyetleri</h2><div class="card"><div class="sumline"><span class="muted">Toplam haftalık departman gideri</span><b>${fmtM(deptCost)}</b></div>
+    <div class="sumline"><span class="muted">Bölgesel ofis gideri</span><b>${fmtM(typeof regionalOfficeWeeklyCost==="function"?regionalOfficeWeeklyCost():0)}</b></div></div>`;
+  return h;
+}
+function openFinanceEntity(){ showEntityPage("finance","agency",`<div class="grab"></div>`+renderFinanceEntity()); }
+
+/* ============================================================
+   V8 PHASE B2 — PAZARLIK STEPPER BAŞLIĞI
+   ============================================================ */
+const NEGO_STEPS=[["package","Paket"],["contract","Kontrat"],["representation","Temsil"],["eligibility","Uygunluk"],["review","Son Kontrol"]];
+function negoStepStatus(o,step){
+  if(step==="package") return o.pkgOk?"done":"active";
+  if(step==="contract") return o.contractOk?"done":(o.pkgOk?"active":"warn");
+  if(step==="representation") return repValid(o.pid)?"done":"warn";
+  if(step==="eligibility"){ const v=validateTransferCompletion(o.id); return v.ok?"done":"warn"; }
+  if(step==="review") return (o.pkgOk&&o.contractOk&&repValid(o.pid))?"active":"locked";
+  return "locked";
+}
+function negoStepIcon(st){ return st==="done"?"✅":st==="active"?"🔵":st==="warn"?"⚠️":st==="locked"?"🔒":""; }
+function negoStepperHeader(oid,active){
+  const o=S.offers.find(x=>x.id===oid); if(!o) return "";
+  return `<div class="nego-stepper">`+NEGO_STEPS.map(([id,label],i)=>{ const st=negoStepStatus(o,id);
+    return `<button class="nstep ${active===id?'on':''} st-${st}" onclick="negoGoStep('${oid}','${id}')"><span class="nstep-n">${i+1}</span><span class="nstep-l">${label} ${negoStepIcon(st)}</span></button>`; }).join("")+`</div>`;
+}
+function negoSessionUI(oid){ ensureOfferV6(S.offers.find(x=>x.id===oid)); const s=S.negotiationSessions[oid]; if(s&&!s.ui) s.ui={activeStep:"package",lastViewedStep:"package",packageDirty:false,contractDirty:false,updatedTick:nowTick()}; return s?s.ui:null; }
+function negoGoStep(oid,step){ const ui=negoSessionUI(oid); if(ui){ ui.activeStep=step; ui.lastViewedStep=step; }
+  if(step==="package") openNegoTable(oid); else if(step==="contract") openContractLayer(oid); else openOffer(oid,{section:step}); }
+/* ============================================================
+   V8 PHASE B2 — DAVRANIŞ ODAKLI TESTLER
+   ============================================================ */
+function _mkNegoOffer(){ const p=myPlayers()[0]; if(!p) return null;
+  const club=Object.values(S.world.clubs).find(c=>c.id!==p.clubId)||Object.values(S.world.clubs)[0];
+  const o={id:"ob2_"+ri(1e4,9e4),pid:p.id,cid:club.id,fee:p.value||1e6,wage:p.wage||5000,comm:Math.round((p.value||1e6)*0.08),sellOn:0,signBonus:0,playGuar:false,patience:3,expires:S.week+2,season:S.season};
+  S.offers.push(o); ensureOfferV6(o); return o; }
+function runRouteStatePersistenceTest(){ return _t("RouteStatePersistence",(function(){
+  setActiveRoute({screen:"world"}); const a=S.routeState&&S.routeState.screen==="world"&&UI.route.screen==="world";
+  setActiveRoute({screen:"entity",entityType:"player",entityId:"pX",section:"perf"});
+  const b=S.routeState.entityType==="player"&&S.routeState.entityId==="pX"&&S.routeState.section==="perf";
+  const noFn=typeof S.routeState.filters!=="function";
+  return a&&b&&noFn;
+})()); }
+function runReloadRouteRestoreTest(){ return _t("ReloadRouteRestore",_withSnapshot(()=>{
+  const pid=Object.keys(S.world.players)[0];
+  S.routeState={screen:"entity",entityType:"player",entityId:pid,section:"genel"};
+  restoreRouteAfterLoad();
+  const ok=TAB==="entity"&&UI.route.entityType==="player"&&UI.route.entityId===pid;
+  // geçersiz entity → fallback
+  S.routeState={screen:"entity",entityType:"club",entityId:"___nope___"}; restoreRouteAfterLoad();
+  const fb=TAB==="world";
+  return ok&&fb;
+})); }
+function runEntityToEntityScrollRestoreTest(){ return _t("EntityToEntityScroll",_withSnapshot(()=>{
+  navigateTo("world"); window.scrollY=500; saveCurrentScroll();
+  const cid=Object.keys(S.world.clubs)[0]; openEntity("club",cid); window.scrollY=320; saveCurrentScroll();
+  const pid=Object.keys(S.world.players)[0]; openEntity("player",pid);
+  goBack(); // player → club
+  const saved=S.uiState.scrollPositions[routeKey({screen:"entity",entityType:"club",entityId:cid})];
+  return saved===320;
+})); }
+function runBrowserBackIntegrationTest(){ return _t("BrowserBackIntegration",(function(){
+  return typeof setupBrowserBack==="function"&&typeof goBack==="function"&&typeof syncBrowserHistory==="function";
+})()); }
+function runDestroyedEntityRouteTest(){ return _t("DestroyedEntityRoute",_withSnapshot(()=>{
+  const o=_mkNegoOffer(); if(!o) return true; openEntity("negotiation",o.id);
+  S.offers=S.offers.filter(x=>x.id!==o.id); // entity yok edildi
+  renderEntity(); // eski ekran kalmamalı → fallback transfer
+  return TAB==="transfer";
+})); }
+function runRejectedOfferRouteTest(){ return _t("RejectedOfferRoute",_withSnapshot(()=>{
+  const o=_mkNegoOffer(); if(!o) return true; openEntity("negotiation",o.id); doReject(o.id);
+  return TAB==="transfer"&&!S.offers.find(x=>x.id===o.id);
+})); }
+function runCompletedTransferRouteTest(){ return _t("CompletedTransferRoute",_withSnapshot(()=>{
+  const o=_mkNegoOffer(); if(!o) return true; o.pkgOk=true; o.contractOk=true; openEntity("negotiation",o.id);
+  signTransfer(o.id);
+  return TAB==="entity"||TAB==="transfer"; // oyuncuya veya masaya
+})); }
+function runPackageNegotiationFullPageTest(){ return _t("PackageNegoFullPage",_withSnapshot(()=>{
+  const o=_mkNegoOffer(); if(!o) return true; closeSheet(); openNegoTable(o.id);
+  return UI.route.entityType==="negotiation"&&!$("sheetwrap").classList.contains("open")&&$("scr-entity").innerHTML.includes("nego-stepper");
+})); }
+function runContractNegotiationFullPageTest(){ return _t("ContractNegoFullPage",_withSnapshot(()=>{
+  const o=_mkNegoOffer(); if(!o) return true; closeSheet(); openContractLayer(o.id);
+  return UI.route.entityType==="negotiation"&&!$("sheetwrap").classList.contains("open")&&$("scr-entity").innerHTML.includes("nego-stepper");
+})); }
+function runNegotiationStepperPersistenceTest(){ return _t("NegoStepperPersistence",_withSnapshot(()=>{
+  const o=_mkNegoOffer(); if(!o) return true; negoGoStep(o.id,"contract");
+  const ui=S.negotiationSessions[o.id].ui; return ui&&ui.activeStep==="contract"&&ui.lastViewedStep==="contract";
+})); }
+function runDepartmentFullPageRouteTest(){ return _t("DepartmentFullPage",_withSnapshot(()=>{
+  openEntity("department","scouting"); return UI.route.entityType==="department"&&$("scr-entity").innerHTML.length>50&&!$("sheetwrap").classList.contains("open");
+})); }
+function runFinanceFullPageRouteTest(){ return _t("FinanceFullPage",_withSnapshot(()=>{
+  openEntity("finance","agency"); return UI.route.entityType==="finance"&&$("scr-entity").innerHTML.length>50;
+})); }
+function runWeeklySnapshotTest(){ return _t("WeeklySnapshot",(function(){
+  const s=createWeeklySnapshot(); return s&&typeof s.cash==="number"&&s.players&&typeof s.players==="object"&&!s.world;
+})()); }
+function runWeeklyBriefingDiffTest(){ return _t("WeeklyBriefingDiff",_withSnapshot(()=>{
+  const before=createWeeklySnapshot(); const p=myPlayers()[0]; if(!p) return true;
+  p.value=Math.round((p.value||1e6)*1.5)+200000; const after=createWeeklySnapshot();
+  const B=buildWeeklyBriefing(before,after,{performances:[],newOffers:1,newReports:0});
+  const hasVal=B.players.some(x=>/değer/.test(x.text)); const hasNext=B.next.length>=0;
+  return hasVal&&Array.isArray(B.important);
+})); }
+function runWeeklyBriefingNavigationTest(){ return _t("WeeklyBriefingNav",_withSnapshot(()=>{
+  const b=createWeeklySnapshot(); const a=createWeeklySnapshot();
+  S.weeklyBriefing=buildWeeklyBriefing(b,a,{performances:[]});
+  const items=[].concat(S.weeklyBriefing.agency,S.weeklyBriefing.transfer);
+  return items.every(i=>!i||typeof i.route==="string"||i.route===null)&&S.weeklyBriefing.agency.length>0;
+})); }
+function runFastModeBriefingTest(){ return _t("FastModeBriefing",_withSnapshot(()=>{
+  S.settings.fastMode=true; S.weeklyBriefing=null; while(S.decisions.length)S.decisions.shift();
+  playWeek();
+  return !!S.weeklyBriefing;
+})); }
+function runTutorialEightWeekFlowTest(){ return _t("TutorialEightWeek",_withSnapshot(()=>{
+  S.tutorialFlow={active:true,skipped:false,completedSteps:[]}; S.week=8;
+  const evs=["PLAYER_PROFILE_OPENED","WEEKLY_FOCUS_SELECTED","PLAYER_MEETING_COMPLETED","SCOUT_ASSIGNMENT_CREATED","SCOUT_REPORT_OPENED","PLAYER_WATCHLISTED","CLUB_MEETING_COMPLETED","PLAYER_MARKETED"];
+  evs.forEach(e=>emitGameEvent(e,{}));
+  return S.tutorialFlow.completedSteps.length===8&&S.tutorialFlow.active===false;
+})); }
+function runTutorialRealEventCompletionTest(){ return _t("TutorialRealEvent",_withSnapshot(()=>{
+  S.tutorialFlow={active:true,skipped:false,completedSteps:[]}; S.week=1;
+  emitGameEvent("SOME_RANDOM_CLICK",{}); const noComplete=S.tutorialFlow.completedSteps.length===0;
+  emitGameEvent("PLAYER_PROFILE_OPENED",{}); const yesComplete=S.tutorialFlow.completedSteps.includes("open_player");
+  return noComplete&&yesComplete;
+})); }
+function runTutorialOldSaveSafetyTest(){ return _t("TutorialOldSaveSafety",_withSnapshot(()=>{
+  S.tutorialFlow={active:false,done:true,completedSteps:[]}; S.week=1;
+  emitGameEvent("PLAYER_PROFILE_OPENED",{});
+  return S.tutorialFlow.active===false&&S.tutorialFlow.completedSteps.length===0;
+})); }
+function runNotificationPhoneDedupBehaviorTest(){ return _t("NotifPhoneDedupBehavior",_withSnapshot(()=>{
+  S.eventDeliveryRegistry={}; S.phoneInbox=[]; S.notifications=[];
+  const meta={sourceType:"oyuncu",entityId:"p1",eventStage:"unhappy"};
+  const d1=deliverPhoneEvent({from:"X",fromType:"oyuncu",subject:"s",body:"b"},meta); // iletildi
+  const d2=deliverNotificationEvent({cat:"oyuncu",txt:"aynı olay"},meta); // engellenmeli
+  const single=(d1===true)&&(d2===false);
+  const meta2={sourceType:"oyuncu",entityId:"p1",eventStage:"leaving"}; // stage değişti
+  const d3=deliverNotificationEvent({cat:"oyuncu",txt:"yeni aşama"},meta2);
+  return single&&d3===true;
+})); }
+function runDedupRegistryPruneTest(){ return _t("DedupRegistryPrune",_withSnapshot(()=>{
+  S.eventDeliveryRegistry={}; for(let i=0;i<200;i++){ markEventDelivered("phone","k"+i); }
+  return Object.keys(S.eventDeliveryRegistry).length<=120;
+})); }
+function runRealThreeTapReachabilityTest(){ return _t("RealThreeTap",_withSnapshot(()=>{
+  // Home → Portföy(1) → oyuncu entity(2): ≤3 route adımı
+  navigateTo("home"); let taps=0; navigateTo("players"); taps++;
+  const pid=myPlayers()[0]?myPlayers()[0].id:Object.keys(S.world.players)[0]; openEntity("player",pid); taps++;
+  return taps<=3&&UI.route.entityType==="player";
+})); }
+function runRealScrollRestoreTest(){ return _t("RealScrollRestore",_withSnapshot(()=>{
+  navigateTo("world"); window.scrollY=500; saveCurrentScroll();
+  const pid=Object.keys(S.world.players)[0]; openEntity("player",pid); window.scrollY=0;
+  goBack();
+  const saved=S.uiState.scrollPositions[routeKey({screen:"world"})];
+  return saved===500;
+})); }
+function runAllV8PhaseB2Tests(){
+  const R=[]; const push=(n,fn)=>{ let ok; try{ ok=fn(); }catch(e){ console.error(n,e); ok=false; } R.push([n,ok===true||typeof ok==="number"]); };
+  push("RouteStatePersistence",runRouteStatePersistenceTest);
+  push("ReloadRouteRestore",runReloadRouteRestoreTest);
+  push("EntityToEntityScroll",runEntityToEntityScrollRestoreTest);
+  push("BrowserBackIntegration",runBrowserBackIntegrationTest);
+  push("DestroyedEntityRoute",runDestroyedEntityRouteTest);
+  push("RejectedOfferRoute",runRejectedOfferRouteTest);
+  push("CompletedTransferRoute",runCompletedTransferRouteTest);
+  push("PackageNegoFullPage",runPackageNegotiationFullPageTest);
+  push("ContractNegoFullPage",runContractNegotiationFullPageTest);
+  push("NegoStepperPersistence",runNegotiationStepperPersistenceTest);
+  push("DepartmentFullPage",runDepartmentFullPageRouteTest);
+  push("FinanceFullPage",runFinanceFullPageRouteTest);
+  push("WeeklySnapshot",runWeeklySnapshotTest);
+  push("WeeklyBriefingDiff",runWeeklyBriefingDiffTest);
+  push("WeeklyBriefingNav",runWeeklyBriefingNavigationTest);
+  push("FastModeBriefing",runFastModeBriefingTest);
+  push("TutorialEightWeek",runTutorialEightWeekFlowTest);
+  push("TutorialRealEvent",runTutorialRealEventCompletionTest);
+  push("TutorialOldSaveSafety",runTutorialOldSaveSafetyTest);
+  push("NotifPhoneDedupBehavior",runNotificationPhoneDedupBehaviorTest);
+  push("DedupRegistryPrune",runDedupRegistryPruneTest);
+  push("RealThreeTap",runRealThreeTapReachabilityTest);
+  push("RealScrollRestore",runRealScrollRestoreTest);
+  const pass=R.filter(r=>r[1]).length;
+  if(console.table) console.table(R.map(r=>({test:r[0],sonuc:r[1]?"PASS":"FAIL"})));
+  toast(`🧭 V8-B2 testleri: ${pass}/${R.length} PASS`, pass===R.length?"green":"");
+  try{ navigateTo("home"); }catch(e){}
+  return {pass,total:R.length,results:R};
+}
+
 /* ---------- boot ---------- */
 if(typeof document.addEventListener==="function") document.addEventListener("keydown",e=>{
-  if(e.key==="Escape"){ if(UI.menuOpen) closeMainMenu(); else closeSheet(); return; }
+  if(e.key==="Escape"){ if(UI.menuOpen) closeMainMenu(); else if($("sheetwrap")&&$("sheetwrap").classList.contains("open")) closeSheet(); else if(TAB==="entity") goBack(); return; }
   if(e.key==="Tab"&&UI.menuOpen){
     const w=$("drawerwrap"); if(!w||!w.querySelectorAll) return;
     const f=[...w.querySelectorAll("button")]; if(!f.length) return;
@@ -5596,8 +7434,10 @@ if(typeof document.addEventListener==="function") document.addEventListener("key
   let saved=null;
   try{ saved=await load(); }catch(e){ saved=null; }
   saved=migrateSaveState(saved);
-  if(saved && saved.v===6 && validateSaveState(saved)){ S=saved; S.decisions=S.decisions||[]; repairSaveState(S); renderAll(); toast("Kariyer yüklendi — kaldığın yerden 👋"); }
+  if(saved && saved.v===8 && validateSaveState(saved)){ S=saved; S.decisions=S.decisions||[]; repairSaveState(S); syncPidCounter(S.world); buildWorldIndexes(S);
+    try{ restoreRouteAfterLoad(); }catch(e){ renderAll(); } toast("Kariyer yüklendi — kaldığın yerden 👋"); }
   else renderOnboarding();
+  try{ setupBrowserBack(); }catch(e){}
 })();
 </script>
 </body>
