@@ -1636,6 +1636,35 @@ function requestSecondLook(rid){
   toast("İkinci gözlem tamam — aralık daraldı 🔍","green");
   save(); openReportSheet(rid);
 }
+/* telefon mesajı veri modeli onarımı — schemaRevision kapısından BAĞIMSIZ, her yüklemede çalışır (yıkıcı olmayan, idempotent) */
+function repairPhoneMessages(state){
+  if(!state||!Array.isArray(state.phoneInbox)) return state;
+  for(const m of state.phoneInbox){
+    if(!m||typeof m!=="object") continue;
+    if(m.status==null) m.status=m.done?"resolved":"unread";
+    // durum ile done bayrağını her zaman senkron tut (eski/bozuk kayıtlarda ikisi çelişebilir)
+    const terminal=["resolved","dismissed","expired"].includes(m.status);
+    m.done=terminal;
+    if(m.cid===undefined) m.cid=null;
+    if(m.pid===undefined) m.pid=null;
+    if(m.rid===undefined) m.rid=null;
+    if(m.offerId===undefined) m.offerId=null;
+    if(m.sponsorDealId===undefined) m.sponsorDealId=null;
+    if(m.departmentId===undefined) m.departmentId=null;
+    if(m.topic===undefined||m.topic===null){
+      try{ m.topic=(typeof inferPhoneTopic==="function")?inferPhoneTopic(m):null; }catch(e){ m.topic=m.topic||null; }
+    }
+    if(m.urgency===undefined) m.urgency="orta";
+    if(m.expiresAtTick===undefined) m.expiresAtTick=null;
+    if(m.stage===undefined) m.stage="initial";
+    if(m.outcome===undefined) m.outcome=null;
+    if(m.followUpTick===undefined) m.followUpTick=null;
+    if(m.followUpKind===undefined) m.followUpKind=null;
+    if(m.parentMessageId===undefined) m.parentMessageId=null;
+    if(m.delegatedTaskId===undefined) m.delegatedTaskId=null;
+  }
+  return state;
+}
 function repairSaveState(st){
   if(!st) return st;
   migrateSaveState(st);
@@ -1645,6 +1674,7 @@ function repairSaveState(st){
   st.representationAgreements=st.representationAgreements||{}; st.rivalAgencies=st.rivalAgencies||[];
   st.rivalDiplomacy=st.rivalDiplomacy||{}; st.phoneInbox=st.phoneInbox||[];
   st.transferAdaptations=st.transferAdaptations||[];
+  repairPhoneMessages(st);
   // V7 koleksiyonları
   if(st.v>=7){ st.promotionHistory=st.promotionHistory||[]; st.relegationHistory=st.relegationHistory||[];
     st.regionalOffices=st.regionalOffices||[]; st.worldDeltas=st.worldDeltas||{}; st.countryStates=st.countryStates||{};
@@ -1682,12 +1712,50 @@ function pruneHistory(st){
   if(Array.isArray(st.departmentTasks)&&st.departmentTasks.length>60) st.departmentTasks=st.departmentTasks.slice(-60);
   return st;
 }
+/* aktif (delege/takip/görüşme) telefon mesajlarını asla silmeyen güvenli budama */
+const PHONE_TERMINAL_STATUS=new Set(["resolved","dismissed","expired"]);
+const PHONE_PROTECTED_STATUS=new Set(["delegated","awaiting_followup","in_conversation"]);
+function prunePhoneInboxSafely(state, maxVisible){
+  maxVisible=maxVisible||40;
+  if(!state||!Array.isArray(state.phoneInbox)) return state;
+  const inbox=state.phoneInbox;
+  const activeTaskMsgIds=new Set((state.departmentTasks||[]).filter(t=>t.status==="active"&&t.sourceMessageId).map(t=>t.sourceMessageId));
+  // sadece TERMİNAL OLMAYAN (aktif/devam eden) bir çocuk mesaj referans veriyorsa üst mesaj korunur —
+  // tüm çocuklar terminal olduğunda/silindiğinde üst mesaj artık normal budamaya açıktır.
+  const parentIdsNeeded=new Set(inbox.filter(m=>m.parentMessageId&&!PHONE_TERMINAL_STATUS.has(m.status)).map(m=>m.parentMessageId));
+  const isProtected=m=>PHONE_PROTECTED_STATUS.has(m.status)
+    || (m.status==="awaiting_response"&&m.urgency==="yüksek")
+    || activeTaskMsgIds.has(m.id) || parentIdsNeeded.has(m.id);
+  // 1. katman: korumasız bitmiş (resolved/dismissed/expired) mesajlar kapasiteden BAĞIMSIZ her zaman elenir.
+  // (status olmayan eski/geçiş kayıtları PHONE_TERMINAL_STATUS'a girmediği için bu katmanda dokunulmaz.)
+  let survivors=inbox.filter(m=>!PHONE_TERMINAL_STATUS.has(m.status) || isProtected(m));
+  // 2. katman: hâlâ görünür sınırın üzerindeyse, en eski acil-olmayan bilgilendirici okunmamışlar elenir.
+  // başka hiçbir aktif/eylem gerektiren mesaj silinmez (gerekirse kutu maxVisible'ı geçer).
+  if(survivors.length>maxVisible){
+    const infoTopics=(typeof PHONE_INFO_TOPICS!=="undefined")?PHONE_INFO_TOPICS:new Set(["thank_you","player_form","agency_strategy","cooperation"]);
+    const isInfoUnread=m=>m.urgency!=="yüksek" && infoTopics.has((typeof inferPhoneTopic==="function")?inferPhoneTopic(m):m.topic);
+    const protectedMsgs=survivors.filter(isProtected);
+    let rest=survivors.filter(m=>!isProtected(m));
+    const budget=Math.max(0,maxVisible-protectedMsgs.length);
+    if(rest.length>budget){
+      const infoUnread=rest.filter(isInfoUnread).sort((a,b)=>(a.t||0)-(b.t||0));
+      let toRemove=rest.length-budget;
+      const removeIds=new Set();
+      for(const m of infoUnread){ if(toRemove<=0) break; removeIds.add(m.id); toRemove--; }
+      rest=rest.filter(m=>!removeIds.has(m.id));
+    }
+    const keepIds2=new Set([...protectedMsgs.map(m=>m.id),...rest.map(m=>m.id)]);
+    survivors=survivors.filter(m=>keepIds2.has(m.id));
+  }
+  const keepIds=new Set(survivors.map(m=>m.id));
+  state.phoneInbox=inbox.filter(m=>keepIds.has(m.id));
+  return state;
+}
 function pruneInbox(st){
   if(!st) return st;
-  if(Array.isArray(st.phoneInbox)){
-    // okunmuş + eski olanları at, en fazla 30 mesaj tut
-    st.phoneInbox=st.phoneInbox.filter(m=>!m.done).slice(0,30);
-  }
+  // TÜM budama kararları tek yerden: prunePhoneInboxSafely (erken/bağımsız bir filtre burada UYGULANMAZ —
+  // aksi halde henüz değerlendirilmeden bitmiş bir üst mesaj, ona referans veren aktif bir çocuktan önce silinebilir).
+  prunePhoneInboxSafely(st,40);
   if(Array.isArray(st.transferAdaptations)) st.transferAdaptations=st.transferAdaptations.filter(a=>a.weeksLeft>0).slice(0,20);
   return st;
 }
@@ -1931,6 +1999,7 @@ function advanceWeek(sum){
   try{ simDepartments(sum); }catch(e){ console.error("simDepartments",e); }
   try{ simRivalAgencies(sum); }catch(e){ console.error("simRivalAgencies",e); }
   try{ simPhone(sum); }catch(e){ console.error("simPhone",e); }
+  try{ simPhoneFollowUps(sum); }catch(e){ console.error("simPhoneFollowUps",e); }
   try{ simAdaptations(sum); }catch(e){ console.error("simAdaptations",e); }
   try{ computeDeadlineDay(); }catch(e){}
   try{ simV9Weekly(sum); }catch(e){ console.error("v9",e); }
@@ -1970,7 +2039,7 @@ function playWeek(){
   advanceWeek(sum);
   sum.cashDelta=S.cash-sum.cashBefore;
   S.lastSummary=sum;
-  try{ const after=createWeeklySnapshot(); if(before){ S.weeklyBriefing=buildWeeklyBriefing(before,after,sum); try{ extendBriefingV9(S.weeklyBriefing,sum); }catch(e){} } }catch(e){ console.error("briefing",e); }
+  try{ const after=createWeeklySnapshot(); if(before){ S.weeklyBriefing=buildWeeklyBriefing(before,after,sum); try{ extendBriefingV9(S.weeklyBriefing,sum); }catch(e){} try{ extendBriefingPhoneV9(S.weeklyBriefing); }catch(e){} } }catch(e){ console.error("briefing",e); }
   taskDone("week");
   save(); renderAll();
   if(S.lastAwards&&S.lastAwards.pending){ S.lastAwards.pending=false; save(); openAwardsSheet(); return; }
@@ -3901,7 +3970,15 @@ function restoreBackupSave(){
 
 /* ---------- sheet / karar / özet ---------- *//* ---------- sheet / karar / özet ---------- */
 function openSheet(html){ $("sheet").innerHTML=html; $("sheetwrap").classList.add("open"); try{ mountCharts(); }catch(e){} }
-function closeSheet(){ $("sheetwrap").classList.remove("open"); }
+function closeSheet(){
+  $("sheetwrap").classList.remove("open");
+  // telefon → diplomasi masası eylemsiz kapatılırsa mesajı yeniden yanıt-bekliyor durumuna al
+  if(typeof _phoneDiplomacyMsgId!=="undefined" && _phoneDiplomacyMsgId){
+    const pm=(S.phoneInbox||[]).find(x=>x.id===_phoneDiplomacyMsgId);
+    if(pm && pm.status==="in_conversation") setPhoneStatus(pm,"awaiting_response");
+    _phoneDiplomacyMsgId=null;
+  }
+}
 function openDecision(i){
   const d=S.decisions[i]; if(!d)return;
   let h=`<div class="grab"></div>
@@ -4530,6 +4607,7 @@ function processDepartmentTasks(sum){
 }
 function applyDeptTaskResult(task, ok){
   const label=task.title;
+  if(task.kind==="phoneDelegate"){ resolveDelegatedConversation(task,ok); return; }
   if(task.kind==="second-look"){
     const rep=S.reports.find(r=>r.pid===task.pid);
     if(ok&&rep){ rep.reliability=clamp((rep.reliability||55)+ri(12,22),10,99); rep.confirmed=true;
@@ -4769,8 +4847,12 @@ const RIVAL_DIP_ACTIONS=[
  {id:"tehdit", label:"Tehdit et", icon:"⚠️", cost:0, effect:-25, risk:0.4},
  {id:"sikayet", label:"Federasyona şikâyet", icon:"📣", cost:0, effect:-30, risk:0.5},
 ];
-function openRivalDiplomacy(rid){
+/* telefon görüşmesinden açılan diplomasi ekranı için geçici (kaydedilmeyen) bağlam —
+   kapanışta ilgili telefon mesajını awaiting_response'a geri döndürmek için kullanılır */
+let _phoneDiplomacyMsgId=null;
+function openRivalDiplomacy(rid, sourceMessageId){
   const rv=rivalById(rid); if(!rv) return;
+  _phoneDiplomacyMsgId=sourceMessageId||null;
   const rel=S.rivalDiplomacy[rid]||0;
   let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">DİPLOMASİ</div>
    <div class="b" style="font-family:'Fraunces',serif;font-size:18px">${rv.name}</div>
@@ -4795,6 +4877,14 @@ function doRivalDiplomacy(rid, aid){
     for(const p of Object.values(S.world.players)) if(p.rivalId===rv.baseId && !p.agent && rnd()<0.5) p.rivalId=null; }
   if(aid==="tehdit"||aid==="sikayet"){ if(rnd()<0.4){ bumpRep("ethical",-2); } }
   rlog(rv.baseId, `${a.label} (${S.player? "":""}ajansınla)`);
+  // telefon üzerinden açıldıysa: kaynak mesajı gerçek eylem+sonuçla kapat
+  if(_phoneDiplomacyMsgId){
+    const pm=(S.phoneInbox||[]).find(x=>x.id===_phoneDiplomacyMsgId);
+    if(pm){ pm.outcome=`${a.label} — ${backfire?"ters tepti":"işe yaradı"} (ilişki ${delta>=0?"+":""}${Math.round(delta)})`;
+      setPhoneStatus(pm,"resolved");
+      pushPhoneWeeklyEvent(`🤝 ${rv.ownerName}: ${pm.outcome}`,null); }
+    _phoneDiplomacyMsgId=null;
+  }
   save(); closeSheet(); renderAll();
 }
 /* ============================================================
@@ -5074,10 +5164,16 @@ function simAdaptations(sum){
 }
 
 /* ============================================================
-   V6 — MENAJER TELEFONU / GELEN KUTUSU
+   V9 COMPLETE+ — MENAJER TELEFONU: DERİN GÖRÜŞME SİSTEMİ
+   (V6'daki basit bildirim/kapat modelinin yerini alır)
    ============================================================ */
-function _pushPhoneRaw(msg){ S.phoneInbox=S.phoneInbox||[]; S.phoneInbox.unshift(Object.assign({id:"m"+ri(1e5,9e5),t:nowTick(),s:S.season,w:S.week,done:false},msg));
-  if(S.phoneInbox.length>30) S.phoneInbox.length=30; }
+function _pushPhoneRaw(msg){ S.phoneInbox=S.phoneInbox||[];
+  const full=Object.assign({id:"m"+ri(1e5,9e5),t:nowTick(),s:S.season,w:S.week,done:false,
+    cid:null,pid:null,rid:null,offerId:null,sponsorDealId:null,departmentId:null,
+    topic:null,urgency:"orta",expiresAtTick:null,responseProfile:null,availableActions:null,
+    stage:"initial",outcome:null,followUpTick:null,followUpKind:null,parentMessageId:null,status:"unread"},msg);
+  S.phoneInbox.unshift(full);
+  prunePhoneInboxSafely(S,40); }
 /* V8-B2: dedup motoruna bağlı telefon mesajı */
 function pushPhone(msg){
   const key=(typeof phoneDedupKey==="function")?phoneDedupKey(msg.fromType,(msg.pid||msg.rid||msg.from||""),(msg.kind||msg.subject||"")):null;
@@ -5085,56 +5181,909 @@ function pushPhone(msg){
   _pushPhoneRaw(msg);
   if(key && typeof markEventDelivered==="function") markEventDelivered("phone",key);
 }
+/* ---- haftalık brifing için telefon olay tamponu (mevcut hafta) ---- */
+function pushPhoneWeeklyEvent(text,route){
+  if(!S.phoneWeeklyEvents||S.phoneWeeklyTick!==nowTick()){ S.phoneWeeklyEvents=[]; S.phoneWeeklyTick=nowTick(); }
+  S.phoneWeeklyEvents.push({text,route:route||null});
+  if(S.phoneWeeklyEvents.length>8) S.phoneWeeklyEvents.shift();
+}
+/* ---- kulüp seçimi: transfer ilgisi için gerçekçi aday ---- */
+function pickTransferInterestClub(p){
+  const cands=Object.values(S.world.clubs).filter(c=>{
+    if(!c||c.id===p.clubId) return false;
+    if(typeof clubMarketAllowed==="function"&&!clubMarketAllowed(c)) return false;
+    const need=(c.needs&&c.needs[p.pos])||0; if(need<40) return false;
+    if(c.transferBudget!=null && c.transferBudget<(p.value||0)*0.35) return false;
+    const lg=S.world.leagues.find(l=>l.id===c.leagueId); if(!lg) return false;
+    const reg=regulationFor(lg);
+    if(reg.workPermitRequired&&(p.countryId||p.nat)!==c.countryId){
+      try{ if(evaluateWorkPermit(p,c,null).verdict==="uygun-değil") return false; }catch(e){}
+    }
+    return true;
+  });
+  if(!cands.length) return null;
+  cands.sort((a,b)=>(((b.needs&&b.needs[p.pos])||0)+(b.transferBudget||0)/2e6)-(((a.needs&&a.needs[p.pos])||0)+(a.transferBudget||0)/2e6));
+  return pick(cands.slice(0,5));
+}
+function phoneCreateOrAdvanceOffer(p,c){
+  let o=S.offers.find(x=>x.pid===p.id&&x.cid===c.id);
+  if(o){ o.patience=Math.min(3,(o.patience||1)+1); o.expires=Math.max(o.expires,S.week+2); return {o,created:false}; }
+  const needM=(((c.needs&&c.needs[p.pos])||50)/100)*0.4+0.8;
+  let fee=Math.round(p.value*(1.0+rnd()*0.4)*needM/1000)*1000;
+  try{ fee=Math.round(fee*trendFeeMult(p,c)/1000)*1000; }catch(e){}
+  const L=S.world.leagues.find(l=>l.id===c.leagueId);
+  const wage=L?clamp(Math.round((p.wage*1.3+L.salary[1]*0.3)/100)*100,L.salary[0],L.salary[1]):p.wage;
+  const comm=Math.round(fee*p.agentCommission);
+  o={id:"o"+ri(1e4,9e4),pid:p.id,cid:c.id,fee,wage,comm,sellOn:rnd()<0.5?10:0,
+    signBonus:rnd()<0.4?Math.round(fee*0.03/1000)*1000:0,playGuar:rnd()<0.5,patience:3,
+    expires:S.week+2,season:S.season,countered:false};
+  S.offers.push(o);
+  addNews("me",`${c.name}, ${p.name} için resmen devrede`,`Telefon görüşmesi resmi teklife dönüştü: ${fmtM(fee)} bandında.`,"good");
+  return {o,created:true};
+}
+/* ---- mesaj durumu ---- */
+const PHONE_STATUS_DONE=new Set(["resolved","dismissed","expired"]);
+function setPhoneStatus(m,status){ m.status=status; m.done=PHONE_STATUS_DONE.has(status); }
+function phoneStatusLabel(m){
+  const st=m.status||(m.done?"resolved":"unread");
+  return {unread:"Yeni",awaiting_response:"Yanıt bekliyor",in_conversation:"Görüşme sürüyor",delegated:"Delege edildi",
+    awaiting_followup:"Takip bekleniyor",resolved:"Çözüldü",dismissed:"Kapatıldı",expired:"Süresi doldu"}[st]||"—";
+}
+function phoneStatusBadgeClass(m){
+  const st=m.status||(m.done?"resolved":"unread");
+  if(st==="expired") return "inj";
+  if(st==="resolved"||st==="dismissed") return "";
+  if(st==="delegated"||st==="awaiting_followup") return "hot";
+  return "ok";
+}
+function phoneUrgencyLabel(u){ return {"yüksek":"🔴 Acil","orta":"🟡 Orta","düşük":"🟢 Düşük"}[u]||"—"; }
+function phoneChanceLabel(chance,confidence){
+  if(confidence!=null&&confidence<40) return "Bilinmiyor";
+  const pct=(confidence!=null&&confidence>=60)?` (~%${Math.round(chance*100)})`:"";
+  if(chance>=0.7) return "Güçlü"+pct;
+  if(chance>=0.45) return "Makul"+pct;
+  return "Riskli"+pct;
+}
+function phoneRelationshipLabel(m,p,c,rv){
+  if(c) return `Kulüp ilişkisi ${Math.round(c.relation||0)}/100`;
+  if(rv){ const rel=S.rivalDiplomacy[rv.id]||0; return `Rakip ilişkisi: ${dipLabel(rel)}`; }
+  if(p&&m.fromType==="aile") return `Aile güveni ${Math.round(p.famTrust||50)}/100`;
+  if(p) return `Sadakat ${Math.round(p.loyalty||0)} · Moral ${Math.round(p.morale||0)}`;
+  return "Bilinmiyor";
+}
+/* eski kayıtlar için konu tahmini (geriye dönük uyum) */
+function inferPhoneTopic(m){
+  if(m.topic) return m.topic;
+  const s=((m.subject||"")+" "+(m.body||"")).toLowerCase();
+  if(m.fromType==="oyuncu"){
+    if(s.includes("süre")||s.includes("kulübede")) return "playing_time";
+    if(s.includes("ajans")) return "rival_contact";
+    if(s.includes("teşekkür")) return "thank_you";
+    return "playing_time";
+  }
+  if(m.fromType==="aile") return "trust_problem";
+  if(m.fromType==="kulup") return (m.cid&&m.pid)?"transfer_interest":"role_discussion";
+  if(m.fromType==="gazeteci") return "agency_strategy";
+  if(m.fromType==="rakip") return "cooperation";
+  if(m.fromType==="sponsor") return "contract_conflict";
+  if(m.fromType==="td") return "playing_time";
+  return "general";
+}
+function phoneCtx(m){
+  const p=m.pid?S.world.players[m.pid]:null;
+  const c=m.cid?S.world.clubs[m.cid]:null;
+  const rv=m.rid?rivalById(m.rid):null;
+  const offer=m.offerId?S.offers.find(o=>o.id===m.offerId):null;
+  let deal=null;
+  if(m.sponsorDealId&&p&&p.brand) deal=(p.brand.activeDeals||[]).find(d=>d.id===m.sponsorDealId)||null;
+  return {p,c,rv,offer,deal};
+}
+function phonePrimaryLabel(m){
+  if(m.rid) return "🤝 Diplomasi Masası";
+  if(m.fromType==="oyuncu") return "💬 Oyuncuyla Konuş";
+  if(m.fromType==="aile") return "👨‍👩‍👦 Aileyle Görüş";
+  if(m.fromType==="kulup") return "🏟️ Kulübü Ara";
+  if(m.fromType==="gazeteci") return "📰 Basına Yanıt Ver";
+  if(m.fromType==="sponsor") return "👟 Sponsorla Konuş";
+  if(m.fromType==="hukuk") return "⚖️ Hukuk Dosyasını Aç";
+  if(m.fromType==="td") return "📋 Teknik Ekiple Konuş";
+  return "💬 Görüşmeyi Aç";
+}
+/* ============================================================
+   MESAJ ÜRETİMİ — gerçek bağlam (cid/pid/rid/konu)
+   ============================================================ */
 function simPhone(sum){
   const mp=myPlayers();
   if(mp.length && rnd()<0.5){
     const p=pick(mp);
-    if(p.morale<45) pushPhone({from:p.name,fromType:"oyuncu",kind:"soru",pid:p.id,subject:"Süre alamıyorum",body:`${p.name}: "Menajerim, formdayım ama kulübede kalıyorum. Bir çözüm bulmalıyız."`});
-    else if(p.rivalId && rnd()<0.5){ const rv=RIVALS.find(x=>x.id===p.rivalId); pushPhone({from:p.name,fromType:"oyuncu",kind:"uyari",pid:p.id,subject:"Başka bir ajans aradı",body:`${p.name}: "${rv?rv.name:"Bir menajer"} beni aradı. Seninle devam etmek istiyorum ama ilgilenmen lazım."`}); }
-    else if(rnd()<0.35) pushPhone({from:p.name,fromType:"oyuncu",kind:"bilgi",pid:p.id,subject:"Teşekkürler",body:`${p.name}: "Bu sezon işler yolunda. Desteğin için sağ ol."`});
+    if((p.squadRole==="Yedek"||p.squadRole==="Kadro Fazlası"||p.morale<45) && p.clubId){
+      pushPhone({from:p.name,fromType:"oyuncu",kind:"soru",pid:p.id,topic:"playing_time",urgency:"yüksek",expiresAtTick:nowTick()+3,
+        subject:"Süre alamıyorum",body:`${p.name}: "Menajerim, formdayım ama kulübede kalıyorum. Bir çözüm bulmalıyız."`});
+    } else if(p.rivalId && rnd()<0.5){ const rv=RIVALS.find(x=>x.id===p.rivalId);
+      pushPhone({from:p.name,fromType:"oyuncu",kind:"uyari",pid:p.id,topic:"rival_contact",urgency:"orta",expiresAtTick:nowTick()+4,
+        subject:"Başka bir ajans aradı",body:`${p.name}: "${rv?rv.name:"Bir menajer"} beni aradı. Seninle devam etmek istiyorum ama ilgilenmen lazım."`});
+    } else if(p.ambition>=70&&p.loyalty<45&&p.clubId&&rnd()<0.3){
+      pushPhone({from:p.name,fromType:"oyuncu",kind:"uyari",pid:p.id,topic:"transfer_request",urgency:"yüksek",expiresAtTick:nowTick()+4,
+        subject:"Ayrılmak istiyorum",body:`${p.name}: "Burada daha fazla büyüyemeyeceğimi düşünüyorum. Bana bir çıkış yolu bul."`});
+    } else if(p.injury&&p.injury.weeks>=3&&rnd()<0.4){
+      pushPhone({from:p.name,fromType:"oyuncu",kind:"soru",pid:p.id,topic:"injury_support",urgency:"orta",expiresAtTick:nowTick()+3,
+        subject:"Sakatlık sürecinde yalnızım",body:`${p.name}: "Bu sakatlık süreci zor geçiyor, biraz destek olur musun?"`});
+    } else if(rnd()<0.35) pushPhone({from:p.name,fromType:"oyuncu",kind:"bilgi",pid:p.id,topic:"thank_you",urgency:"düşük",
+      subject:"Teşekkürler",body:`${p.name}: "Bu sezon işler yolunda. Desteğin için sağ ol."`});
   }
-  // kulüp/sponsor/gazeteci
-  if(rnd()<0.18){ const clubs=Object.values(S.world.clubs); const c=pick(clubs);
-    pushPhone({from:c.name,fromType:"kulup",kind:"gorusme",subject:"Görüşme talebi",body:`${c.name} sportif direktörü bir oyuncun hakkında görüşmek istiyor.`}); }
-  if(rnd()<0.12){ pushPhone({from:"Spor Gazetesi",fromType:"gazeteci",kind:"soru",subject:"Röportaj isteği",body:`Bir gazeteci ajansının transfer stratejisi hakkında röportaj istiyor.`}); }
-  if((S.rivalAgencies||[]).length && rnd()<0.08){ const rv=pick(S.rivalAgencies);
-    pushPhone({from:rv.ownerName,fromType:"rakip",kind:"gorusme",rid:rv.id,subject:"Profesyonel görüşme",body:`${rv.ownerName}: "Sektörde birlikte iş yapabileceğimiz konular var. Konuşalım mı?"`}); }
+  // aile
+  if(mp.length && rnd()<0.15){
+    const young=mp.filter(p=>p.age<=21&&p.family);
+    if(young.length){ const p=pick(young); const fam=FAM_TYPES.find(x=>x.id===p.family);
+      if(fam&&fam.id==="guvensiz"&&(p.famTrust||50)<45){
+        pushPhone({from:fam.label,fromType:"aile",kind:"soru",pid:p.id,topic:"trust_problem",urgency:"orta",expiresAtTick:nowTick()+5,
+          subject:`${p.name}'in ailesi endişeli`,body:`Aile: "${p.name} için doğru kararları verdiğinden emin olmak istiyoruz. Bize güven vermelisin."`});
+      } else if(fam&&fam.id==="egitim"&&rnd()<0.5){
+        pushPhone({from:fam.label,fromType:"aile",kind:"soru",pid:p.id,topic:"education",urgency:"düşük",expiresAtTick:nowTick()+6,
+          subject:`${p.name}'in eğitimi`,body:`Aile: "${p.name}'in okulu/gelişimi ne olacak? Bir plan görmek istiyoruz."`});
+      } else if(fam&&(fam.id==="yerel"||fam.id==="avrupa")&&rnd()<0.4){
+        pushPhone({from:fam.label,fromType:"aile",kind:"soru",pid:p.id,topic:"relocation",urgency:"düşük",expiresAtTick:nowTick()+6,
+          subject:`${p.name}'in yaşadığı yer`,body:`Aile: "${fam.id==="yerel"?"Yakınımızda kalmasını istiyoruz.":"Avrupa'da bir kulüpte olmasını istiyoruz."}"`});
+      }
+    }
+  }
+  // kulüp
+  if(mp.length && rnd()<0.18){
+    const withClub=mp.filter(p=>p.clubId);
+    if(rnd()<0.5 && withClub.length){
+      const p=pick(withClub); const c=S.world.clubs[p.clubId];
+      if(c){ const complaintTopic=(p.squadRole==="Yedek"||p.squadRole==="Kadro Fazlası")?"player_complaint":"role_discussion";
+        pushPhone({from:c.name,fromType:"kulup",kind:"gorusme",cid:c.id,pid:p.id,topic:complaintTopic,urgency:"orta",expiresAtTick:nowTick()+3,
+          subject:`${p.name} hakkında görüşme`,body:`${c.name} teknik direktörlüğü ${p.name}'in rolü hakkında konuşmak istiyor.`}); }
+    } else {
+      const p=pick(mp); const club=pickTransferInterestClub(p);
+      if(club){ const young=p.age<=21; const topic=young&&rnd()<0.4?"loan_interest":"transfer_interest";
+        pushPhone({from:club.name,fromType:"kulup",kind:"gorusme",cid:club.id,pid:p.id,topic,urgency:"orta",expiresAtTick:nowTick()+5,
+          subject:`${p.name} hakkında görüşme`,body:`${club.name} sportif direktörü ${p.name} için görüşmek istiyor.`});
+        if(topic==="transfer_interest") pushPhoneWeeklyEvent(`📞 Yeni transfer ilgisi: ${club.name} — ${p.name}`,`openEntity('player','${p.id}')`);
+      }
+    }
+  }
+  // gazeteci
+  if(rnd()<0.12){
+    const hotP=mp.filter(p=>(p.mediaPop||0)>55);
+    if(hotP.length&&rnd()<0.4){ const p=pick(hotP);
+      pushPhone({from:"Spor Gazetesi",fromType:"gazeteci",kind:"soru",pid:p.id,topic:"player_form",urgency:"düşük",
+        subject:"Röportaj isteği",body:`Bir gazeteci ${p.name}'in son form durumu hakkında yorum istiyor.`});
+    } else if(S.offers.length&&rnd()<0.4){ const o=pick(S.offers); const p=S.world.players[o.pid];
+      pushPhone({from:"Spor Gazetesi",fromType:"gazeteci",kind:"soru",pid:o.pid,offerId:o.id,topic:"transfer_rumour",urgency:"orta",expiresAtTick:nowTick()+2,
+        subject:"Transfer söylentisi",body:`Bir gazeteci ${p?p.name:"oyuncun"} transferi hakkında doğrulama istiyor.`});
+    } else pushPhone({from:"Spor Gazetesi",fromType:"gazeteci",kind:"soru",topic:"agency_strategy",urgency:"düşük",
+      subject:"Röportaj isteği",body:`Bir gazeteci ajansının transfer stratejisi hakkında röportaj istiyor.`});
+  }
+  // rakip
+  if((S.rivalAgencies||[]).length && rnd()<0.08){ const rv=pick(S.rivalAgencies); const rel=S.rivalDiplomacy[rv.id]||0;
+    pushPhone({from:rv.ownerName,fromType:"rakip",kind:"gorusme",rid:rv.id,topic:rel<=-40?"threat":"cooperation",urgency:rel<=-40?"orta":"düşük",
+      subject:rel<=-40?"Sert bir uyarı":"Profesyonel görüşme",
+      body:rel<=-40?`${rv.ownerName}: "Bölgemde gezinmeyi kes, sonu iyi olmaz."`:`${rv.ownerName}: "Sektörde birlikte iş yapabileceğimiz konular var. Konuşalım mı?"`});
+  }
 }
-function phoneUnread(){ return (S.phoneInbox||[]).filter(m=>!m.done).length; }
+function phoneUnread(){ return (S.phoneInbox||[]).filter(m=>!m.done&&!m.hiddenFromInbox).length; }
 function openPhone(){
-  const inbox=(S.phoneInbox||[]);
+  const inbox=(S.phoneInbox||[]).filter(m=>!m.hiddenFromInbox);
   let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">MENAJER TELEFONU</div>
     <div class="b" style="font-family:'Fraunces',serif;font-size:18px">📱 Gelen Kutusu</div></div>`;
   if(!inbox.length) h+=`<div class="empty">Kutun temiz — yeni mesaj yok.</div>`;
-  else h+=inbox.map(m=>`<div class="card tappable ${m.done?'':'gold'}" onclick="openPhoneMsg('${m.id}')" style="padding:10px 12px">
-    <div class="row" style="justify-content:space-between"><span class="b" style="font-size:13px">${PHONE_ICON[m.fromType]||"✉️"} ${escapeHtml(m.from)}</span><span class="tiny">S${m.s} H${m.w}</span></div>
-    <div class="tiny b">${escapeHtml(m.subject)}</div></div>`).join("");
+  else h+=inbox.map(m=>`<div class="card tappable ${!m.done?'gold':''}" onclick="openPhoneMsg('${m.id}')" style="padding:10px 12px">
+    <div class="row" style="justify-content:space-between"><span class="b" style="font-size:13px">${PHONE_ICON[m.fromType]||"✉️"} ${escapeHtml(m.from)}</span>
+    <span class="badge ${phoneStatusBadgeClass(m)}">${phoneStatusLabel(m)}</span></div>
+    <div class="tiny b">${escapeHtml(m.subject)}</div>
+    <div class="tiny">S${m.s} H${m.w}${m.urgency==="yüksek"?" · 🔴 acil":""}</div></div>`).join("");
   openSheet(h);
 }
 const PHONE_ICON={oyuncu:"👤",aile:"👨‍👩‍👦",kulup:"🏟️",td:"📋",scout:"🔭",personel:"🧑‍💼",sponsor:"👟",gazeteci:"📰",rakip:"🦈",hukuk:"⚖️"};
+/* ============================================================
+   BİRİNCİ SEVİYE — MESAJ DETAYI
+   ============================================================ */
 function openPhoneMsg(id){
   const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m){ openPhone(); return; }
-  let acts=`<button class="btn block primary" onclick="phoneAct('${id}','reply')">💬 Hemen yanıt ver</button>`;
-  if(m.pid) acts+=`<button class="btn block ghost" style="margin-top:8px" onclick="phoneAct('${id}','delegate')">🧑‍💼 İlişkiler ekibine delege et</button>`;
-  if(m.rid) acts+=`<button class="btn block ghost" style="margin-top:8px" onclick="phoneAct('${id}','diplo')">🤝 Diplomasi masası</button>`;
-  acts+=`<button class="btn block ghost" style="margin-top:8px" onclick="phoneAct('${id}','later')">⏰ Daha sonra hatırlat</button>
-         <button class="btn block danger" style="margin-top:8px" onclick="phoneAct('${id}','dismiss')">✖️ Kapat</button>`;
+  if(m.status==null) setPhoneStatus(m, m.done?"resolved":"unread");
+  const p=m.pid?S.world.players[m.pid]:null, c=m.cid?S.world.clubs[m.cid]:null, rv=m.rid?rivalById(m.rid):null;
+  let ctxCard=`<div class="card">`;
+  ctxCard+=`<div class="sumline"><span class="muted">Durum</span><b>${phoneStatusLabel(m)}</b></div>`;
+  ctxCard+=`<div class="sumline"><span class="muted">Aciliyet</span><b>${phoneUrgencyLabel(m.urgency)}</b></div>`;
+  if(m.expiresAtTick!=null) ctxCard+=`<div class="sumline"><span class="muted">Son tarih</span><b>${Math.max(0,m.expiresAtTick-nowTick())} hafta</b></div>`;
+  if(p) ctxCard+=`<div class="sumline tappable" onclick="closeSheet();openEntity('player','${p.id}')"><span class="muted">Oyuncu</span><b>${escapeHtml(p.name)} →</b></div>`;
+  if(c) ctxCard+=`<div class="sumline tappable" onclick="closeSheet();openEntity('club','${c.id}')"><span class="muted">Kulüp</span><b>${escapeHtml(c.name)} →</b></div>`;
+  if(rv) ctxCard+=`<div class="sumline"><span class="muted">Rakip ajans</span><b>${escapeHtml(rv.ownerName)}</b></div>`;
+  ctxCard+=`<div class="sumline"><span class="muted">İlişki</span><b>${escapeHtml(phoneRelationshipLabel(m,p,c,rv))}</b></div>`;
+  if(m.outcome) ctxCard+=`<div class="sumline"><span class="muted">Son sonuç</span><b>${escapeHtml(m.outcome)}</b></div>`;
+  ctxCard+=`</div>`;
+  let acts="";
+  if(m.status==="delegated"){
+    const task=(S.departmentTasks||[]).find(t=>t.id===m.delegatedTaskId&&t.status==="active");
+    acts=`<div class="card alt tiny">🧑‍💼 Bu görüşme ${task?DEPT_MAP[task.deptId].icon+" "+DEPT_MAP[task.deptId].name:"bir departman"} ekibine devredildi${task?` — ~${Math.max(0,task.dueTick-nowTick())} hafta içinde dönecek`:""}.</div>`;
+    acts+=`<button class="btn block ghost" style="margin-top:8px" onclick="phoneAct('${id}','hide')">🙈 Gelen kutusundan gizle</button>`;
+  } else if(m.status==="awaiting_followup"){
+    acts=`<div class="card alt tiny">⏳ Takip bekleniyor — ~${Math.max(0,(m.followUpTick||nowTick())-nowTick())} hafta içinde gelişme olacak.</div>`;
+    acts+=`<button class="btn block ghost" style="margin-top:8px" onclick="phoneAct('${id}','hide')">🙈 Gelen kutusundan gizle</button>`;
+  } else if(m.status==="resolved"||m.status==="dismissed"||m.status==="expired"){
+    acts=`<div class="card alt tiny">Bu görüşme kapandı.</div>`;
+  } else {
+    acts=`<button class="btn block primary" onclick="openPhoneConversation('${id}')">${phonePrimaryLabel(m)}</button>`;
+    acts+=`<button class="btn block ghost" style="margin-top:8px" onclick="openPhoneDelegation('${id}')">🧑‍💼 Birini görevlendir</button>`;
+    acts+=`<button class="btn block ghost" style="margin-top:8px" onclick="openPhoneReminder('${id}')">⏰ Daha sonra hatırlat</button>`;
+    const impact=phoneDismissImpact(m);
+    const dismissOnclick=(impact.hasConsequence&&impact.urgent)?`phoneConfirmDismiss('${id}')`:`phoneAct('${id}','dismiss')`;
+    acts+=`<button class="btn block danger" style="margin-top:8px" onclick="${dismissOnclick}">✖️ Kapat</button>`;
+  }
   openSheet(`<div class="grab"></div><div style="text-align:center"><div class="tiny">${PHONE_ICON[m.fromType]||"✉️"} ${escapeHtml(m.from)}</div>
     <div class="b" style="font-family:'Fraunces',serif;font-size:17px">${escapeHtml(m.subject)}</div></div>
-    <div class="card">${escapeHtml(m.body)}</div>${acts}
+    <div class="card">${escapeHtml(m.body)}</div>${ctxCard}${acts}
     <button class="btn block ghost" style="margin-top:8px" onclick="openPhone()">← Gelen kutusu</button>`);
+  if(m.status==="unread") setPhoneStatus(m,"awaiting_response");
+}
+/* ---- kapatma (dismiss) sonuç modeli — bilgilendirici mesajlar bedelsiz, acil olanlar onaylı ---- */
+const PHONE_INFO_TOPICS=new Set(["thank_you","player_form","agency_strategy","cooperation"]);
+function phoneDismissImpact(m){
+  const topic=inferPhoneTopic(m);
+  if(PHONE_INFO_TOPICS.has(topic)) return {topic,hasConsequence:false,urgent:false,text:""};
+  const p=m.pid?S.world.players[m.pid]:null, c=m.cid?S.world.clubs[m.cid]:null;
+  const urgent=m.urgency==="yüksek";
+  switch(topic){
+    case "playing_time": case "role_discussion": case "morale":
+      return {topic,hasConsequence:true,urgent,text:`${p?p.name:"Oyuncu"} sadakati ${urgent?"-10":"-4"}, morali ${urgent?"-8":"-3"} düşer.`};
+    case "transfer_request":
+      return {topic,hasConsequence:true,urgent,text:`${p?p.name:"Oyuncu"} sadakati ${urgent?"-14":"-6"} düşer.`};
+    case "rival_contact":
+      return {topic,hasConsequence:true,urgent,text:`${p?p.name:"Oyuncu"} sadakati ${urgent?"-8":"-3"} düşer.`};
+    case "transfer_interest": case "loan_interest": case "player_complaint": case "contract_renewal":
+      return {topic,hasConsequence:true,urgent,text:`${c?c.name:"Kulüp"} ilişkisi ${urgent?"-8":"-3"} düşer.`};
+    case "trust_problem": case "education": case "relocation":
+      return {topic,hasConsequence:true,urgent,text:`${p?p.name+"'in ":""}aile güveni ${urgent?"-10":"-4"} düşer.`};
+    case "social_obligation": case "morality_warning": case "contract_conflict": case "appearance_request":
+      return {topic,hasConsequence:true,urgent,text:`Sponsor ilişkisi zedelenir${urgent?", yıllık bedel hafif düşer":""}.`};
+    default:
+      return {topic,hasConsequence:urgent,urgent,text:urgent?"Bu fırsat kaçırılmış olur.":""};
+  }
+}
+function applyPhoneDismissConsequence(m){
+  if(m._dismissApplied) return;
+  m._dismissApplied=true;
+  const impact=phoneDismissImpact(m);
+  if(!impact.hasConsequence) return;
+  const p=m.pid?S.world.players[m.pid]:null, c=m.cid?S.world.clubs[m.cid]:null;
+  const k=impact.urgent?1:0.4;
+  let text="";
+  switch(impact.topic){
+    case "playing_time": case "role_discussion": case "morale":
+      if(p){ p.loyalty=clamp(p.loyalty-Math.round(10*k),0,100); p.morale=clamp(p.morale-Math.round(8*k),0,100); }
+      text=`${p?p.name:"Oyuncu"} kapatılan mesaj yüzünden hayal kırıklığına uğradı.`; break;
+    case "transfer_request":
+      if(p) p.loyalty=clamp(p.loyalty-Math.round(14*k),0,100);
+      text=`${p?p.name:"Oyuncu"} ayrılma talebi görmezden gelindi.`; break;
+    case "rival_contact":
+      if(p) p.loyalty=clamp(p.loyalty-Math.round(8*k),0,100);
+      text=`${p?p.name:"Oyuncu"} yalnız hissetti.`; break;
+    case "transfer_interest": case "loan_interest": case "player_complaint": case "contract_renewal":
+      if(c) c.relation=clamp(c.relation-Math.round(8*k),0,100);
+      text=`${c?c.name:"Kulüp"} yanıt alamadığı için ilgisini geri çekti.`; break;
+    case "trust_problem": case "education": case "relocation":
+      if(p) p.famTrust=clamp((p.famTrust||50)-Math.round(10*k),0,100);
+      text=`${p?p.name+"'in ":""}ailesi görmezden gelindiğini hissetti.`; break;
+    case "social_obligation": case "morality_warning": case "contract_conflict": case "appearance_request": {
+      const deal=p&&p.brand?(p.brand.activeDeals||[]).find(d=>d.id===m.sponsorDealId):null;
+      if(deal&&impact.urgent) deal.yearly=Math.round(deal.yearly*0.96);
+      text="Sponsor konusu yanıtsız kapatıldı."; break; }
+    default:
+      text="Fırsat kapatılarak kaçırıldı.";
+  }
+  m.dismissConsequence=text;
+  pushPhoneWeeklyEvent(`✖️ ${text}`, p?`openEntity('player','${p.id}')`:c?`openEntity('club','${c.id}')`:null);
+}
+function phoneConfirmDismiss(id){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m){ openPhone(); return; }
+  const impact=phoneDismissImpact(m);
+  const h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">EMİN MİSİN?</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:16px">${escapeHtml(m.subject)}</div></div>
+    <div class="card alt tiny">⚠️ ${escapeHtml(impact.text||"Bu mesajı yanıtsız kapatmak bir bedel getirebilir.")}</div>
+    <button class="btn block danger" style="margin-top:8px" onclick="phoneAct('${id}','dismiss')">✖️ Evet, kapat</button>
+    <button class="btn block ghost" style="margin-top:8px" onclick="openPhoneMsg('${id}')">Vazgeç</button>`;
+  openSheet(h);
 }
 function phoneAct(id, act){
   const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
-  const p=m.pid?S.world.players[m.pid]:null;
-  if(act==="reply"){ if(p){ p.loyalty=clamp(p.loyalty+4,0,100); p.morale=clamp(p.morale+3,0,100); if(p.rivalId&&rnd()<0.4)p.rivalId=null; bumpRep("playerTrust",1); }
-    toast("Yanıtladın 💬","green"); m.done=true; }
-  else if(act==="delegate"){ if(deptUnlocked("relations")&&p){ createDeptTask("renewal","relations",{title:`${p.name} ile ilişki`,pid:p.id,dur:2,baseSucc:0.6}); m.done=true; return; } else { toast("İlişkiler departmanı gerekli"); } }
-  else if(act==="diplo"){ m.done=true; closeSheet(); if(m.rid) openRivalDiplomacy(m.rid); return; }
-  else if(act==="later"){ m.t=nowTick(); toast("Hatırlatıldı ⏰"); closeSheet(); return; }
-  else if(act==="dismiss"){ m.done=true; }
+  if(act==="dismiss"){
+    if(m.status==="delegated"||m.status==="awaiting_followup"){ m.hiddenFromInbox=true; save(); openPhone(); return; }
+    if(!PHONE_STATUS_DONE.has(m.status)) applyPhoneDismissConsequence(m);
+    setPhoneStatus(m,"dismissed");
+  } else if(act==="hide"){
+    m.hiddenFromInbox=true;
+  }
   save(); openPhone();
 }
+/* ============================================================
+   İKİNCİ SEVİYE — GÖRÜŞME EKRANI + YANIT SEÇENEKLERİ
+   ============================================================ */
+function openPhoneConversation(id){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m){ openPhone(); return; }
+  if(m.rid){ setPhoneStatus(m,"in_conversation"); closeSheet(); openRivalDiplomacy(m.rid,m.id); return; }
+  if(["delegated","resolved","dismissed","expired"].includes(m.status)){ openPhoneMsg(id); return; }
+  setPhoneStatus(m,"in_conversation"); if(m.stage==="initial") m.stage="conversation";
+  renderPhoneConversation(m);
+}
+function getPhoneConversationOptions(m,ctx){
+  ctx=ctx||phoneCtx(m);
+  const topic=inferPhoneTopic(m);
+  const fn=PHONE_OPTION_BUILDERS[topic]||PHONE_OPTION_BUILDERS._generic;
+  try{ return fn(m,ctx)||[]; }catch(e){ console.error("phoneOptions",topic,e); return phoneGenericOptions(m,ctx); }
+}
+function renderPhoneConversation(m){
+  const ctx=phoneCtx(m);
+  const opts=getPhoneConversationOptions(m,ctx);
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">${PHONE_ICON[m.fromType]||"✉️"} ${escapeHtml(m.from)}</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:17px">${escapeHtml(m.subject)}</div>
+    <div class="tiny">${phoneUrgencyLabel(m.urgency)}${m.expiresAtTick!=null?` · son ${Math.max(0,m.expiresAtTick-nowTick())} hafta`:""}</div></div>
+    <div class="card">${escapeHtml(m.body)}</div>`;
+  if(ctx.p) h+=`<div class="card alt tiny">👤 ${escapeHtml(ctx.p.name)} · sadakat ${Math.round(ctx.p.loyalty||0)} · moral ${Math.round(ctx.p.morale||0)}${ctx.p.clubId&&S.world.clubs[ctx.p.clubId]?` · ${escapeHtml(S.world.clubs[ctx.p.clubId].name)}`:""}</div>`;
+  if(ctx.c) h+=`<div class="card alt tiny">🏟️ ${escapeHtml(ctx.c.name)} · ilişki ${Math.round(ctx.c.relation||0)}/100 · bütçe ${fmtRange(ctx.c.transferBudget||0,ctx.c.countryId,"clubKnowledge")}</div>`;
+  if(ctx.deal) h+=`<div class="card alt tiny">👟 ${escapeHtml(ctx.deal.brand)} · yıllık ${fmtM(ctx.deal.yearly)} · kesinti sayısı ${(ctx.deal.socialObligation&&ctx.deal.socialObligation.missed)||0}</div>`;
+  if(!opts.length) h+=`<div class="empty">Şu an sunulacak somut bir seçenek yok.</div>`;
+  else h+=`<div class="card">`+opts.map(o=>{ const cl=o.chance!=null?phoneChanceLabel(o.chance,o.confidence):null;
+    return `<button class="opt" onclick="resolvePhoneConversation('${m.id}','${o.id}')">
+      <div class="ot">${escapeHtml(o.label)}</div>
+      <div class="oh">${escapeHtml(o.description)}${cl?` · ${cl}`:""}${o.cashCost?` · ${fmtM(-o.cashCost)}`:""}${o.attentionCost?` · dikkat ${o.attentionCost}`:""}</div></button>`; }).join("")+`</div>`;
+  h+=`<button class="btn block ghost" style="margin-top:8px" onclick="openPhoneMsg('${m.id}')">← Geri</button>`;
+  openSheet(h);
+}
+function resolvePhoneConversation(id, optId){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
+  if(["delegated","resolved","dismissed","expired"].includes(m.status)){ openPhoneMsg(id); return; }
+  if(optId==="delegate"){ openPhoneDelegation(id); return; }
+  if(optId==="alt_player"){ openPhoneAlternatePlayer(id); return; }
+  const ctx=phoneCtx(m);
+  const opts=getPhoneConversationOptions(m,ctx);
+  const opt=opts.find(o=>o.id===optId); if(!opt||!opt.run) return;
+  if(opt.cashCost && S.cash<opt.cashCost){ toast("Yetersiz bakiye 💸"); return; }
+  if(opt.attentionCost && !useAttention(opt.attentionCost)) return;
+  if(opt.cashCost) ledger(`Telefon görüşmesi — ${m.subject}`,-opt.cashCost);
+  const roll = opt.chance!=null ? rnd()<opt.chance : true;
+  const result = opt.run(m,ctx,roll) || {text:"",status:"resolved"};
+  completePhoneConversation(m, Object.assign({success:roll},result));
+}
+function completePhoneConversation(m, result){
+  m.outcome=result.text||"";
+  if(!result.status || !["awaiting_followup","delegated"].includes(result.status)) setPhoneStatus(m,"resolved");
+  toast(result.text?String(result.text).slice(0,60):"Görüşüldü 💬", result.success===false?undefined:"green");
+  pushPhoneWeeklyEvent(`📱 ${m.subject}: ${result.text||""}`.trim(), m.pid?`openEntity('player','${m.pid}')`:m.cid?`openEntity('club','${m.cid}')`:null);
+  save();
+  openPhoneMsg(m.id);
+}
+function schedulePhoneFollowUp(message, weeks, followUpKind){
+  weeks=Math.max(1,Math.round(weeks));
+  message.followUpTick=nowTick()+weeks;
+  message.followUpKind=followUpKind||null;
+  message.stage="followup1";
+  setPhoneStatus(message,"awaiting_followup");
+}
+/* ---- alternatif oyuncu seçici ---- */
+function openPhoneAlternatePlayer(id){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m||!m.cid){ openPhoneMsg(id); return; }
+  const c=S.world.clubs[m.cid]; if(!c){ openPhoneMsg(id); return; }
+  const cands=myPlayers().filter(pp=>pp.id!==m.pid).filter(pp=>{ try{ return evaluateRegistration(pp,c).ok!==false; }catch(e){ return true; } })
+    .sort((a,b)=>(((c.needs&&c.needs[b.pos])||0))-(((c.needs&&c.needs[a.pos])||0))).slice(0,8);
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">ALTERNATİF OYUNCU</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:16px">${escapeHtml(c.name)}'e kimi önereyim?</div></div>`;
+  if(!cands.length) h+=`<div class="empty">Uygun portföy oyuncusu yok.</div>`;
+  else h+=`<div class="card">`+cands.map(pp=>`<button class="opt" onclick="phoneConfirmAlternate('${id}','${pp.id}')">
+    <div class="ot">${escapeHtml(pp.name)} · ${POS_LABEL[pp.pos]||pp.pos}</div>
+    <div class="oh">Mevki ihtiyacı %${(c.needs&&c.needs[pp.pos])||0} · değer ${fmtM(pp.value)}</div></button>`).join("")+`</div>`;
+  h+=`<button class="btn block ghost" style="margin-top:8px" onclick="openPhoneMsg('${id}')">← Geri</button>`;
+  openSheet(h);
+}
+function phoneConfirmAlternate(id, pid2){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
+  const c=S.world.clubs[m.cid]; const p2=S.world.players[pid2]; if(!c||!p2){ openPhoneMsg(id); return; }
+  ledger("Alternatif oyuncu dosyası — "+c.name,-800);
+  p2.interest[c.id]=clamp((p2.interest[c.id]||0)+20,0,100); c.relation=clamp(c.relation+2,0,100);
+  completePhoneConversation(m,{text:`${c.name}, alternatif olarak ${p2.name}'i inceleyecek.`,status:"resolved"});
+}
+/* ============================================================
+   GÖREVLENDİRME (DELEGASYON) ALT SİSTEMİ
+   ============================================================ */
+const PHONE_TOPIC_DEPT_MAP={
+  playing_time:["relations"],morale:["relations"],rival_contact:["relations"],transfer_request:["relations","legal"],
+  contract:["legal"],injury_support:["performance","relations"],thank_you:["relations"],
+  trust_problem:["relations","academy"],education:["academy","relations"],relocation:["academy","international"],
+  transfer_interest:["relations","legal"],loan_interest:["relations"],player_complaint:["relations"],
+  role_discussion:["relations","performance"],contract_renewal:["legal"],
+  social_obligation:["sponsor","media"],morality_warning:["legal","media"],contract_conflict:["sponsor","legal"],
+  appearance_request:["sponsor"],transfer_rumour:["media"],player_form:["media"],agency_strategy:["media"],
+  controversy:["media","legal"],cooperation:["relations"],threat:["legal"],
+};
+function getEligibleDelegates(message){
+  const topic=inferPhoneTopic(message);
+  const deptIds=PHONE_TOPIC_DEPT_MAP[topic]||["relations"];
+  const out=[];
+  for(const deptId of deptIds){
+    if(!deptUnlocked(deptId)) continue;
+    const d=S.departments[deptId]; const staff=deptStaff(S,deptId); const mgr=staff.find(s=>s.id===d.managerId)||staff[0];
+    const eff=d.efficiency||0;
+    out.push({id:deptId,departmentName:DEPT_MAP[deptId].name,delegateName:mgr?mgr.name:"(yönetici atanmamış)",
+      estWeeks:eff>=70?1:eff>=40?2:3,successBand:eff>=60?"Güçlü":eff>=35?"Makul":"Riskli",
+      successChance:clamp(0.3+eff/180,0.15,0.9),workload:d.workload||0,
+      cost:Math.round((DEPT_MAP[deptId].weekly||0)*0.05),
+      downside:"Sonuç departman kalitesine bağlı; başarısızlık ilişkiyi biraz yıpratabilir."});
+  }
+  return out;
+}
+function openPhoneDelegation(id){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
+  const delegates=getEligibleDelegates(m);
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">GÖREVLENDİRME</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:16px">${escapeHtml(m.subject)}</div></div>`;
+  if(!delegates.length) h+=`<div class="empty">Bu konu için uygun/açık departman yok.</div>`;
+  else h+=`<div class="card">`+delegates.map(d=>`<button class="opt" onclick="assignPhoneConversation('${id}','${d.id}')">
+    <div class="ot">${DEPT_MAP[d.id].icon} ${escapeHtml(d.departmentName)} — ${escapeHtml(d.delegateName)}</div>
+    <div class="oh">${d.successBand} başarı ~%${Math.round(d.successChance*100)} · ${d.estWeeks} hafta · iş yükü ${d.workload} · maliyet ${fmtM(d.cost)}</div>
+    <div class="oh">${escapeHtml(d.downside)}</div></button>`).join("")+`</div>`;
+  h+=`<button class="btn block ghost" style="margin-top:8px" onclick="openPhoneMsg('${id}')">← Geri</button>`;
+  openSheet(h);
+}
+function assignPhoneConversation(messageId, deptId){
+  const m=(S.phoneInbox||[]).find(x=>x.id===messageId); if(!m) return;
+  if(!deptUnlocked(deptId)){ toast("Bu departman kilitli"); return; }
+  const info=getEligibleDelegates(m).find(x=>x.id===deptId); if(!info) return;
+  const d=S.departments[deptId];
+  const task={id:"dt"+ri(1e4,9e4),kind:"phoneDelegate",deptId,title:`📱 ${m.subject}`,
+    pid:m.pid||null,cid:m.cid||null,rid:m.rid||null,sponsorDealId:m.sponsorDealId||null,
+    sourceMessageId:m.id,topic:inferPhoneTopic(m),
+    createdTick:nowTick(),dueTick:nowTick()+info.estWeeks,baseSucc:info.successChance,value:6,
+    status:"active",attentionSaved:1,cost:info.cost,authorityLevel:"standart"};
+  S.departmentTasks=S.departmentTasks||[]; S.departmentTasks.push(task);
+  d.activeTasks=(S.departmentTasks||[]).filter(t=>t.deptId===deptId&&t.status==="active").length;
+  if(task.cost) ledger("Delegasyon bütçesi — "+DEPT_MAP[deptId].name,-task.cost);
+  m.delegatedTaskId=task.id; m.stage="delegated"; setPhoneStatus(m,"delegated");
+  toast(`Görüşme ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine devredildi`,"green");
+  recomputeDepartments(S); save(); closeSheet(); openPhoneMsg(m.id);
+}
+function resolveDelegatedConversation(task, ok){
+  const m=(S.phoneInbox||[]).find(x=>x.id===task.sourceMessageId);
+  const p=task.pid?S.world.players[task.pid]:null;
+  const c=task.cid?S.world.clubs[task.cid]:null;
+  const rv=task.rid?rivalById(task.rid):null;
+  const deptName=DEPT_MAP[task.deptId].name;
+  const deptEff=(S.departments[task.deptId]||{}).efficiency||0;
+  let resultText;
+  if(ok){
+    switch(task.topic){
+      case "playing_time": case "role_discussion": case "morale": case "thank_you": case "rival_contact":
+        if(p){ p.loyalty=clamp(p.loyalty+8,0,100); p.morale=clamp(p.morale+6,0,100); bumpRep("playerTrust",1); }
+        resultText=`${deptName} ${p?p.name:"oyuncu"} ile görüşüp durumu yatıştırdı.`; break;
+      case "trust_problem": case "education": case "relocation":
+        if(p) p.famTrust=clamp((p.famTrust||50)+10,0,100);
+        resultText=`${deptName} aileyle görüştü, güven arttı.`; break;
+      case "transfer_interest": case "loan_interest": case "player_complaint": case "contract_renewal":
+        if(c) c.relation=clamp(c.relation+6,0,100); if(p) p.loyalty=clamp(p.loyalty+3,0,100);
+        resultText=`${deptName} ${c?c.name:"kulüp"} ile ilişkiyi olumlu yönetti.`; break;
+      case "social_obligation": case "morality_warning": case "contract_conflict": case "appearance_request": {
+        const deal=p&&p.brand?(p.brand.activeDeals||[]).find(d=>d.id===task.sponsorDealId):null;
+        if(deal){ if(deal.socialObligation) deal.socialObligation.missed=Math.max(0,(deal.socialObligation.missed||0)-1); delete deal._moralWarn; }
+        resultText=`${deptName} sponsorla konuyu çözdü.`; break; }
+      case "transfer_rumour": case "player_form": case "agency_strategy": case "controversy":
+        S.mediaPower=clamp((S.mediaPower||0)+3,0,100);
+        resultText=`${deptName} basınla iletişimi profesyonelce yönetti.`; break;
+      case "cooperation": case "information_exchange": case "transfer_partnership": case "truce": {
+        if(rv){ const delta=Math.round(10+deptEff/10);
+          S.rivalDiplomacy[rv.id]=clamp((S.rivalDiplomacy[rv.id]||0)+delta,-100,100); rv.relationWithPlayerAgency=S.rivalDiplomacy[rv.id];
+          rlog(rv.baseId,`${deptName} ile profesyonel bir görüşme yürüttü (ilişki +${delta})`);
+          resultText=`${deptName}, ${rv.ownerName} ile ilişkiyi geliştirdi (ilişki +${delta}).`;
+        } else resultText=`${deptName} konuyu idare etti.`;
+        break; }
+      case "threat": case "client_dispute": {
+        if(p){ p.loyalty=clamp(p.loyalty+4,0,100); }
+        if(rv){ const delta=Math.round(6+deptEff/12);
+          S.rivalDiplomacy[rv.id]=clamp((S.rivalDiplomacy[rv.id]||0)+delta,-100,100); rv.relationWithPlayerAgency=S.rivalDiplomacy[rv.id];
+          rlog(rv.baseId,`${deptName} gerilimi yatıştırdı (ilişki +${delta})`);
+          resultText=`${deptName}, ${rv.ownerName} ile gerilimi bir miktar yatıştırdı (ilişki +${delta}).`;
+        } else resultText=`${deptName} konuyu idare etti.`;
+        break; }
+      default:
+        if(p) p.loyalty=clamp(p.loyalty+5,0,100);
+        resultText=`${deptName} konuyu idare etti.`;
+    }
+  } else {
+    switch(task.topic){
+      case "playing_time": case "role_discussion": case "morale": case "rival_contact":
+        if(p){ p.loyalty=clamp(p.loyalty-6,0,100); p.morale=clamp(p.morale-5,0,100); }
+        resultText=`${deptName} istenen sonucu alamadı — memnuniyetsizlik sürüyor.`; break;
+      case "trust_problem": case "education": case "relocation":
+        if(p) p.famTrust=clamp((p.famTrust||50)-6,0,100);
+        resultText=`${deptName} aileyi ikna edemedi.`; break;
+      case "transfer_interest": case "loan_interest": case "player_complaint": case "contract_renewal":
+        if(c) c.relation=clamp(c.relation-4,0,100);
+        resultText=`${deptName} kulüple anlaşamadı.`; break;
+      case "cooperation": case "information_exchange": case "transfer_partnership": case "truce": {
+        if(rv){ const delta=-Math.round(4+((100-deptEff)/25));
+          S.rivalDiplomacy[rv.id]=clamp((S.rivalDiplomacy[rv.id]||0)+delta,-100,100); rv.relationWithPlayerAgency=S.rivalDiplomacy[rv.id];
+          rlog(rv.baseId,`${deptName} ile görüşme sonuçsuz kaldı (ilişki ${delta})`);
+          resultText=`${deptName}, ${rv.ownerName} ile anlaşamadı (ilişki ${delta}).`;
+        } else resultText=`${deptName} bu konuda sonuç alamadı.`;
+        break; }
+      case "threat": case "client_dispute": {
+        if(rv){ const delta=-Math.round(8+((100-deptEff)/20));
+          S.rivalDiplomacy[rv.id]=clamp((S.rivalDiplomacy[rv.id]||0)+delta,-100,100); rv.relationWithPlayerAgency=S.rivalDiplomacy[rv.id];
+          rv.riskTolerance=clamp((rv.riskTolerance||0.4)+0.05,0,1);
+          rlog(rv.baseId,`${deptName} tehdide karşı zayıf kaldı — rakip baskısını artırdı`);
+          resultText=`${deptName}, tehdidi durduramadı — ${rv.ownerName} baskısını artırdı (ilişki ${delta}).`;
+        } else resultText=`${deptName} bu konuda sonuç alamadı.`;
+        break; }
+      default: resultText=`${deptName} bu konuda sonuç alamadı.`;
+    }
+  }
+  if(m){
+    m.outcome=resultText; m.stage="resolved"; setPhoneStatus(m,"resolved");
+    pushPhone({from:m.from,fromType:m.fromType,kind:"bilgi",pid:m.pid,cid:m.cid,rid:m.rid,sponsorDealId:m.sponsorDealId,
+      topic:m.topic,urgency:"düşük",subject:`Sonuç: ${m.subject}`,body:resultText,parentMessageId:m.id,stage:"followup_result"});
+    pushPhoneWeeklyEvent(`🧑‍💼 Delegasyon sonucu — ${m.subject}: ${resultText}`, p?`openEntity('player','${p.id}')`:c?`openEntity('club','${c.id}')`:null);
+  }
+  notify("ajans",`${ok?"✅":"⚠️"} Telefon delegasyonu: ${m?m.subject:task.title}`,"agency","departman");
+}
+/* ============================================================
+   HATIRLATMA (gerçek gelecek tick)
+   ============================================================ */
+function openPhoneReminder(id){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">HATIRLATMA</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:16px">${escapeHtml(m.subject)}</div></div><div class="card">`;
+  const opts=[["1 hafta sonra",1],["2 hafta sonra",2]];
+  opts.push(m.expiresAtTick!=null?["Son tarihten hemen önce",Math.max(1,m.expiresAtTick-nowTick()-1)]:["3 hafta sonra",3]);
+  for(const [label,wk] of opts){
+    let capped=wk; if(m.expiresAtTick!=null) capped=Math.max(1,Math.min(wk,m.expiresAtTick-nowTick()-1||1));
+    h+=`<button class="opt" onclick="setPhoneReminder('${id}',${capped})"><div class="ot">⏰ ${label}</div><div class="oh">${capped} hafta sonra tekrar gündeme gelir</div></button>`;
+  }
+  h+=`</div><button class="btn block ghost" style="margin-top:8px" onclick="openPhoneMsg('${id}')">← Geri</button>`;
+  openSheet(h);
+}
+function setPhoneReminder(id, weeks){
+  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
+  weeks=Math.max(1,Math.round(weeks));
+  let target=nowTick()+weeks;
+  if(m.expiresAtTick!=null) target=Math.min(target, Math.max(nowTick()+1, m.expiresAtTick-1));
+  m.followUpTick=target; m.stage="reminder"; setPhoneStatus(m,"awaiting_response");
+  toast("Hatırlatıldı ⏰","green"); save(); openPhone();
+}
+/* ============================================================
+   HAFTALIK SÜPÜRME — takip, hatırlatma, süresi geçen acil mesajlar
+   ============================================================ */
+function resolvePhoneFollowUp(m){
+  const p=m.pid?S.world.players[m.pid]:null; const c=m.cid?S.world.clubs[m.cid]:null;
+  let resultText="", success=false;
+  if(m.followUpKind==="club_loan_answer" && p && c){
+    const chance=clamp(0.35+(c.relation||20)/150+(((c.needs&&c.needs[p.pos])||0))/300,0.15,0.85);
+    success=rnd()<chance;
+    if(success){ p.loan={weeks:ri(14,22),backClub:p.clubId,club:c.id,good:false}; p.clubId=c.id; p.morale=clamp(p.morale+10,5,99); p.devMod=1.1; p.loanDone=true;
+      (p.careerEvents=p.careerEvents||[]).push({s:S.season,w:S.week,t:"Kiralık",d:`${c.name} (telefon görüşmesi)`});
+      resultText=`${c.name} kiralık teklifini onayladı — ${p.name} kiralık gitti.`;
+    } else { c.relation=clamp((c.relation||20)-2,0,100); resultText=`${c.name} kiralık konusunda olumlu dönmedi.`; }
+  } else {
+    resultText="Kulüp geri döndü ama somut bir gelişme olmadı.";
+  }
+  m.outcome=resultText; m.followUpTick=null; setPhoneStatus(m,"resolved"); m.stage="followed_up";
+  pushPhone({from:m.from,fromType:m.fromType,kind:success?"bilgi":"uyari",pid:m.pid,cid:m.cid,topic:m.topic,
+    urgency:"düşük",subject:`Yanıt geldi: ${m.subject}`,body:resultText,parentMessageId:m.id,stage:"followup_result"});
+  pushPhoneWeeklyEvent(`⏳ Takip sonucu — ${m.subject}: ${resultText}`, p?`openEntity('player','${p.id}')`:c?`openEntity('club','${c.id}')`:null);
+}
+function applyPhoneExpiryConsequence(m){
+  const p=m.pid?S.world.players[m.pid]:null; const c=m.cid?S.world.clubs[m.cid]:null;
+  let text="";
+  switch(inferPhoneTopic(m)){
+    case "playing_time": case "role_discussion": case "morale":
+      if(p){ p.loyalty=clamp(p.loyalty-10,0,100); p.morale=clamp(p.morale-8,0,100); if(!p.rivalId&&rnd()<0.3) p.rivalId=pick(RIVALS).id; }
+      text=`${p?p.name:"Oyuncu"} yanıt bulamadığı için hayal kırıklığına uğradı.`; break;
+    case "transfer_request":
+      if(p){ p.loyalty=clamp(p.loyalty-14,0,100); if(!p.rivalId) p.rivalId=pick(RIVALS).id; }
+      text=`${p?p.name:"Oyuncu"} ayrılma talebine yanıt alamadı — güven zedelendi.`; break;
+    case "transfer_interest": case "loan_interest":
+      if(c) c.relation=clamp(c.relation-8,0,100);
+      text=`${c?c.name:"Kulüp"} yanıt alamadığı için ilgisini geri çekti.`; break;
+    case "trust_problem": case "education": case "relocation":
+      if(p) p.famTrust=clamp((p.famTrust||50)-10,0,100);
+      text=`${p?p.name+"'in ":""}ailesi yanıtsız kaldığı için güvenini kaybetti.`; break;
+    case "social_obligation": case "morality_warning": case "contract_conflict": {
+      const deal=p&&p.brand?(p.brand.activeDeals||[]).find(d=>d.id===m.sponsorDealId):null;
+      if(deal) deal.yearly=Math.round(deal.yearly*0.92);
+      text="Sponsor konusu yanıtsız kaldı — sözleşme bedeli hafif düştü."; break; }
+    default: text="Mesaj yanıtsız kaldığı için fırsat kaçtı.";
+  }
+  setPhoneStatus(m,"expired"); m.outcome=text;
+  addNews("me",`Fırsat kaçtı: ${m.subject}`,text,"bad");
+  pushPhoneWeeklyEvent(`⌛ ${text}`, p?`openEntity('player','${p.id}')`:c?`openEntity('club','${c.id}')`:null);
+}
+function simPhoneFollowUps(sum){
+  const now=nowTick();
+  for(const m of (S.phoneInbox||[]).slice()){
+    if(m.followUpTick!=null && m.followUpTick<=now){
+      if(m.stage==="reminder"||m.followUpKind==="contract_renewal_recheck"){
+        m.followUpTick=null; m.stage="initial"; setPhoneStatus(m,"awaiting_response");
+      } else if(m.status==="awaiting_followup"){
+        resolvePhoneFollowUp(m);
+      }
+    }
+    if(m.expiresAtTick!=null && now>m.expiresAtTick && (m.status==="unread"||m.status==="awaiting_response")){
+      applyPhoneExpiryConsequence(m);
+    }
+  }
+}
+/* ============================================================
+   KONU BAZLI YANIT SEÇENEKLERİ
+   ============================================================ */
+function phoneGenericOptions(m,ctx){
+  const out=[];
+  if(ctx.p){
+    out.push({id:"g_support",label:"Konuş ve destekle",description:"Zaman ayır, dinle, güven ver.",
+      chance:clamp(0.5+((ctx.p.loyalty||50)-50)/300,0.3,0.85),confidence:80,
+      run(mm,cc,ok){ cc.p.loyalty=clamp(cc.p.loyalty+(ok?6:2),0,100); cc.p.morale=clamp(cc.p.morale+(ok?5:1),0,100);
+        return {text:ok?"Oyuncu rahatladı, sadakati arttı.":"Kısmen ikna oldu.",status:"resolved"}; }});
+    out.push({id:"g_patience",label:"Sabırlı ol, şimdilik bekle",description:"Söz verme, durumu izle.",chance:null,confidence:80,
+      run(mm,cc){ const prof=(cc.p.prof||50)>=60; cc.p.morale=clamp(cc.p.morale+(prof?0:-3),0,100);
+        return {text:prof?"Profesyonel bir oyuncu, anlayışla karşıladı.":"Oyuncu biraz gücendi.",status:"resolved"}; }});
+  }
+  if(ctx.c){
+    out.push({id:"g_listen",label:"Kulübü dinle, ilişkiyi koru",description:"Nazik bir görüşme yap.",
+      chance:clamp(0.5+((ctx.c.relation||20))/200,0.35,0.85),confidence:70,
+      run(mm,cc,ok){ cc.c.relation=clamp(cc.c.relation+(ok?6:2),0,100); return {text:ok?"Kulüple ilişki güçlendi.":"Görüşme nötr geçti.",status:"resolved"}; }});
+  }
+  out.push({id:"g_ack",label:"Bilgilendim",description:"Şimdilik yanıt bu kadar.",chance:null,confidence:90,
+    run(){ return {text:"Kısa bir yanıt verdin.",status:"resolved"}; }});
+  out.push({id:"delegate",label:"Uygun ekibe devret",description:"Uzman ekip görüşsün.",chance:null,confidence:0});
+  return out;
+}
+function phonePlayingTimeOptions(m,ctx){
+  const p=ctx.p; if(!p) return phoneGenericOptions(m,ctx);
+  const c=p.clubId?S.world.clubs[p.clubId]:null;
+  const openPromiseCount=(p.promises||[]).filter(x=>x.status==="open").length;
+  const talkChance=clamp(0.55+(((p.coachTrust||50)-50))/200+(c?((c.relation||20))/300:0)-openPromiseCount*0.08,0.2,0.85);
+  return [
+    {id:"talk_club",label:"Kulüple hemen konuşacağım",description:"Kulübe git, süre sözü ver. (Söz — 14 hafta)",
+      chance:talkChance,confidence:75,attentionCost:1,
+      run(mm,cc,ok){ givePromise(p.id,"minutes");
+        return {text:ok?"Kulüple olumlu bir görüşme yaptın, söz verildi.":"Kulüp temkinli ama sözü kabul etti.",status:"resolved"}; }},
+    {id:"loan_search",label:"Sana kiralık kulüp arayacağım",description:"Kiralık arayışı başlat. (Söz — 16 hafta)",chance:null,confidence:80,
+      run(mm,cc){ givePromise(p.id,"loan"); cc.p.morale=clamp(cc.p.morale+5,0,100); return {text:"Oyuncu kiralık fikrine sıcak baktı.",status:"resolved"}; }},
+    {id:"push_form",label:"Formunu yükselt, sonra baskı yapalım",description:"Söz yok — sabırla baskı için zemin hazırla.",
+      chance:clamp(0.4+((p.discipline||50)-50)/200,0.2,0.7),confidence:70,
+      run(mm,cc,ok){ if(!ok&&p.ambition>=70){ cc.p.morale=clamp(cc.p.morale-6,0,100); cc.p.loyalty=clamp(cc.p.loyalty-4,0,100);
+          return {text:"Hırslı oyuncu bu yaklaşımdan hoşlanmadı.",status:"resolved"}; }
+        cc.p.morale=clamp(cc.p.morale+(ok?3:0),0,100);
+        return {text:ok?"Oyuncu planı anladı, sabırla bekleyecek.":"Oyuncu tarafsız karşıladı.",status:"resolved"}; }},
+    {id:"patience",label:"Sabırlı ol",description:"Söz verme, hiçbir maliyeti yok.",chance:null,confidence:85,
+      run(mm,cc){ const prof=(p.prof||50)>=60||p.loyalty>=65;
+        if(!prof){ cc.p.morale=clamp(cc.p.morale-5,0,100); cc.p.loyalty=clamp(cc.p.loyalty-3,0,100); } else cc.p.morale=clamp(cc.p.morale+1,0,100);
+        return {text:prof?"Profesyonel/sadık karakteri sayesinde sorun çıkmadı.":"Oyuncu bu cevaptan tatmin olmadı.",status:"resolved"}; }},
+    {id:"delegate",label:"İlişkiler ekibine devret",description:"Uzman ekip görüşsün.",chance:null,confidence:0},
+  ];
+}
+function phoneRivalContactOptions(m,ctx){
+  const p=ctx.p; if(!p) return phoneGenericOptions(m,ctx);
+  const chance=clamp(0.4+(((p.loyalty||50)-50))/150+(S.rep||0)/300,0.25,0.85);
+  return [
+    {id:"reassure",label:"Sana güveniyorum, birlikte büyüyeceğiz",description:"Oyuncuyu ikna etmeye çalış.",chance,confidence:75,
+      run(mm,cc,ok){ if(ok){ cc.p.loyalty=clamp(cc.p.loyalty+10,0,100); cc.p.rivalId=null; } else cc.p.loyalty=clamp(cc.p.loyalty+2,0,100);
+        return {text:ok?"Oyuncu ikna oldu, rakip ajansla ilgisini kesti.":"Oyuncu hâlâ tereddütlü.",status:"resolved"}; }},
+    {id:"commission_cut",label:"Komisyonu düşüreceğim",description:"Somut bir jest yap. (Söz — komisyon %5)",chance:null,confidence:80,
+      run(mm,cc){ givePromise(p.id,"commission"); return {text:"Oyuncu somut teklifi beğendi.",status:"resolved"}; }},
+    {id:"ignore",label:"Şimdilik görmezden gel",description:"Hiçbir şey yapma.",chance:null,confidence:60,
+      run(mm,cc){ cc.p.loyalty=clamp(cc.p.loyalty-5,0,100); return {text:"Oyuncu yalnız hissetti.",status:"resolved"}; }},
+    {id:"delegate",label:"İlişkiler ekibine devret",description:"Uzman ekip ikna etsin.",chance:null,confidence:0},
+  ];
+}
+function phoneTransferRequestOptions(m,ctx){
+  const p=ctx.p; if(!p) return phoneGenericOptions(m,ctx);
+  return [
+    {id:"promise_move",label:"Sana daha büyük bir kulüp bulacağım",description:"Somut hedef koy. (Söz — 30 hafta)",chance:null,confidence:70,
+      run(mm,cc){ givePromise(p.id,"transfer_up"); return {text:"Oyuncu net bir hedef görünce sakinleşti.",status:"resolved"}; }},
+    {id:"push_now",label:"Hemen kulüplere pazarla",description:"Şimdi harekete geç.",
+      chance:clamp(0.4+deptBonus("transferOps")*0.3+(S.rep||0)/300,0.25,0.8),confidence:70,attentionCost:1,
+      run(mm,cc,ok){ if(ok){ const club=pickTransferInterestClub(p); if(club) cc.p.interest[club.id]=clamp((cc.p.interest[club.id]||0)+25,0,100); }
+        return {text:ok?"Piyasaya sinyal gönderildi, ilgi arttı.":"Şu an somut bir ilgi bulunamadı.",status:"resolved"}; }},
+    {id:"calm_down",label:"Şimdi acele etme, planlı gidelim",description:"Sakinleştirmeye çalış.",
+      chance:clamp(0.4+((p.prof||50)-50)/200,0.25,0.75),confidence:70,
+      run(mm,cc,ok){ cc.p.loyalty=clamp(cc.p.loyalty+(ok?4:-6),0,100); return {text:ok?"Oyuncu sabretmeyi kabul etti.":"Oyuncu ikna olmadı, güven sarsıldı.",status:"resolved"}; }},
+    {id:"delegate",label:"İlişkiler ekibine devret",description:"Uzman ekip görüşsün.",chance:null,confidence:0},
+  ];
+}
+function phoneInjurySupportOptions(m,ctx){
+  const p=ctx.p; if(!p) return phoneGenericOptions(m,ctx);
+  return [
+    {id:"visit",label:"Yanına gideceğim",description:"Moral desteği ver.",chance:null,confidence:80,
+      run(mm,cc){ cc.p.morale=clamp(cc.p.morale+8,0,100); cc.p.loyalty=clamp(cc.p.loyalty+4,0,100); return {text:"Ziyaretin oyuncuyu rahatlattı.",status:"resolved"}; }},
+    {id:"pay_specialist",label:"Özel uzman ayarlayayım (€5K)",description:"İyileşmeyi hızlandır.",cashCost:5000,chance:0.7,confidence:80,
+      run(mm,cc,ok){ if(ok&&cc.p.injury) cc.p.injury.weeks=Math.max(1,cc.p.injury.weeks-2); cc.p.morale=clamp(cc.p.morale+6,0,100);
+        return {text:ok?"Uzman desteğiyle iyileşme hızlandı.":"Uzman fayda sağlamadı ama moral iyi.",status:"resolved"}; }},
+    {id:"patience",label:"Sabırlı ol, doğal süreci bekle",description:"Maliyetsiz.",chance:null,confidence:80,
+      run(){ return {text:"Oyuncu anlayışla karşıladı.",status:"resolved"}; }},
+    {id:"delegate",label:"Performans ekibine devret",description:"Sakatlık takibini uzmana bırak.",chance:null,confidence:0},
+  ];
+}
+function phoneThankYouOptions(m,ctx){
+  return [
+    {id:"acknowledge",label:"Rica ederim, birlikte devam",description:"Kısa ve sıcak bir yanıt.",chance:null,confidence:90,
+      run(mm,cc){ if(cc.p){ cc.p.morale=clamp(cc.p.morale+2,0,100); cc.p.loyalty=clamp(cc.p.loyalty+2,0,100); } return {text:"Kısa ama samimi bir yanıt verdin.",status:"resolved"}; }},
+    {id:"ack_only",label:"Bilgilendim",description:"Sadece okundu bilgisi.",chance:null,confidence:90,
+      run(){ return {text:"Mesajı okudun, yanıt vermedin.",status:"resolved"}; }},
+  ];
+}
+function phoneTrustProblemOptions(m,ctx){
+  const p=ctx.p; if(!p) return phoneGenericOptions(m,ctx);
+  const chance=clamp(0.4+(((p.famTrust||50)-50))/200+(S.rep||0)/300,0.2,0.8);
+  return [
+    {id:"reassure_family",label:"Aileyle yüz yüze konuşacağım",description:"Zaman ayır, güven inşa et.",chance,confidence:70,attentionCost:1,
+      run(mm,cc,ok){ cc.p.famTrust=clamp((cc.p.famTrust||50)+(ok?12:3),0,100); return {text:ok?"Aile ikna oldu, güven arttı.":"Aile hâlâ temkinli.",status:"resolved"}; }},
+    {id:"show_record",label:"Geçmiş başarılarımı göstereceğim",description:"Track record'u kullan.",
+      chance:clamp(0.3+(S.trackRecord.transfers||0)*0.05,0.2,0.75),confidence:60,
+      run(mm,cc,ok){ cc.p.famTrust=clamp((cc.p.famTrust||50)+(ok?10:-2),0,100); return {text:ok?"Kanıtlar ikna edici oldu.":"Aile yeterli bulmadı.",status:"resolved"}; }},
+    {id:"ignore",label:"Görmezden gel",description:"Maliyetsiz ama riskli.",chance:null,confidence:70,
+      run(mm,cc){ cc.p.famTrust=clamp((cc.p.famTrust||50)-8,0,100); return {text:"Aile daha da güvensizleşti.",status:"resolved"}; }},
+    {id:"delegate",label:"İlişkiler/Akademi ekibine devret",description:"Uzman ekip aileyle görüşsün.",chance:null,confidence:0},
+  ];
+}
+function phoneEducationOptions(m,ctx){
+  const p=ctx.p; if(!p) return phoneGenericOptions(m,ctx);
+  return [
+    {id:"edu_plan",label:"Eğitim garantisi vereceğim",description:"Net bir plan sun.",chance:null,confidence:80,
+      run(mm,cc){ cc.p.famTrust=clamp((cc.p.famTrust||50)+10,0,100); cc.p.loyalty=clamp(cc.p.loyalty+4,0,100); return {text:"Aile eğitim planından memnun kaldı.",status:"resolved"}; }},
+    {id:"language",label:"Dil/okul desteği ayarlayayım (€3K)",description:"Somut destek.",cashCost:3000,chance:null,confidence:80,
+      run(mm,cc){ cc.p.famTrust=clamp((cc.p.famTrust||50)+8,0,100); cc.p.prof=clamp((cc.p.prof||50)+2,0,100); return {text:"Destek aileyi rahatlattı.",status:"resolved"}; }},
+    {id:"no_commit",label:"Şimdilik ek taahhüt vermeyeceğim",description:"Maliyetsiz, risk var.",chance:null,confidence:80,
+      run(mm,cc){ cc.p.famTrust=clamp((cc.p.famTrust||50)-5,0,100); return {text:"Aile biraz hayal kırıklığına uğradı.",status:"resolved"}; }},
+    {id:"delegate",label:"Akademi ekibine devret",description:"Eğitim planını uzmana bırak.",chance:null,confidence:0},
+  ];
+}
+function phoneRelocationOptions(m,ctx){
+  const p=ctx.p; if(!p) return phoneGenericOptions(m,ctx);
+  const fam=FAM_TYPES.find(x=>x.id===p.family); const wantsEurope=fam&&fam.id==="avrupa";
+  const out=[];
+  if(wantsEurope) out.push({id:"promise_europe",label:"Avrupa'da bir kulübe taşıyacağım",description:"Söz ver. (30 hafta)",chance:null,confidence:70,
+    run(mm,cc){ givePromise(p.id,"transfer_up"); return {text:"Aile net hedeften memnun.",status:"resolved"}; }});
+  else out.push({id:"keep_local",label:"Yakınında tutmaya çalışacağım",description:"Yerel kalma isteğini not al.",chance:null,confidence:70,
+    run(mm,cc){ cc.p.famTrust=clamp((cc.p.famTrust||50)+8,0,100); return {text:"Aile yakın kalma sözünden memnun.",status:"resolved"}; }});
+  out.push({id:"family_visit",label:"Aile ziyareti ayarlayayım (€2K)",description:"Somut jest.",cashCost:2000,chance:null,confidence:80,
+    run(mm,cc){ cc.p.famTrust=clamp((cc.p.famTrust||50)+6,0,100); return {text:"Ziyaret aileyi mutlu etti.",status:"resolved"}; }});
+  out.push({id:"no_commit",label:"Şimdilik taahhüt yok",description:"Maliyetsiz.",chance:null,confidence:80,
+    run(mm,cc){ cc.p.famTrust=clamp((cc.p.famTrust||50)-4,0,100); return {text:"Aile net bir cevap bulamadı.",status:"resolved"}; }});
+  out.push({id:"delegate",label:"Uluslararası/Akademi ekibine devret",description:"Uzman ekip yürütsün.",chance:null,confidence:0});
+  return out;
+}
+function phoneTransferInterestOptions(m,ctx){
+  const p=ctx.p, c=ctx.c; if(!p||!c) return phoneGenericOptions(m,ctx);
+  const conf=(countryKnow(c.countryId).confidence)||50;
+  return [
+    {id:"official_offer",label:"Resmî teklif iste",description:"Kulübü masaya davet et.",chance:null,confidence:conf,attentionCost:1,
+      run(mm,cc){ const r=phoneCreateOrAdvanceOffer(p,c); return {text:r.created?`${c.name} resmi teklif iletti.`:`${c.name} mevcut teklifini güçlendirdi.`,status:"resolved"}; }},
+    {id:"budget_info",label:"Önce bütçelerini öğren",description:"Teklif oluşturmadan bilgi topla.",chance:null,confidence:conf,
+      run(mm,cc){ grantKnowledgeXP(c.countryId,1.5); return {text:`Tahmini bütçe: ${fmtRange(c.transferBudget||0,c.countryId,"clubKnowledge")}.`,status:"resolved"}; }},
+    {id:"loan_talk",label:"Oyuncuyu kiralık konuşalım",description:"Kiralık ihtimalini aç.",chance:null,confidence:conf,
+      run(mm,cc){ cc.p.interest[c.id]=clamp((cc.p.interest[c.id]||0)+15,0,100); schedulePhoneFollowUp(mm,2,"club_loan_answer");
+        return {text:`${c.name} kiralık ihtimalini değerlendirecek.`,status:"awaiting_followup"}; }},
+    {id:"not_for_sale",label:"Oyuncu satılık değil",description:"Net sınır çiz.",chance:null,confidence:conf,
+      run(mm,cc){ cc.c.relation=clamp(cc.c.relation-4,0,100); cc.p.loyalty=clamp(cc.p.loyalty+5,0,100); return {text:`${c.name} bilgilendirildi, oyuncu güvendi.`,status:"resolved"}; }},
+    {id:"alt_player",label:"Başka müşterimi önereyim",description:"Portföyden uygun oyuncu göster.",chance:null,confidence:conf},
+    {id:"delegate",label:"Kulüp İlişkileri/Hukuk ekibine devret",description:"Uzman ekip pazarlığı yürütsün.",chance:null,confidence:0},
+  ];
+}
+function phoneLoanInterestOptions(m,ctx){
+  const p=ctx.p, c=ctx.c; if(!p||!c) return phoneGenericOptions(m,ctx);
+  return [
+    {id:"loan_talk",label:"Kiralık şartlarını konuşalım",description:"Kiralık teklifini ilerlet.",chance:null,confidence:65,
+      run(mm,cc){ cc.p.interest[c.id]=clamp((cc.p.interest[c.id]||0)+20,0,100); schedulePhoneFollowUp(mm,2,"club_loan_answer");
+        return {text:`${c.name} kiralık şartlarını değerlendirecek.`,status:"awaiting_followup"}; }},
+    {id:"role_guarantee",label:"Oynama garantisi iste",description:"Süre şartı koy.",chance:null,confidence:65,
+      run(mm,cc){ givePromise(p.id,"minutes"); return {text:"Kulüpten süre garantisi istendi.",status:"resolved"}; }},
+    {id:"not_now",label:"Şimdi olmaz",description:"Reddet.",chance:null,confidence:65,
+      run(mm,cc){ cc.c.relation=clamp(cc.c.relation-2,0,100); return {text:`${c.name} bilgilendirildi.`,status:"resolved"}; }},
+    {id:"delegate",label:"İlişkiler ekibine devret",description:"Uzman ekip yürütsün.",chance:null,confidence:0},
+  ];
+}
+function phonePlayerComplaintOptions(m,ctx){
+  const p=ctx.p, c=ctx.c; if(!p||!c) return phoneGenericOptions(m,ctx);
+  return [
+    {id:"role_promise",label:"Rol sözü ver",description:"Kulübe süre/rol sözü ver. (Söz — 14 hafta)",chance:null,confidence:70,
+      run(mm,cc){ givePromise(p.id,"minutes"); cc.c.relation=clamp(cc.c.relation+2,0,100); return {text:`${c.name} ile rol konusunda anlaşıldı.`,status:"resolved"}; }},
+    {id:"loan_plan",label:"Kiralık planı konuşalım",description:"Oyuncuyu başka yerde geliştir. (Söz — 16 hafta)",chance:null,confidence:70,
+      run(mm,cc){ givePromise(p.id,"loan"); return {text:"Kiralık planı konuşuldu.",status:"resolved"}; }},
+    {id:"dev_meeting",label:"Gelişim toplantısı ayarla",description:"Teknik ekiple oturum.",
+      chance:clamp(0.4+deptBonus("performance")*0.3,0.3,0.75),confidence:65,attentionCost:1,
+      run(mm,cc,ok){ if(ok) cc.p.coachTrust=clamp((cc.p.coachTrust||50)+8,0,100); cc.c.relation=clamp(cc.c.relation+2,0,100);
+        return {text:ok?"Toplantı hoca güvenini artırdı.":"Toplantı somut sonuç vermedi.",status:"resolved"}; }},
+    {id:"defend",label:"Oyuncuyu savun",description:"Kulübe karşı çık — riskli.",
+      chance:clamp(0.35+((c.relation||20))/250,0.2,0.7),confidence:65,attentionCost:1,
+      run(mm,cc,ok){ cc.c.relation=clamp(cc.c.relation+(ok?2:-8),0,100); cc.p.loyalty=clamp(cc.p.loyalty+(ok?10:4),0,100);
+        return {text:ok?"Kulüp anlayışla karşıladı.":"Kulüple gerginlik arttı.",status:"resolved"}; }},
+    {id:"accept_concern",label:"Kulübün endişesini kabul et",description:"Kulüple hizalan.",chance:null,confidence:65,
+      run(mm,cc){ cc.c.relation=clamp(cc.c.relation+5,0,100); cc.p.morale=clamp(cc.p.morale-5,0,100); cc.p.loyalty=clamp(cc.p.loyalty-3,0,100);
+        return {text:"Kulüp memnun, oyuncu üzgün.",status:"resolved"}; }},
+    {id:"delegate",label:"Kulüp İlişkileri ekibine devret",description:"Uzman ekip yürütsün.",chance:null,confidence:0},
+  ];
+}
+function phoneContractRenewalOptions(m,ctx){
+  const p=ctx.p, c=ctx.c; if(!p||!c) return phoneGenericOptions(m,ctx);
+  return [
+    {id:"start_renewal",label:"Yenileme görüşmesi başlat",description:"Gerçek pazarlığı başlat.",chance:null,confidence:70,
+      run(mm,cc){ renewClubContract(p.id); return {text:"Yenileme görüşmesi başlatıldı.",status:"resolved"}; }},
+    {id:"role_guarantee",label:"Rol garantisi iste",description:"Yenilemeye rol şartı ekle.",chance:null,confidence:70,
+      run(mm,cc){ givePromise(p.id,"minutes"); return {text:"Rol garantisi talep edildi.",status:"resolved"}; }},
+    {id:"release_clause",label:"Serbest kalma maddesi iste",description:"Gelecekteki çıkışı güvence altına al.",
+      chance:clamp(0.4+deptBonus("legal")*0.3,0.25,0.75),confidence:65,
+      run(mm,cc,ok){ cc.c.relation=clamp(cc.c.relation+(ok?0:-3),0,100); return {text:ok?"Kulüp maddeyi kabul etti.":"Kulüp maddeyi reddetti.",status:"resolved"}; }},
+    {id:"delay",label:"Ertele",description:"3 hafta sonra tekrar konuş.",chance:null,confidence:70,
+      run(mm,cc){ schedulePhoneFollowUp(mm,3,"contract_renewal_recheck"); return {text:"Görüşme ertelendi.",status:"awaiting_followup"}; }},
+    {id:"reject_prepare",label:"Reddet, transfer hazırla",description:"Yenilemeyi reddet.",chance:null,confidence:70,
+      run(mm,cc){ cc.c.relation=clamp(cc.c.relation-6,0,100); const club=pickTransferInterestClub(p); if(club) cc.p.interest[club.id]=clamp((cc.p.interest[club.id]||0)+15,0,100);
+        return {text:"Yenileme reddedildi, transfer arayışı başladı.",status:"resolved"}; }},
+    {id:"delegate",label:"Hukuk ekibine devret",description:"Sözleşme uzmanı yürütsün.",chance:null,confidence:0},
+  ];
+}
+function phoneSponsorOptions(m,ctx){
+  const deal=ctx.deal; if(!deal) return phoneGenericOptions(m,ctx);
+  return [
+    {id:"accept_ob",label:"Yükümlülüğü kabul et, harekete geç",description:"Oyuncuyu uyar, telafi ettir.",chance:null,confidence:75,
+      run(mm,cc){ if(deal.socialObligation) deal.socialObligation.missed=Math.max(0,(deal.socialObligation.missed||0)-1); delete deal._moralWarn;
+        return {text:`${deal.brand} ile durum düzeltildi.`,status:"resolved"}; }},
+    {id:"negotiate_date",label:"Markadan süre iste",description:"Küçük bir erteleme pazarlığı yap.",
+      chance:clamp(0.4+deptBonus("sponsor")*0.3,0.25,0.75),confidence:70,
+      run(mm,cc,ok){ if(ok&&deal.socialObligation) deal.socialObligation.missed=Math.max(0,(deal.socialObligation.missed||0)-1);
+        return {text:ok?`${deal.brand} ek süre tanıdı.`:`${deal.brand} ek süreyi reddetti.`,status:"resolved"}; }},
+    {id:"pay_penalty",label:"Cezayı öde",description:"Kesintiyi nakit ödeyerek önle.",cashCost:Math.max(500,Math.round((deal.yearly||10000)*0.05)),chance:null,confidence:80,
+      run(mm,cc){ deal._socialCut=false; if(deal.socialObligation) deal.socialObligation.missed=0; delete deal._moralWarn;
+        return {text:`${deal.brand} cezayı kabul etti, sözleşme etkilenmedi.`,status:"resolved"}; }},
+    {id:"reject",label:"Reddet",description:"Bir şey yapma, sonuçlarına katlan.",chance:null,confidence:80,
+      run(){ return {text:"Talep reddedildi.",status:"resolved"}; }},
+    {id:"delegate",label:"Ticari/Hukuk ekibine devret",description:"Uzman ekip sponsor ile görüşsün.",chance:null,confidence:0},
+  ];
+}
+function phoneJournalistOptions(m,ctx){
+  const p=ctx.p, offer=ctx.offer; const out=[];
+  out.push({id:"honest",label:"Dürüst cevap",description:"Açık ve net konuş.",chance:null,confidence:75,
+    run(mm,cc){ S.mediaPower=clamp((S.mediaPower||0)+2,0,100); if(cc.p) cc.p.morale=clamp(cc.p.morale+2,0,100);
+      addNews("me",`${cc.p?cc.p.name:"Ajans"} hakkında dürüst açıklama`,"Menajer basına net ve dürüst bir açıklama yaptı.","good");
+      return {text:"Dürüst açıklaman basında olumlu karşılandı.",status:"resolved"}; }});
+  out.push({id:"diplomatic",label:"Diplomatik cevap",description:"Güvenli, temkinli bir yanıt.",chance:null,confidence:75,
+    run(){ S.mediaPower=clamp((S.mediaPower||0)+1,0,100);
+      addNews("me","Ajanstan diplomatik açıklama","Menajer soruları temkinli yanıtladı, kimseyi kırmadı.","");
+      return {text:"Kimseyi kırmayan dengeli bir yanıt verdin.",status:"resolved"}; }});
+  if(p) out.push({id:"protect_player",label:"Oyuncuyu koru",description:"Basından oyuncuyu koru.",chance:null,confidence:75,
+    run(mm,cc){ cc.p.morale=clamp(cc.p.morale+5,0,100);
+      addNews("me",`${p.name} basından korundu`,`Menajer ${p.name}'i eleştirilerden korudu.`,"good");
+      return {text:`${p.name} desteğini hissetti.`,status:"resolved"}; }});
+  if(offer){ const c=S.world.clubs[offer.cid];
+    out.push({id:"protect_club",label:"Kulübü koru",description:"İlgili kulübü öne çıkarma.",chance:null,confidence:70,
+      run(){ if(c) c.relation=clamp(c.relation+3,0,100);
+        addNews("me",`${c?c.name:"Kulüp"} hakkında sessizlik`,"Menajer transfer detaylarını basına açmadı.","");
+        return {text:`${c?c.name:"Kulüp"} sessizliğini takdir etti.`,status:"resolved"}; }});
+    out.push({id:"deny_rumour",label:"Transfer söylentisini reddet",description:"Söylentiyi yalanla.",chance:null,confidence:70,
+      run(){ offer._rumourDenied=true; if(c) c.relation=clamp(c.relation-2,0,100);
+        addNews("me","Transfer söylentisi yalanlandı",`Ajans, ${p?p.name:"oyuncu"} transferini yalanladı.`,"");
+        return {text:"Söylenti yalanlandı, kulüp biraz rahatsız oldu.",status:"resolved"}; }});
+    out.push({id:"keep_open",label:"Transfer kapısını açık bırak",description:"Spekülasyona izin ver.",chance:null,confidence:70,
+      run(mm,cc){ if(c) cc.p.interest[c.id]=clamp((cc.p.interest[c.id]||0)+8,0,100); S.mediaPower=clamp((S.mediaPower||0)+3,0,100);
+        addNews("me","Transfer kapısı açık",`Ajans, ${p?p.name:"oyuncu"} transferi hakkında kapıyı açık bıraktı.`,"");
+        return {text:"Spekülasyon basında büyüdü.",status:"resolved"}; }});
+  }
+  out.push({id:"decline",label:"Röportajı reddet",description:"Hiç konuşma.",chance:null,confidence:80,
+    run(){ return {text:"Röportaj nazikçe reddedildi.",status:"resolved"}; }});
+  out.push({id:"delegate",label:"Medya ekibine devret",description:"Basın ilişkilerini uzmana bırak.",chance:null,confidence:0});
+  return out;
+}
+const PHONE_OPTION_BUILDERS={
+  playing_time:phonePlayingTimeOptions, td:phonePlayingTimeOptions, morale:phonePlayingTimeOptions,
+  rival_contact:phoneRivalContactOptions, transfer_request:phoneTransferRequestOptions,
+  injury_support:phoneInjurySupportOptions, thank_you:phoneThankYouOptions,
+  trust_problem:phoneTrustProblemOptions, education:phoneEducationOptions, relocation:phoneRelocationOptions,
+  transfer_interest:phoneTransferInterestOptions, loan_interest:phoneLoanInterestOptions,
+  player_complaint:phonePlayerComplaintOptions, role_discussion:phonePlayerComplaintOptions,
+  contract_renewal:phoneContractRenewalOptions,
+  social_obligation:phoneSponsorOptions, morality_warning:phoneSponsorOptions,
+  contract_conflict:phoneSponsorOptions, appearance_request:phoneSponsorOptions,
+  transfer_rumour:phoneJournalistOptions, player_form:phoneJournalistOptions,
+  agency_strategy:phoneJournalistOptions, controversy:phoneJournalistOptions,
+  cooperation:phoneGenericOptions, threat:phoneGenericOptions, general:phoneGenericOptions, _generic:phoneGenericOptions,
+};
 
 /* ============================================================
    V6 — DEADLINE DAY
@@ -6291,6 +7240,12 @@ function buildActionCandidates(){
       push({key:"final_"+c.id,cat:"crit",title:`🏆 ${c.name} FİNALİ — oyuncun sahnede`,btn:"Gör",fn:`openCompetition('${c.id}')`,score:85,deadline:20}); break; } } }catch(e){}
   // deadline day
   if(typeof deadlineActive==="function"&&deadlineActive()) push({key:"deadline",cat:"crit",title:"⏰ DEADLINE DAY — pencere kapanıyor",btn:"Panel",fn:`openDeadlineDay()`,score:95,deadline:30});
+  // telefon: acil/süresi dolan mesajlar
+  try{ const urgentPhone=(S.phoneInbox||[]).filter(m=>!m.done&&(m.status==="unread"||m.status==="awaiting_response")&&m.urgency==="yüksek"&&m.expiresAtTick!=null&&m.expiresAtTick-nowTick()<=1);
+    if(urgentPhone.length) push({key:"phone_urgent",cat:"crit",title:`${urgentPhone.length} acil telefon mesajının süresi doluyor`,btn:"Telefon",fn:`openPhone()`,score:77,deadline:18}); }catch(e){}
+  // telefon: delegasyon/takip sonuçlanan mesajlar
+  try{ const phoneFollow=(S.phoneInbox||[]).filter(m=>!m.done&&m.stage==="followup_result");
+    if(phoneFollow.length) push({key:"phone_followup",cat:"sugg",title:`${phoneFollow.length} telefon takibi sonuçlandı`,btn:"Telefon",fn:`openPhone()`,score:44,player:6}); }catch(e){}
   return C;
 }
 function scoreAction(a){
@@ -6643,6 +7598,7 @@ function renderWeeklyBriefing(){
   h+=block("⚖️ Regülasyon",B.regulation);
   h+=block("🎓 Akademi",B.academyNews);
   h+=block("👟 Sponsor",B.sponsor);
+  h+=block("📱 Telefon",B.phone);
   if(B.next&&B.next.length){ h+=`<h2 class="sec">🎯 Gelecek Hafta</h2>`;
     h+=B.next.map(i=>`<div class="action-item sugg"><span>${escapeHtml(i.text)}</span><button class="btn sm ghost" onclick="${i.route}">Git</button></div>`).join(""); }
   $("scr-weeklyBriefing").innerHTML=h;
@@ -7582,7 +8538,7 @@ function simPlayerBrands(sum){
       S.decisions.push({eid:"spon"+p.id+S.week,week:S.week,title:`${p.name} için sponsor teklifi`,icon:cat[2],
         body:`${pick(SPONSOR_BRANDS)} (${cat[1]}) yıllık ${fmtM(yearly)} teklif ediyor. Ajans payı %${Math.round(share*100)}. Sosyal medya yükümlülüğü var.`,
         opts:[{t:"Kabul et",h:`Yıllık ${fmtM(yearly)} · ajansa ${fmtM(Math.round(yearly*share))}`,risk:"low",
-          fx(){ ensureBrand(p).activeDeals.push({cat:cat[0],brand:pick(SPONSOR_BRANDS),yearly,weeksLeft:42,agencyShare:share,perf:true,
+          fx(){ ensureBrand(p).activeDeals.push({id:"sd"+ri(1e4,9e4),cat:cat[0],brand:pick(SPONSOR_BRANDS),yearly,weeksLeft:42,agencyShare:share,perf:true,
               performanceBonuses:{goal:Math.round(yearly*0.01),assist:Math.round(yearly*0.006),appearance:Math.round(yearly*0.002),natTeam:Math.round(yearly*0.03),cupWin:Math.round(yearly*0.08)},
               socialObligation:{postsPerMonth:2,missed:0},exclusivity:true,moralityClause:true,injuryProtection:(rnd()<0.6?"partial":"full"),renewalOption:true});
             p.morale=clamp(p.morale+4,5,99); ensureBrand(p).brandValue=Math.round(ensureBrand(p).brandValue*1.1);
@@ -7983,6 +8939,11 @@ function extendBriefingV9(B,sum){
     for(const p of myPlayers()){ const b=p.brand; if(b&&b.activeDeals.some(d=>d.weeksLeft===41))
       B.sponsor.push({text:`👟 Yeni sponsor: ${p.name}`,route:`openEntity('player','${p.id}',{section:'marka'})`}); }
   }catch(e){}
+  return B;
+}
+function extendBriefingPhoneV9(B){
+  if(!B) return B;
+  B.phone=(S.phoneWeeklyTick===nowTick())?(S.phoneWeeklyEvents||[]).slice(0,8):[];
   return B;
 }
 
@@ -8700,6 +9661,7 @@ function simSponsorContracts(sum){
     const b=p.brand; if(!b||!b.activeDeals) continue;
     for(const d of b.activeDeals.slice()){
       // eski kayıtlardan gelen anlaşmalara yeni alanları tamamla
+      if(!d.id) d.id="sd"+ri(1e4,9e4);
       if(!d.socialObligation) d.socialObligation={postsPerMonth:2,missed:0};
       if(d.performanceBonuses&&d.performanceBonuses.assist==null){
         d.performanceBonuses.assist=Math.round(d.yearly*0.006);
@@ -8743,7 +9705,7 @@ function simSponsorContracts(sum){
         else{
           d.socialObligation.missed=(d.socialObligation.missed||0)+1;
           if(d.socialObligation.missed===2){
-            pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,subject:"Sosyal medya yükümlülüğü",body:`${d.brand}: ${p.name} bu ay sponsor paylaşımlarını aksattı. Tekrarında sözleşme bedeli düşürülecek.`});
+            pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,sponsorDealId:d.id,topic:"social_obligation",urgency:"orta",expiresAtTick:nowTick()+2,subject:"Sosyal medya yükümlülüğü",body:`${d.brand}: ${p.name} bu ay sponsor paylaşımlarını aksattı. Tekrarında sözleşme bedeli düşürülecek.`});
           } else if(d.socialObligation.missed>=3&&!d._socialCut){
             d._socialCut=true; d.yearly=Math.round(d.yearly*0.85);
             b.brandValue=Math.round(b.brandValue*0.95);
@@ -8767,20 +9729,20 @@ function simSponsorContracts(sum){
           {t:"Katılma",h:"Marka not eder — tekrarında ilişki bozulur",risk:"med",
             fx(){ d._eventPending=false; d._eventSkips=(d._eventSkips||0)+1;
               if(d._eventSkips>=2){ d.yearly=Math.round(d.yearly*0.92);
-                pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,subject:"Etkinlik yükümlülüğü",body:`${d.brand}: davetler tekrar tekrar reddedildi — sözleşme bedeli düşürüldü.`}); } }}]});
+                pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,sponsorDealId:d.id,topic:"appearance_request",urgency:"düşük",subject:"Etkinlik yükümlülüğü",body:`${d.brand}: davetler tekrar tekrar reddedildi — sözleşme bedeli düşürüldü.`}); } }}]});
       }
       // sakatlık koruması
       if(p.injury&&p.injury.weeks>=6){
         if(d.injuryProtection==="full"){ /* tam ücret sürer */ }
         else if(d.injuryProtection==="partial"&&!d._injCut){ d._injCut=true; d.yearly=Math.round(d.yearly*0.7);
-          pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,subject:"Sakatlık maddesi",body:`${d.brand}: uzun sakatlık nedeniyle sponsor ücreti %30 düşürüldü (sözleşme maddesi).`}); }
+          pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,sponsorDealId:d.id,topic:"contract_conflict",urgency:"orta",subject:"Sakatlık maddesi",body:`${d.brand}: uzun sakatlık nedeniyle sponsor ücreti %30 düşürüldü (sözleşme maddesi).`}); }
         else if(!d.injuryProtection&&p.injury.weeks>=10){ b.activeDeals=b.activeDeals.filter(x=>x!==d);
           addNews("me",`Sponsor feshi: ${p.name} × ${d.brand}`,`Uzun sakatlık — koruma maddesi yoktu, anlaşma feshedildi.`,"bad"); continue; }
       }
       // morality clause
       if(d.moralityClause&&(b.controversy||0)>50&&!d._moralWarn){ d._moralWarn=true;
         d.yearly=Math.round(d.yearly*0.8); b.brandValue=Math.round(b.brandValue*0.9);
-        pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,subject:"Ahlak maddesi uyarısı",body:`${d.brand}: son olaylar nedeniyle ücret kesintisi uygulandı. Tekrarında fesih.`}); }
+        pushPhone({from:d.brand,fromType:"sponsor",kind:"uyari",pid:p.id,sponsorDealId:d.id,topic:"morality_warning",urgency:"yüksek",expiresAtTick:nowTick()+2,subject:"Ahlak maddesi uyarısı",body:`${d.brand}: son olaylar nedeniyle ücret kesintisi uygulandı. Tekrarında fesih.`}); }
       if(d.moralityClause&&(b.controversy||0)>80){ b.activeDeals=b.activeDeals.filter(x=>x!==d);
         addNews("me",`Sponsor feshi (ahlak maddesi): ${p.name} × ${d.brand}`,`Marka anlaşmayı feshetti.`,"bad"); continue; }
       // yenileme teklifi
@@ -8893,6 +9855,20 @@ function migrateV9Revision2(st){
   st.formerClients=st.formerClients||[];
   st.recoveryLog=st.recoveryLog||[];
   st.specTriggers=st.specTriggers||{};
+  // telefon mesajı veri modeli genişletmesi — eski kayıtlara güvenli dolgu (yıkıcı olmayan)
+  try{ for(const m of (st.phoneInbox||[])){
+    if(m.status==null) m.status=m.done?"resolved":"unread";
+    if(m.cid===undefined) m.cid=null; if(m.pid===undefined) m.pid=null; if(m.rid===undefined) m.rid=null;
+    if(m.offerId===undefined) m.offerId=null; if(m.sponsorDealId===undefined) m.sponsorDealId=null; if(m.departmentId===undefined) m.departmentId=null;
+    if(m.topic===undefined) m.topic=null;
+    if(m.urgency===undefined) m.urgency="orta";
+    if(m.expiresAtTick===undefined) m.expiresAtTick=null;
+    if(m.stage===undefined) m.stage="initial";
+    if(m.outcome===undefined) m.outcome=null;
+    if(m.followUpTick===undefined) m.followUpTick=null;
+    if(m.followUpKind===undefined) m.followUpKind=null;
+    if(m.parentMessageId===undefined) m.parentMessageId=null;
+  } }catch(e){}
   return st;
 }
 /* ============================================================
