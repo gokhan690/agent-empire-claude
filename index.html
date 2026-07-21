@@ -8,35 +8,121 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
 <style>
 /* ============================================================
-   AGENT EMPIRE — AYDINLIK PREMIUM TASARIM SİSTEMİ
-   Kural: hiçbir yerde koyu arka plan yok.
+   AGENT EMPIRE — TEK MARKA TASARIM SİSTEMİ (V10)
+   Bir birincil marka: derin lacivert. Yüzey modları: light / dark / atmospheric.
+   Sayfa aksanları ikincildir; ürün her sayfada aynı uygulama gibi görünür.
    ============================================================ */
 :root{
-  --bg:#FAF8F4; --bg2:#F2EFE9; --card:#FFFFFF; --card-alt:#F7F6F3;
-  --ink:#1B2A4A; --ink2:#5A6B8C; --ink3:#93A0B8;
-  --blue:#7FB3E8; --blue-soft:#EAF3FC;
-  --green:#5FBF87; --green-soft:#E9F7EF;
-  --gold:#D9AE54; --gold-soft:#FBF3DF; --gold-grad:linear-gradient(135deg,#F3DFA8,#E2BC62);
-  --red:#E08A8A; --red-soft:#FCEEEE;
-  --div:#E8E5DE;
-  --shadow:0 2px 10px rgba(27,42,74,.07);
-  --shadow-lg:0 8px 28px rgba(27,42,74,.12);
-  --r:16px;
+  /* --- marka skalası --- */
+  --brand-950:#081522; --brand-900:#10243E; --brand-850:#132B46; --brand-800:#173552;
+  --brand-700:#24527A; --brand-600:#2E6596; --brand-500:#3D78AE;
+  --brand-200:#C9D9E7; --brand-100:#EAF0F6; --brand-050:#F4F7FA;
+  /* --- nötr yüzeyler (aydınlık) --- */
+  --bg-light:#F7F4EE; --bg-light-alt:#F1EEE8;
+  --surface-light:#FFFFFF; --surface-light-soft:#FBFAF7; --surface-light-hover:#F6F3ED;
+  --border-light:#E4E0D8; --border-light-strong:#D4CEC3;
+  --text-light-primary:#16263B; --text-light-secondary:#667387; --text-light-muted:#98A3B2;
+  /* --- marka yüzeyleri (koyu) --- */
+  --bg-dark:#081522; --bg-dark-alt:#0B1B2C;
+  --surface-dark:#10243E; --surface-dark-soft:#132B46; --surface-dark-raised:#173552;
+  --border-dark:#27415C; --border-dark-soft:rgba(255,255,255,.09);
+  --text-dark-primary:#F7F9FC; --text-dark-secondary:#B8C4D2; --text-dark-muted:#8190A3;
+  /* --- semantik --- */
+  --success:#2F9E67; --success-soft:#E8F5EE;
+  --warning:#F28C38; --warning-soft:#FFF0E2;
+  --danger:#D9534F; --danger-soft:#FCEBEA;
+  --info:#3D8BFF; --info-soft:#EAF2FF;
+  --premium:#C99B3D; --premium-soft:#F7EEDB;
+  /* --- boşluk / yarıçap / gölge --- */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px; --space-6:24px; --space-8:32px;
+  --radius-sm:9px; --radius-md:13px; --radius-lg:17px; --radius-xl:23px; --radius-pill:999px;
+  --shadow-sm:0 2px 8px rgba(16,36,62,.06);
+  --shadow-md:0 8px 24px rgba(16,36,62,.10);
+  --shadow-lg:0 18px 50px rgba(8,21,34,.18);
+  /* --- tipografi --- */
+  --font-xs:10px; --font-sm:12px; --font-body:14px; --font-body-lg:15px;
+  --font-title-sm:17px; --font-title:20px; --font-title-lg:24px;
+  --font-hero:clamp(25px,7vw,34px);
+  /* --- eski takma adlar (tüm mevcut bileşenler bunları tüketir) --- */
+  --bg:var(--bg-light); --bg2:var(--bg-light-alt);
+  --card:var(--surface-light); --card-alt:var(--surface-light-soft);
+  --ink:var(--text-light-primary); --ink2:var(--text-light-secondary); --ink3:var(--text-light-muted);
+  --blue:var(--info); --blue-soft:var(--info-soft);
+  --green:var(--success); --green-soft:var(--success-soft);
+  --gold:var(--premium); --gold-soft:var(--premium-soft);
+  --gold-grad:linear-gradient(135deg,#E8CE8F,#C99B3D);
+  --red:var(--danger); --red-soft:var(--danger-soft);
+  --div:var(--border-light);
+  --shadow:var(--shadow-sm);
+  --r:var(--radius-lg);
+  /* mod bağımlı yardımcılar */
+  --topbar-bg:rgba(247,244,238,.92); --tabbar-bg:rgba(255,255,255,.94);
+  --chip-on-bg:var(--brand-900); --chip-on-ink:#FFFFFF;
+  --toast-bg:var(--brand-900);
+  --success-ink:#257C51; --danger-ink:#C24541; --warning-ink:#B96718; --info-ink:#2568C8; --premium-ink:#96712A;
+  /* sayfa aksanı (applyPageAppearance ayarlar) */
+  --accent:var(--brand-500); --accent-soft:var(--brand-100); --accent-ink:var(--brand-700);
 }
+/* ---------- yüzey modu: KOYU MARKA ---------- */
+body[data-mode="dark"]{
+  --bg:var(--bg-dark); --bg2:var(--bg-dark-alt);
+  --card:var(--surface-dark); --card-alt:var(--surface-dark-soft);
+  --ink:var(--text-dark-primary); --ink2:var(--text-dark-secondary); --ink3:var(--text-dark-muted);
+  --div:var(--border-dark);
+  --success-soft:rgba(47,158,103,.18); --warning-soft:rgba(242,140,56,.16);
+  --danger-soft:rgba(217,83,79,.17); --info-soft:rgba(61,139,255,.16); --premium-soft:rgba(201,155,61,.16);
+  --blue-soft:var(--info-soft); --green-soft:var(--success-soft);
+  --gold-soft:var(--premium-soft); --red-soft:var(--danger-soft);
+  --topbar-bg:rgba(8,21,34,.9); --tabbar-bg:rgba(11,27,44,.94);
+  --chip-on-bg:var(--accent); --chip-on-ink:#0B1B2C;
+  --success-ink:#5FC793; --danger-ink:#EE8783; --warning-ink:#F5A868; --info-ink:#77ABFF; --premium-ink:#DCB165;
+  --shadow-sm:0 2px 8px rgba(0,0,0,.25); --shadow-md:0 8px 24px rgba(0,0,0,.3);
+  --accent-soft:rgba(255,255,255,.07);
+}
+/* ---------- sayfa aksanları (ikincil renkler) ---------- */
+body[data-accent="home"]{--accent:#2F9E67;--accent-ink:#257C51;--accent-soft:#E8F5EE}
+body[data-accent="portfolio"]{--accent:#3D8BFF;--accent-ink:#2568C8;--accent-soft:#EAF2FF}
+body[data-accent="player"]{--accent:#2F9E67;--accent-ink:#257C51;--accent-soft:#E8F5EE}
+body[data-accent="scout"]{--accent:#168A64;--accent-ink:#11694C;--accent-soft:#E4F3ED}
+body[data-accent="transfer"]{--accent:#F28C38;--accent-ink:#B96718;--accent-soft:#FFF0E2}
+body[data-accent="agency"]{--accent:#C99B3D;--accent-ink:#96712A;--accent-soft:#F7EEDB}
+body[data-accent="world"]{--accent:#5BA7E8;--accent-ink:#2E77B8;--accent-soft:#EAF3FC}
+body[data-accent="news"]{--accent:#3D8BFF;--accent-ink:#2568C8;--accent-soft:#EAF2FF}
+body[data-accent="finance"]{--accent:#10243E;--accent-ink:#10243E;--accent-soft:#EAF0F6}
+body[data-accent="rival"]{--accent:#7656C9;--accent-ink:#5A3EA3;--accent-soft:#F0EAFB}
+body[data-accent="competition"]{--accent:#8F2638;--accent-ink:#8F2638;--accent-soft:#F8E9EC}
+body[data-accent="phone"]{--accent:#10243E;--accent-ink:#10243E;--accent-soft:#EAF0F6}
+body[data-accent="delegation"]{--accent:#7656C9;--accent-ink:#5A3EA3;--accent-soft:#F0EAFB}
+body[data-accent="calendar"]{--accent:#5BA7E8;--accent-ink:#2E77B8;--accent-soft:#EAF3FC}
+body[data-accent="briefing"]{--accent:#C99B3D;--accent-ink:#96712A;--accent-soft:#F7EEDB}
+body[data-accent="career"]{--accent:#C99B3D;--accent-ink:#96712A;--accent-soft:#F7EEDB}
+body[data-accent="settings"]{--accent:#667387;--accent-ink:#667387;--accent-soft:#EFF1F4}
+body[data-mode="dark"][data-accent]{--accent-soft:rgba(255,255,255,.07)}
+body[data-mode="dark"][data-accent="portfolio"]{--accent:#6AA6FF;--accent-ink:#8FBBFF}
+body[data-mode="dark"][data-accent="scout"]{--accent:#3DBE93;--accent-ink:#63D0AA}
+body[data-mode="dark"][data-accent="transfer"]{--accent:#F5A868;--accent-ink:#F5A868}
+body[data-mode="dark"][data-accent="news"]{--accent:#6AA6FF;--accent-ink:#8FBBFF}
+body[data-mode="dark"][data-accent="rival"]{--accent:#9D82E4;--accent-ink:#B49EEC}
+body[data-mode="dark"][data-accent="briefing"]{--accent:#DCB165;--accent-ink:#E5C384}
+body[data-mode="dark"][data-accent="home"]{--accent:#5FC793;--accent-ink:#7BD7A8}
+body[data-mode="dark"][data-accent="agency"]{--accent:#DCB165;--accent-ink:#E5C384}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{
   font-family:'Manrope',system-ui,-apple-system,sans-serif;
   background:var(--bg); color:var(--ink);
-  font-size:15px; line-height:1.45;
+  font-size:var(--font-body-lg); line-height:1.45;
   overscroll-behavior:none;
+  transition:background .2s ease;
 }
 #app{max-width:520px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;position:relative}
+:focus-visible{outline:2px solid var(--brand-500);outline-offset:2px}
+body[data-mode="dark"] :focus-visible{outline-color:#8FBBFF}
 
 /* ---------- üst şerit ---------- */
 .topbar{
   position:sticky;top:0;z-index:40;
-  background:rgba(250,248,244,.92);backdrop-filter:blur(12px);
+  background:var(--topbar-bg);backdrop-filter:blur(12px);
   border-bottom:1px solid var(--div);
   padding:10px 16px 8px;
 }
@@ -45,12 +131,12 @@ body{
 .week-sub{font-size:11px;color:var(--ink2);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
 .res-chips{display:flex;gap:6px}
 .chip{display:flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--div);
-  border-radius:999px;padding:4px 10px;font-size:12.5px;font-weight:700;box-shadow:var(--shadow)}
-.chip.cash{color:#3E8E63}.chip.rep{color:var(--gold)}
+  border-radius:var(--radius-pill);padding:4px 10px;font-size:12.5px;font-weight:700;box-shadow:var(--shadow)}
+.chip.cash{color:var(--success-ink)}.chip.rep{color:var(--premium-ink)}
 .chip small{font-weight:600;color:var(--ink3);font-size:10px}
 
 /* ---------- içerik ---------- */
-.screen{flex:1;padding:14px 14px 120px;display:none;animation:fadein .18s ease}
+.screen{flex:1;padding:14px 14px 160px;display:none;animation:fadein .18s ease}
 .screen.active{display:block}
 @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -59,10 +145,10 @@ h2.sec{font-family:'Fraunces',serif;font-size:19px;font-weight:700;margin:18px 2
 h2.sec:first-child{margin-top:2px}
 h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var(--ink2);border-radius:999px;padding:2px 8px;font-weight:700}
 
-.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;margin-bottom:10px;border:1px solid rgba(232,229,222,.6)}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;margin-bottom:10px;border:1px solid var(--div)}
 .card.alt{background:var(--card-alt)}
-.card.urgent{border:1.5px solid var(--red);background:linear-gradient(0deg,var(--red-soft) 0%,#fff 60%)}
-.card.gold{border:1.5px solid var(--gold);background:linear-gradient(0deg,var(--gold-soft) 0%,#fff 65%)}
+.card.urgent{border:1.5px solid var(--danger);background:linear-gradient(0deg,var(--danger-soft) 0%,var(--card) 60%)}
+.card.gold{border:1.5px solid var(--premium);background:linear-gradient(0deg,var(--premium-soft) 0%,var(--card) 65%)}
 .card.tappable{cursor:pointer;transition:transform .12s}
 .card.tappable:active{transform:scale(.985)}
 
@@ -71,7 +157,7 @@ h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var
 .muted{color:var(--ink2);font-size:12.5px}
 .tiny{color:var(--ink3);font-size:11px;font-weight:600}
 .b{font-weight:700}
-.pos-delta{color:#3E8E63;font-weight:700}.neg-delta{color:#C96A6A;font-weight:700}
+.pos-delta{color:var(--success-ink);font-weight:700}.neg-delta{color:var(--danger-ink);font-weight:700}
 
 /* ---------- oyuncu kartı ---------- */
 .avatar{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;
@@ -79,13 +165,13 @@ h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var
 .avatar.sm{width:36px;height:36px;font-size:13px;border-radius:11px}
 .badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
 .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;letter-spacing:.02em}
-.badge.pos{background:var(--blue-soft);color:#4A7FB5}
-.badge.inj{background:var(--red-soft);color:#C96A6A}
-.badge.hot{background:var(--gold-soft);color:#B08A2E}
+.badge.pos{background:var(--info-soft);color:var(--info-ink)}
+.badge.inj{background:var(--danger-soft);color:var(--danger-ink)}
+.badge.hot{background:var(--premium-soft);color:var(--premium-ink)}
 .badge.sad{background:var(--bg2);color:var(--ink2)}
-.badge.ok{background:var(--green-soft);color:#3E8E63}
-.stars{color:var(--gold);letter-spacing:1px;font-size:13px}
-.stars .off{color:#E4DFD4}
+.badge.ok{background:var(--success-soft);color:var(--success-ink)}
+.stars{color:var(--premium);letter-spacing:1px;font-size:13px}
+.stars .off{color:var(--div)}
 .spark{display:flex;align-items:flex-end;gap:2px;height:22px}
 .spark i{width:5px;border-radius:2px;background:var(--blue);opacity:.75}
 .spark i.good{background:var(--green)}
@@ -99,15 +185,16 @@ h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var
 .sb .fill.g{background:var(--green)}.sb .fill.au{background:var(--gold-grad)}.sb .fill.r{background:var(--red)}
 
 /* ---------- butonlar ---------- */
-.btn{border:none;border-radius:13px;font-family:inherit;font-weight:700;font-size:14px;
-  padding:11px 16px;cursor:pointer;transition:transform .1s,filter .15s;color:var(--ink)}
+.btn{border:none;border-radius:var(--radius-md);font-family:inherit;font-weight:700;font-size:14px;
+  padding:11px 16px;min-height:44px;cursor:pointer;transition:transform .1s,filter .15s;color:var(--ink)}
 .btn:active{transform:scale(.97)}
-.btn.primary{background:var(--green);color:#fff;box-shadow:0 4px 14px rgba(95,191,135,.35)}
-.btn.blue{background:var(--blue);color:#fff}
-.btn.gold{background:var(--gold-grad);color:#6B5220}
+.btn.primary{background:var(--brand-900);color:#fff;box-shadow:0 4px 14px rgba(16,36,62,.3)}
+body[data-mode="dark"] .btn.primary{background:var(--brand-500);box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.btn.blue{background:var(--brand-600);color:#fff}
+.btn.gold{background:var(--gold-grad);color:#4A3812}
 .btn.ghost{background:var(--card);border:1.5px solid var(--div)}
-.btn.danger{background:var(--red-soft);color:#C96A6A}
-.btn.sm{padding:8px 12px;font-size:12.5px;border-radius:11px}
+.btn.danger{background:var(--danger-soft);color:var(--danger-ink)}
+.btn.sm{padding:8px 12px;font-size:12.5px;border-radius:11px;min-height:40px}
 .btn.block{width:100%}
 .btn:disabled{opacity:.45;pointer-events:none}
 .btnrow{display:flex;gap:8px;margin-top:10px}
@@ -116,23 +203,26 @@ h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var
 /* ---------- HAFTAYI OYNAT ---------- */
 .playbar{position:fixed;bottom:64px;left:0;right:0;z-index:45;display:flex;justify-content:center;pointer-events:none}
 .playbar-inner{max-width:520px;width:100%;padding:0 14px 10px;pointer-events:auto}
-.playbtn{width:100%;background:linear-gradient(135deg,#6FCB95,#4FAE78);color:#fff;border:none;
-  border-radius:18px;padding:15px;font-family:'Fraunces',serif;font-size:17px;font-weight:700;cursor:pointer;
-  box-shadow:0 8px 24px rgba(79,174,120,.4);display:flex;align-items:center;justify-content:center;gap:8px;
-  transition:transform .12s}
+.playbtn{width:100%;background:linear-gradient(135deg,var(--brand-700),var(--brand-900));color:#fff;border:none;
+  border-radius:18px;padding:15px;min-height:52px;font-family:'Fraunces',serif;font-size:17px;font-weight:700;cursor:pointer;
+  box-shadow:0 8px 24px rgba(16,36,62,.38);display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:transform .12s;border:1px solid rgba(255,255,255,.14)}
 .playbtn:active{transform:scale(.97)}
 .playbtn:disabled{filter:grayscale(.5);opacity:.6}
+body.sheet-open .playbar{display:none}
+.playbar.pb-hidden{display:none}
 
 /* ---------- alt tab bar ---------- */
 .tabbar{position:fixed;bottom:0;left:0;right:0;z-index:50;display:flex;justify-content:center;
-  background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--div)}
+  background:var(--tabbar-bg);backdrop-filter:blur(14px);border-top:1px solid var(--div)}
 .tabbar-inner{max-width:520px;width:100%;display:flex}
-.tab{flex:1;padding:8px 0 max(8px,env(safe-area-inset-bottom));border:none;background:none;cursor:pointer;
+.tab{flex:1;padding:8px 0 max(8px,env(safe-area-inset-bottom));min-height:44px;border:none;background:none;cursor:pointer;
   display:flex;flex-direction:column;align-items:center;gap:2px;font-family:inherit;
   font-size:10px;font-weight:700;color:var(--ink3);position:relative}
-.tab.active{color:var(--ink)}
+.tab.active{color:var(--brand-700)}
+body[data-mode="dark"] .tab.active{color:#FFFFFF}
 .tab .ic{font-size:19px;line-height:1}
-.tab .dot{position:absolute;top:5px;right:calc(50% - 16px);width:8px;height:8px;border-radius:99px;background:var(--red);display:none}
+.tab .dot{position:absolute;top:5px;right:calc(50% - 16px);width:8px;height:8px;border-radius:99px;background:var(--danger);display:none}
 .tab.notify .dot{display:block}
 
 /* ---------- modal / sheet ---------- */
@@ -147,19 +237,19 @@ h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var
 
 /* scout raporu zarfı */
 .envelope{background:var(--gold-grad);border-radius:var(--r);padding:18px 14px;text-align:center;
-  color:#6B5220;font-weight:700;cursor:pointer;box-shadow:var(--shadow);margin-bottom:10px;
+  color:#4A3812;font-weight:700;cursor:pointer;box-shadow:var(--shadow);margin-bottom:10px;
   transition:transform .12s}
 .envelope:active{transform:scale(.97)}
 .envelope .env-ic{font-size:28px;margin-bottom:4px}
 .range-bar{position:relative;height:12px;background:var(--bg2);border-radius:99px;margin:8px 0 2px}
 .range-bar .rng{position:absolute;top:0;bottom:0;background:var(--gold-grad);border-radius:99px}
 .range-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--ink3);font-weight:700}
-.confring{font-size:12px;font-weight:800;color:#B08A2E}
+.confring{font-size:12px;font-weight:800;color:var(--premium-ink)}
 
 /* haber ---------- */
 .news{border-left:3px solid var(--blue);padding:10px 12px;background:var(--card);border-radius:12px;
   margin-bottom:8px;box-shadow:var(--shadow)}
-.news.me{border-left-color:var(--gold);background:linear-gradient(90deg,var(--gold-soft),#fff 40%)}
+.news.me{border-left-color:var(--premium);background:linear-gradient(90deg,var(--premium-soft),var(--card) 40%)}
 .news.bad{border-left-color:var(--red)}
 .news.good{border-left-color:var(--green)}
 .news .src{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink3);text-transform:uppercase}
@@ -168,9 +258,9 @@ h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var
 
 /* toast */
 #toasts{position:fixed;top:60px;left:0;right:0;z-index:200;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
-.toast{background:var(--ink);color:#fff;font-weight:700;font-size:13px;padding:10px 18px;border-radius:99px;
+.toast{background:var(--toast-bg);color:#fff;font-weight:700;font-size:13px;padding:10px 18px;border-radius:99px;
   box-shadow:var(--shadow-lg);animation:toastin .3s ease;max-width:88%}
-.toast.gold{background:var(--gold-grad);color:#6B5220}
+.toast.gold{background:var(--gold-grad);color:#4A3812}
 .toast.green{background:var(--green);color:#fff}
 @keyframes toastin{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
 
@@ -193,12 +283,12 @@ h2.sec .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var
 .opt .ot{font-weight:700;font-size:14px}
 .opt .oh{font-size:11.5px;color:var(--ink2);margin-top:2px}
 .opt .risk{float:right;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px}
-.risk.low{background:var(--green-soft);color:#3E8E63}
-.risk.mid{background:var(--gold-soft);color:#B08A2E}
-.risk.high{background:var(--red-soft);color:#C96A6A}
+.risk.low{background:var(--success-soft);color:var(--success-ink)}
+.risk.mid{background:var(--premium-soft);color:var(--premium-ink)}
+.risk.high{background:var(--danger-soft);color:var(--danger-ink)}
 
 /* onboarding hero */
-.hero{background:linear-gradient(150deg,#FFFFFF,#F4EFE3 70%,#EFE4C8);border-radius:22px;padding:26px 20px;
+.hero{background:linear-gradient(150deg,var(--surface-light),var(--brand-050) 62%,var(--brand-100));border-radius:22px;padding:26px 20px;
   text-align:center;box-shadow:var(--shadow-lg);margin-bottom:14px;border:1px solid var(--gold-soft)}
 .hero h1{font-family:'Fraunces',serif;font-size:26px;font-weight:700;margin:6px 0}
 .hero .tag{font-size:12px;font-weight:800;letter-spacing:.14em;color:var(--gold);text-transform:uppercase}
@@ -209,30 +299,26 @@ input.txt:focus{border-color:var(--blue)}
 /* haftalık özet */
 .sumline{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--div);font-size:13.5px}
 .sumline:last-child{border:0}
-.lockcard{border:1.5px dashed var(--gold);background:var(--gold-soft);text-align:center;color:#8A6E2F;font-weight:700}
+.lockcard{border:1.5px dashed var(--premium);background:var(--premium-soft);text-align:center;color:var(--premium-ink);font-weight:700}
 .filterrow{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:4px}
 .fchip{flex-shrink:0;border:1.5px solid var(--div);background:var(--card);border-radius:999px;padding:6px 13px;
   font-size:12px;font-weight:700;cursor:pointer;color:var(--ink2);font-family:inherit}
-.fchip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.fchip.on{background:var(--chip-on-bg);color:var(--chip-on-ink);border-color:var(--chip-on-bg)}
 .divider{height:1px;background:var(--div);margin:12px 0}
 .empty{color:var(--ink3);text-align:center;padding:26px 10px;font-weight:600;font-size:13px}
 
-/* ============ V3: design tokens + responsive shell ============ */
+/* ============ V3 (uyum katmanı): eski takma adlar yeni sisteme bağlanır ============ */
 :root{
-  --surface-primary:#FFFFFF;--surface-secondary:#F7F6F3;--surface-elevated:#FFFFFF;--surface-highlight:#FBF3DF;
-  --text-primary:#1B2A4A;--text-secondary:#5A6B8C;--text-muted:#93A0B8;
-  --border-soft:#E8E5DE;--border-strong:#D5D0C4;
-  --success:#3E8E63;--success-soft:#E9F7EF;--warning:#B08A2E;--warning-soft:#FBF3DF;
-  --danger:#C96A6A;--danger-soft:#FCEEEE;--info:#4A7FB5;--info-soft:#EAF3FC;
-  --premium:#D9AE54;--premium-soft:#FBF3DF;
-  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;
-  --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:22px;
-  --shadow-sm:0 1px 4px rgba(27,42,74,.06);--shadow-md:0 2px 10px rgba(27,42,74,.07)
+  --surface-primary:var(--surface-light);--surface-secondary:var(--surface-light-soft);
+  --surface-elevated:var(--surface-light);--surface-highlight:var(--premium-soft);
+  --text-primary:var(--text-light-primary);--text-secondary:var(--text-light-secondary);--text-muted:var(--text-light-muted);
+  --border-soft:var(--border-light);--border-strong:var(--border-light-strong);
 }
+body[data-mode="dark"]{--border-soft:var(--border-dark);--border-strong:var(--border-dark)}
 .seg{display:flex;gap:6px;overflow-x:auto;margin:2px 0 12px;padding-bottom:2px;-webkit-overflow-scrolling:touch}
 .seg button{flex-shrink:0;border:1.5px solid var(--border-soft);background:var(--card);border-radius:999px;
-  padding:9px 15px;min-height:38px;font-size:12.5px;font-weight:700;color:var(--ink2);font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px}
-.seg button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  padding:9px 15px;min-height:44px;font-size:12.5px;font-weight:700;color:var(--ink2);font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px}
+.seg button.on{background:var(--chip-on-bg);color:var(--chip-on-ink);border-color:var(--chip-on-bg)}
 .icon{display:inline-block;vertical-align:-4px;flex-shrink:0}
 .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px}
 .kpi .cell{background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius-md);padding:10px 6px;text-align:center;box-shadow:var(--shadow-sm)}
@@ -248,7 +334,7 @@ input.txt:focus{border-color:var(--blue)}
 .action-item.soon{border-left:3px solid var(--premium)}
 input.search{width:100%;border:1.5px solid var(--border-soft);border-radius:12px;padding:11px 13px;font-family:inherit;font-size:14px;background:var(--card);color:var(--ink);outline:none;margin-bottom:8px}
 input.search:focus{border-color:var(--blue)}
-select.sel{border:1.5px solid var(--border-soft);border-radius:10px;padding:9px;min-height:38px;font-family:inherit;font-weight:700;font-size:12px;background:var(--card);color:var(--ink)}
+select.sel{border:1.5px solid var(--border-soft);border-radius:10px;padding:9px;min-height:44px;font-family:inherit;font-weight:700;font-size:12px;background:var(--card);color:var(--ink)}
 .btn{min-height:40px}
 .tl{border-left:2px solid var(--border-soft);margin-left:8px;padding-left:14px}
 .tl .tli{position:relative;padding-bottom:12px}
@@ -271,7 +357,7 @@ body.reduceanim *{animation:none!important;transition:none!important}
   transform:translateX(-100%);transition:transform .22s ease;overflow-y:auto;padding:12px 12px calc(24px + env(safe-area-inset-bottom))}
 .drawer-wrap.open .drawer{transform:none}
 @media (prefers-reduced-motion:reduce){.drawer{transition:none}}
-.drawer .dhead{background:linear-gradient(140deg,#FFFFFF,#F4EFE3 75%,#EFE4C8);border:1px solid var(--gold-soft);border-radius:16px;padding:14px;margin-bottom:6px}
+.drawer .dhead{background:linear-gradient(140deg,var(--brand-900),var(--brand-700));color:#fff;border:1px solid var(--brand-700);border-radius:16px;padding:14px;margin-bottom:6px}
 .dsec{font-size:10px;font-weight:800;letter-spacing:.09em;color:var(--ink3);text-transform:uppercase;padding:12px 10px 4px}
 .ditem{display:flex;align-items:center;gap:11px;width:100%;border:none;background:none;border-radius:12px;padding:11px 12px;
   font-family:inherit;font-size:14px;font-weight:700;color:var(--ink2);cursor:pointer;text-align:left;min-height:44px}
@@ -307,7 +393,7 @@ body.noscroll{overflow:hidden}
 .ichart{position:relative;width:100%;touch-action:pan-y;cursor:crosshair;border-radius:8px;outline:none}
 .ichart:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .ichart svg{width:100%;height:100%}
-.chart-tip{position:fixed;z-index:250;background:var(--ink);color:#fff;border-radius:10px;padding:7px 10px;
+.chart-tip{position:fixed;z-index:250;background:var(--toast-bg);color:#fff;border-radius:10px;padding:7px 10px;
   font-size:11.5px;font-weight:600;box-shadow:var(--shadow-lg);pointer-events:none;max-width:200px;line-height:1.35}
 .chart-tip .ct-h{font-weight:800;font-size:11px;opacity:.85;margin-bottom:3px}
 .chart-tip .ct-row{display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -322,13 +408,13 @@ body.noscroll{overflow:hidden}
   background:var(--bg);border-bottom:1px solid var(--div)}
 .ent-crumb{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-weight:600}
 .ent-crumb a{text-decoration:none}
-.ent-body{padding-bottom:24px}
+.ent-body{padding-bottom:100px}
 .grouped .card{margin-bottom:6px}
 /* V8-B2 pazarlık stepper */
 .nego-stepper{display:flex;gap:5px;overflow-x:auto;padding:6px 0 10px;-webkit-overflow-scrolling:touch}
 .nstep{flex-shrink:0;display:flex;align-items:center;gap:5px;border:1.5px solid var(--border-soft);background:var(--card);
   border-radius:999px;padding:6px 11px;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--ink2);cursor:pointer;min-height:36px}
-.nstep.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.nstep.on{background:var(--chip-on-bg);color:var(--chip-on-ink);border-color:var(--chip-on-bg)}
 .nstep .nstep-n{background:var(--bg2);color:var(--ink2);border-radius:999px;width:17px;height:17px;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
 .nstep.on .nstep-n{background:rgba(255,255,255,.25);color:#fff}
 .nstep.st-done{border-color:var(--green)}.nstep.st-warn{border-color:var(--gold)}.nstep.st-locked{opacity:.55}
@@ -343,19 +429,77 @@ body.noscroll{overflow:hidden}
 .context-panel{display:none}
 @media(min-width:1100px){
   body{background:var(--bg2)}
-  #app{max-width:1300px;display:grid;grid-template-columns:230px minmax(0,1fr) 330px;grid-template-rows:auto 1fr;align-items:start;background:var(--bg2)}
+  #app{max-width:1300px;display:grid;grid-template-columns:236px minmax(0,1fr) 330px;grid-template-rows:auto 1fr;align-items:start;background:var(--bg2)}
   .topbar{grid-column:1/-1}
-  .sidebar{display:flex;flex-direction:column;gap:3px;position:sticky;top:70px;grid-column:1;grid-row:2;padding:16px 10px}
+  .sidebar{display:flex;flex-direction:column;gap:3px;position:sticky;top:70px;grid-column:1;grid-row:2;
+    margin:16px 0 16px 10px;padding:14px 10px;background:var(--brand-900);border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-md);max-height:calc(100dvh - 100px);overflow:auto}
   .sidebar button{display:flex;align-items:center;gap:11px;border:none;background:none;border-radius:12px;
-    padding:12px 15px;font-family:inherit;font-size:14px;font-weight:700;color:var(--ink2);cursor:pointer;text-align:left;width:100%}
-  .sidebar button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm)}
-  .sidebar .sb-sep{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--ink3);text-transform:uppercase;padding:14px 15px 4px}
+    padding:12px 15px;min-height:44px;font-family:inherit;font-size:14px;font-weight:700;color:var(--brand-200);cursor:pointer;text-align:left;width:100%}
+  .sidebar button.on{background:var(--brand-700);color:#fff;box-shadow:var(--shadow-sm)}
+  .sidebar .sb-sep{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--text-dark-muted);text-transform:uppercase;padding:14px 15px 4px}
+  .sidebar .sb-tier{margin-top:auto;padding:12px 15px 4px;color:var(--brand-200);font-size:12px;font-weight:700;border-top:1px solid var(--border-dark-soft)}
   .screen{grid-column:2;grid-row:2;background:var(--bg);min-height:calc(100dvh - 62px);padding:20px 28px 150px;border-left:1px solid var(--border-soft);border-right:1px solid var(--border-soft)}
   .context-panel{display:block;grid-column:3;grid-row:2;position:sticky;top:70px;padding:16px 16px;max-height:calc(100dvh - 70px);overflow:auto}
+  .context-panel:empty{display:none}
   .tabbar{display:none}
   .sheet-wrap.open{align-items:center}
   .sheet{border-radius:24px;max-height:86dvh}
+  .desktop-only{display:initial}
 }
+@media(max-width:1099px){.desktop-only{display:none!important}}
+
+/* ============ V10: paylaşılan bileşen katmanı ============ */
+.page-header{margin:2px 2px 12px}
+.page-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink)}
+.page-title{font-family:'Fraunces',serif;font-size:var(--font-title-lg);font-weight:700;line-height:1.15;margin:2px 0}
+.page-subtitle{font-size:12.5px;color:var(--ink2);font-weight:600}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:12px}
+.metric-card{background:var(--card);border:1px solid var(--div);border-radius:var(--radius-md);padding:10px 8px;text-align:center;box-shadow:var(--shadow-sm)}
+.metric-card .mv{font-weight:800;font-size:15px}
+.metric-card .ml{font-size:9.5px;color:var(--ink3);font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-top:2px}
+.metric-card .md{font-size:10.5px;font-weight:700;margin-top:1px}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:18px 2px 10px}
+.section-head:first-child{margin-top:2px}
+.section-title{font-family:'Fraunces',serif;font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px}
+.section-title .cnt{font-family:'Manrope';font-size:11px;background:var(--bg2);color:var(--ink2);border-radius:999px;padding:2px 8px;font-weight:700}
+.section-action{border:none;background:none;font-family:inherit;font-size:12px;font-weight:700;color:var(--accent-ink);cursor:pointer;padding:6px 4px;min-height:36px}
+.status-chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.02em}
+.status-chip.t-success{background:var(--success-soft);color:var(--success-ink)}
+.status-chip.t-warning{background:var(--warning-soft);color:var(--warning-ink)}
+.status-chip.t-danger{background:var(--danger-soft);color:var(--danger-ink)}
+.status-chip.t-info{background:var(--info-soft);color:var(--info-ink)}
+.status-chip.t-premium{background:var(--premium-soft);color:var(--premium-ink)}
+.status-chip.t-neutral{background:var(--bg2);color:var(--ink2)}
+.data-row{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 12px;background:var(--card);
+  border:1px solid var(--div);border-radius:var(--radius-md);margin-bottom:8px;box-shadow:var(--shadow-sm)}
+.data-row.tappable{cursor:pointer}
+.empty-state{text-align:center;padding:30px 16px;color:var(--ink2)}
+.empty-state .es-ic{font-size:34px;margin-bottom:8px;opacity:.85}
+.empty-state .es-t{font-weight:800;font-size:14.5px;color:var(--ink);margin-bottom:3px}
+.empty-state .es-d{font-size:12.5px;font-weight:600;max-width:340px;margin:0 auto 12px}
+.accent-bar{border-left:3px solid var(--accent);padding-left:10px}
+.drawer .dhead .tiny{color:var(--brand-200)}
+.drawer .dhead .sb .track{background:rgba(255,255,255,.16)}
+.drawer .dhead .b{color:#fff}
+/* atmosferik yüzey: hafif aksan degrade — bilgi onsuz da okunur */
+body[data-mode="atmospheric"] .screen.active,
+body[data-mode="atmospheric"] .entity-screen.active{
+  background-image:linear-gradient(180deg,var(--accent-soft),var(--bg) 300px);
+}
+@media(min-width:1100px){
+  body[data-mode="atmospheric"] .screen{background-image:linear-gradient(180deg,var(--accent-soft),var(--bg) 300px)}
+}
+/* koyu modda giriş alanları */
+body[data-mode="dark"] input.txt,body[data-mode="dark"] input.search,body[data-mode="dark"] select.sel{background:var(--surface-dark-soft);border-color:var(--border-dark);color:var(--ink)}
+/* uzun metin güvenliği */
+.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+img{max-width:100%}
+/* koyu modda hero yüzeyleri markaya döner */
+body[data-mode="dark"] .hero-page{background:linear-gradient(150deg,var(--surface-dark),var(--surface-dark-raised))!important;border-color:var(--border-dark)}
+body[data-mode="dark"] .hero{background:linear-gradient(150deg,var(--surface-dark),var(--surface-dark-raised));border-color:var(--border-dark)}
+body[data-mode="dark"] .envelope{color:#3A2C0D}
+body[data-mode="dark"] .kcol{background:var(--bg-dark-alt)}
 </style>
 </head>
 <body>
@@ -434,6 +578,7 @@ const ICONS={
  swap:'<path d="M7 8h13l-3.5-3.5M17 16H4l3.5 3.5"/>',
  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+ star:'<path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-2.9-5.4 2.9 1.1-6L3.2 9.4l6.1-.8Z"/>',
 };
 function icon(name,size=20){
   const p=ICONS[name]||ICONS.doc;
@@ -452,7 +597,7 @@ function renderLineChart(data,opt={}){
   const col=opt.color||(up?"#3E8E63":"#C96A6A");
   const last=vals[vals.length-1];
   const fmt=opt.fmt||(v=>Math.round(v));
-  const grid=[0.25,0.5,0.75].map(g=>`<line x1="${P}" x2="${W-P}" y1="${(P+(H-2*P)*g).toFixed(1)}" y2="${(P+(H-2*P)*g).toFixed(1)}" stroke="#E8E5DE" stroke-width="0.8" stroke-dasharray="3 4"/>`).join("");
+  const grid=[0.25,0.5,0.75].map(g=>`<line x1="${P}" x2="${W-P}" y1="${(P+(H-2*P)*g).toFixed(1)}" y2="${(P+(H-2*P)*g).toFixed(1)}" stroke="#A9B4C2" opacity="0.45" stroke-width="0.8" stroke-dasharray="3 4"/>`).join("");
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${opt.label||"trend"}: son değer ${fmt(last)}, en düşük ${fmt(min)}, en yüksek ${fmt(max)}" style="display:block">
     ${grid}
     <path d="${area}" fill="${col}" opacity="0.12"/>
@@ -2214,6 +2359,10 @@ let PSTATE={q:"",f:"all",s:"value"};
 let CHART={m:"pv",win:16};
 let NEWSF="all";
 let PDTAB="genel";
+let STAFFQ="";
+let WORLDTAB="pazarlar";
+let FINTAB="ozet";
+let FINWIN=16;
 function setSeg(t,v){ SEG[t]=v; renderAll(); window.scrollTo(0,0); }
 function gotoAgency(seg){ SEG.agency=seg; TAB="agency"; renderAll(); window.scrollTo(0,0); }
 function segBar(tab,items){ return `<div class="seg" role="tablist">`+items.map(([id,label])=>
@@ -2230,6 +2379,9 @@ function navigateTo(screen,seg){
   TAB=screen; renderAll(); window.scrollTo(0,0);
 }
 const PAGE_TITLES={home:["Ana Sayfa","Patron masası"],players:["Portföy","Oyuncu yönetimi"],scout:["Keşif","Scout ağı"],transfer:["Transfer","Pazarlık masası"],agency:["Ajans","Şirket yönetimi"],world:["Dünya","Fırsat merkezi"],news:["Haberler","Haber merkezi"],settings:["Ayarlar","Sistem & kayıt"],career:["Kariyer","Hedefler & başarımlar"],calendar:["Takvim","Sezon takvimi"],entity:["Detay",""],weeklyBriefing:["Haftalık Brifing","Sezon özeti"]};
+/* mobil topbar'da genel "Detay" yerine bağlama uygun kısa başlık */
+const ENTITY_TOPBAR_TITLES={player:"Oyuncu",country:"Ülke",league:"Lig",club:"Kulüp",rivalAgency:"Rakip Ajans",
+  negotiation:"Pazarlık",department:"Departman",finance:"Finans",competition:"Turnuva",scoutFind:"Scout Raporu",match:"Oyuncu Performansı"};
 function menuBadge(id){
   if(id==="__notif") return unreadN();
   if(id==="transfer") return S.offers.length;
@@ -2248,18 +2400,20 @@ const MENU=[
   ["globe","world",null,"Dünya"],
   ["doc","news",null,"Haberler"],
   ["cal","__takvim",null,"Takvim"],
-  ["warn","agency","iliskiler","Rakip İstihbaratı"]]],
+  ["chart","__perf",null,"Oyuncu Performansları"],
+  ["warn","agency","rakip","Rakip İstihbaratı"]]],
  ["AJANS ŞİRKETİ",[
   ["build","agency","genel","Ajans Merkezi"],
-  ["build","agency","operasyon","Operasyon & Departmanlar"],
-  ["coin","agency","finans","Finans & Ticari"],
+  ["build","agency","operasyon","Departmanlar"],
+  ["coin","__finans",null,"Finans"],
   ["shield","agency","iliskiler","İlişkiler"]]],
  ["KARİYER",[
-  ["chart","career",null,"Sezon Hedefleri & Başarımlar"],
-  ["doc","transfer","gecmis","Transfer Geçmişi"]]],
+  ["chart","career",null,"Kariyer"],
+  ["doc","transfer","gecmis","Transfer Geçmişi"],
+  ["star","career",null,"Başarılar"]]],
  ["SİSTEM",[
   ["bell","__notif",null,"Bildirimler"],
-  ["brief","__phone",null,"Telefon / Mesajlar"],
+  ["brief","__phone",null,"Telefon"],
   ["settings","settings",null,"Ayarlar & Kayıt"],
   ["doc","__help",null,"Yardım"]]],
 ];
@@ -2271,13 +2425,13 @@ function renderMainMenu(){
     <span class="b" style="font-family:'Fraunces',serif;font-size:16px">Menü</span>
     <button class="menu-trigger" aria-label="Menüyü kapat" onclick="closeMainMenu()">${icon("x",20)}</button></div>
   <div class="dhead">
-    <div class="row"><div class="avatar sm" style="background:var(--gold-grad);color:#6B5220">${initials(S.agencyName)}</div>
+    <div class="row"><div class="avatar sm" style="background:var(--gold-grad);color:#4A3812">${initials(S.agencyName)}</div>
     <div class="grow"><div class="b" style="font-size:14px">${S.agencyName}</div>
     <div class="tiny">${S.agentName} · ${tier.icon} ${tier.name}</div></div></div>
     <div class="sb" style="margin:8px 0 4px"><div class="lbl"><span>Ajans skoru</span><span>${score}${nextT?"/"+nextT.min:""}</span></div>
     <div class="track"><div class="fill au" style="width:${nextT?clamp(score/nextT.min*100,0,100):100}%"></div></div></div>
     <div class="row" style="justify-content:space-between;font-size:12px;font-weight:700">
-    <span style="color:#3E8E63">${fmtM(S.cash)}</span><span style="color:var(--gold)">★ ${Math.round(S.rep)} itibar</span></div>
+    <span style="color:#7FD7A8">${fmtM(S.cash)}</span><span style="color:#E8CE8F">★ ${Math.round(S.rep)} itibar</span></div>
   </div>`;
   for(const [sec,items] of MENU){
     h+=`<div class="dsec">${sec}</div>`;
@@ -2289,6 +2443,10 @@ function renderMainMenu(){
   }
   d.innerHTML=h;
 }
+const AGENCY_MENU_ANCHORS={rakip:"ag-rivals",iliskiler:"ag-relations"};
+function scrollToAnchor(id){
+  setTimeout(function(){ try{ const el=document.getElementById(id); if(el&&el.scrollIntoView) el.scrollIntoView({block:"start"}); }catch(e){} },20);
+}
 function menuGo(screen,seg){
   closeMainMenu();
   if(screen==="__plan") return openWeeklyPlan();
@@ -2296,7 +2454,10 @@ function menuGo(screen,seg){
   if(screen==="__notif") return openNotifications();
   if(screen==="__phone") return openPhone();
   if(screen==="__help") return openHelp();
+  if(screen==="__perf") return openPlayerPerformances();
+  if(screen==="__finans") return openFinanceEntity();
   navigateTo(screen,seg);
+  if(screen==="agency"&&AGENCY_MENU_ANCHORS[seg]) scrollToAnchor(AGENCY_MENU_ANCHORS[seg]);
 }
 function openMainMenu(){
   UI.menuOpen=true; UI.lastFocus=document.activeElement;
@@ -2451,10 +2612,68 @@ function sparkline(rats){ let h='<div class="spark">';
 function moodEmoji(m){ return m>75?"😄":m>55?"🙂":m>38?"😐":"😔"; }
 
 /* ---------- top bar & tab bar ---------- */
+/* ============================================================
+   V10 — SAYFA GÖRÜNÜM YÖNLENDİRMESİ (tek merkez)
+   Yüzey modu (light/dark/atmospheric) + sayfa aksanı body'ye yazılır;
+   eski sınıflar kalmaz çünkü dataset her render'da yeniden atanır.
+   ============================================================ */
+const PAGE_APPEARANCE={
+  home:{mode:"dark",accent:"home"}, players:{mode:"dark",accent:"portfolio"},
+  scout:{mode:"dark",accent:"scout"}, transfer:{mode:"dark",accent:"transfer"},
+  agency:{mode:"dark",accent:"agency"}, world:{mode:"atmospheric",accent:"world"},
+  news:{mode:"dark",accent:"news"}, calendar:{mode:"light",accent:"calendar"},
+  weeklyBriefing:{mode:"dark",accent:"briefing"}, career:{mode:"light",accent:"career"},
+  settings:{mode:"light",accent:"settings"},
+};
+const ENTITY_APPEARANCE={
+  player:{mode:"light",accent:"player"}, country:{mode:"atmospheric",accent:"world"},
+  league:{mode:"atmospheric",accent:"world"}, club:{mode:"atmospheric",accent:"world"},
+  rivalAgency:{mode:"dark",accent:"rival"}, negotiation:{mode:"dark",accent:"transfer"},
+  department:{mode:"light",accent:"agency"}, finance:{mode:"light",accent:"finance"},
+  competition:{mode:"atmospheric",accent:"competition"}, scoutFind:{mode:"dark",accent:"scout"},
+  match:{mode:"light",accent:"player"},
+};
+function applyPageAppearance(route){
+  try{
+    let app;
+    const r=route||((typeof UI!=="undefined"&&UI.route)||{screen:TAB});
+    if(r.screen==="entity"||TAB==="entity") app=ENTITY_APPEARANCE[r.entityType]||{mode:"light",accent:"home"};
+    else app=PAGE_APPEARANCE[r.screen||TAB]||{mode:"light",accent:"home"};
+    document.body.dataset.mode=app.mode;
+    document.body.dataset.accent=app.accent;
+  }catch(e){}
+}
+/* ---- V10 paylaşılan render yardımcıları ---- */
+function renderMetricGrid(items){
+  return `<div class="metric-grid">`+items.map(it=>{
+    const delta=it.delta!=null?`<div class="md ${it.delta>=0?'pos-delta':'neg-delta'}">${it.delta>=0?"+":""}${it.deltaText!=null?it.deltaText:it.delta}</div>`:"";
+    return `<div class="metric-card"><div class="mv" ${it.tone?`style="color:var(--${it.tone}-ink)"`:""}>${it.value}</div><div class="ml">${it.label}</div>${delta}</div>`;
+  }).join("")+`</div>`;
+}
+function renderSectionHeader(title,action,opts){
+  opts=opts||{};
+  return `<div class="section-head"><span class="section-title">${title}${opts.count!=null?` <span class="cnt">${opts.count}</span>`:""}</span>${action?`<button class="section-action" onclick="${action.fn}">${action.label}</button>`:""}</div>`;
+}
+function renderStatusChip(label,tone,iconTxt){
+  return `<span class="status-chip t-${tone||"neutral"}">${iconTxt?iconTxt+" ":""}${label}</span>`;
+}
+function renderEmptyState(cfg){
+  cfg=cfg||{};
+  return `<div class="empty-state"><div class="es-ic">${cfg.icon||"📭"}</div><div class="es-t">${cfg.title||"Burada henüz bir şey yok"}</div><div class="es-d">${cfg.desc||""}</div>${cfg.action?`<button class="btn sm primary" onclick="${cfg.action.fn}">${cfg.action.label}</button>`:""}</div>`;
+}
+/* playbar sadece üst-seviye yönetim ekranlarında görünür; herhangi bir entity/rapor
+   ekranında (oyuncu, pazarlık, departman, finans, dünya alt-ekranları vb.) her zaman
+   gizlenir — uzun/kırılgan istisna listesi yerine tek, tutarlı kural. */
+const PLAYBAR_TOPLEVEL_SCREENS=new Set(["home","players","scout","transfer","agency","world","news","calendar","career","settings"]);
+function playbarShouldBeVisible(){ return PLAYBAR_TOPLEVEL_SCREENS.has(TAB); }
 function renderChrome(){
+  applyPageAppearance();
+  try{ const pb=document.querySelector(".playbar");
+    if(pb) pb.classList.toggle("pb-hidden", !playbarShouldBeVisible()); }catch(e){}
   const win=inWindow(S.week);
   const tier=calculateAgencyTier();
-  const [tname,tsub]=PAGE_TITLES[TAB]||["",""];
+  let [tname,tsub]=PAGE_TITLES[TAB]||["",""];
+  if(TAB==="entity"&&UI.route&&UI.route.entityType) tname=ENTITY_TOPBAR_TITLES[UI.route.entityType]||tname;
   const H=(S.history&&S.history.agencyWeekly)||[];
   const lastH=H[H.length-1]; const net=lastH?(lastH.inc-lastH.exp):0;
   const nxtWin=BAL.transferWindows.find(([a])=>a>S.week);
@@ -2464,7 +2683,7 @@ function renderChrome(){
       <button class="menu-trigger" aria-label="Ana menüyü aç" aria-expanded="${UI.menuOpen}" onclick="onHamburger()">${icon("menu",21)}</button>
       <div class="tb-title"><div>
         <div class="tname">${tname}</div>
-        <div class="tsub">S${S.season} · H${S.week}${win?' · <span style="color:#B08A2E">Pencere açık</span>':''}</div>
+        <div class="tsub">S${S.season} · H${S.week}${win?' · <span style="color:var(--premium-ink)">Pencere açık</span>':''}</div>
       </div></div>
     </div>
     <div class="tb-center">
@@ -2492,7 +2711,8 @@ function renderChrome(){
     <button class="${TAB==='news'?'on':''}" onclick="navigateTo('news')">${icon('doc',18)} <span class="sbtxt">Haberler</span></button>
     <button onclick="openWeeklyPlan()">${icon('cal',18)} <span class="sbtxt">Haftalık Plan</span></button>
     <button class="${TAB==='career'?'on':''}" onclick="navigateTo('career')">${icon('chart',18)} <span class="sbtxt">Kariyer</span></button>
-    <button class="${TAB==='settings'?'on':''}" onclick="navigateTo('settings')">${icon('settings',18)} <span class="sbtxt">Ayarlar</span></button>`;
+    <button class="${TAB==='settings'?'on':''}" onclick="navigateTo('settings')">${icon('settings',18)} <span class="sbtxt">Ayarlar</span></button>
+    <div class="sb-tier sbtxt">${tier.icon} ${tier.name}</div>`;
   const cp=$("ctxpanel");
   if(cp){
     const acts=buildActions(); const ins=generateAgencyInsights();
@@ -2529,7 +2749,7 @@ function playerCard(p, compact){
       <div class="grow">
         <div class="row" style="justify-content:space-between">
           <span class="b">${p.natFlag} ${p.name}</span>
-          <span class="b" style="color:#3E8E63">${val}</span></div>
+          <span class="b" style="color:var(--success-ink)">${val}</span></div>
         <div class="muted">${p.age} yaş · ${club?club.name:"Kulüpsüz"} · ${moodEmoji(p.morale)}${p.agent==="you"?` · ${p.squadRole||playerRole(p)}`:""}</div>
         <div class="row" style="justify-content:space-between;margin-top:3px">
           <div>${starStr(p.ca)}</div>${sparkline(p.ratings)}</div>
@@ -2540,48 +2760,75 @@ function playerCard(p, compact){
 /* ---------- ANA (dashboard) ---------- */
 function setChart(m,w){ if(m)CHART.m=m; if(w)CHART.win=w; renderAll(); }
 function setNewsF(f){ NEWSF=f; renderAll(); }
+function openActionCenterSheet(){
+  const acts=buildActions();
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">AKSİYON MERKEZİ</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:17px">Bu Haftanın İşleri</div></div>`;
+  if(!acts.length) h+=renderEmptyState({icon:"✅",title:"Acil iş yok",desc:"Haftayı gönül rahatlığıyla oynatabilirsin."});
+  else { const groups=[["crit","🔴 Şimdi Çöz"],["sugg","🟡 Bu Hafta Önerilen"],["soon","🔵 Yaklaşan"]];
+    for(const [cat,label] of groups){ const g=acts.filter(a=>a.cls===cat); if(!g.length) continue;
+      h+=`<div class="tiny b" style="margin:10px 2px 4px">${label}</div>`;
+      h+=g.map(a=>`<div class="action-item ${a.cls}"><span>${a.t}${a.deleg?' <span class="tiny">· delege edilebilir</span>':''}</span><button class="btn sm ghost" onclick="closeSheet();${a.fn}">${a.btn}</button></div>`).join(""); } }
+  openSheet(h);
+}
 function renderHome(){
   const mp=myPlayers();
   const totalVal=mp.reduce((t,p)=>t+p.value,0);
-  const of=BAL.officeLevels[S.officeLevel];
   let h="";
+  /* A+B — kompakt ajans başlığı + dört metrik */
+  const H=(S.history&&S.history.agencyWeekly)||[];
+  const lastH=H[H.length-1];
+  const net=lastH?(lastH.inc-lastH.exp):0;
+  const rw=runwayWeeks();
+  const tier=calculateAgencyTier(), score=calculateAgencyScore();
+  const nextT=TIERS.find(t=>t.lv===tier.lv+1);
+  h+=`<div class="hero-page tone-gold"><div class="eyebrow">SEZON ${S.season} · HAFTA ${S.week}${inWindow(S.week)?" · PENCERE AÇIK":""}</div>
+    <h1>${escapeHtml(S.agencyName)}</h1>
+    <div class="hdesc">${tier.icon} ${tier.name} · Seviye ${tier.lv}/6</div>
+    ${nextT?`<div class="sb" style="margin:8px 0 0;max-width:340px"><div class="lbl"><span>Sonraki: ${nextT.icon} ${nextT.name}</span><span>${score}/${nextT.min}</span></div>
+    <div class="track"><div class="fill au" style="width:${clamp(score/nextT.min*100,0,100)}%"></div></div></div>`:`<div class="tiny" style="margin-top:6px">Zirvedesin 👑</div>`}</div>`;
+  h+=renderMetricGrid([
+    {label:"Kasa",value:fmtM(S.cash),tone:S.cash<0?"danger":null},
+    {label:"Portföy",value:fmtM(totalVal)},
+    {label:"Haftalık Net",value:(net>=0?"+":"")+fmtM(net),tone:net>=0?"success":"danger"},
+    rw!=null?{label:"Runway",value:rw+" hafta",tone:rw<10?"warning":null}:{label:"Komisyon",value:fmtM(S.totalCommission)},
+  ]);
+  /* bekleyen kararlar her şeyin önünde */
   if(S.decisions.length){
     h+=`<h2 class="sec">⚡ Bekleyen Kararlar <span class="cnt">${S.decisions.length}</span></h2>`;
     S.decisions.forEach((d,i)=>{ h+=`<div class="card urgent tappable" onclick="openDecision(${i})">
       <div class="row"><span style="font-size:24px">${d.icon}</span>
       <div class="grow"><div class="b">${d.title}</div><div class="muted">Dokun ve kararını ver →</div></div></div></div>`;});
   }
-  const H=(S.history&&S.history.agencyWeekly)||[];
-  const lastH=H[H.length-1];
-  const net=lastH?(lastH.inc-lastH.exp):0;
-  const rw=runwayWeeks();
-  const tier0=calculateAgencyTier();
-  h+=renderPageHero({tone:"gold",art:"crown",
-    eyebrow:`SEZON ${S.season} · HAFTA ${S.week}${inWindow(S.week)?" · PENCERE AÇIK":""}`,
-    title:S.agencyName,
-    desc:`${tier0.icon} ${tier0.name} — ${tier0.desc}`,
-    metrics:[["Kasa",fmtM(S.cash)],["Portföy",fmtM(totalVal)],["Haftalık Net",(net>=0?"+":"")+fmtM(net)],rw!=null?["Runway",rw+" hafta"]:["Komisyon",fmtM(S.totalCommission)]]});
   if(deadlineActive()){
     h+=`<div class="card urgent"><div class="row"><span style="font-size:26px">⏰</span>
       <div class="grow"><span class="b">DEADLINE DAY — pencere bu hafta kapanıyor!</span>
-      <div class="tiny">${S.offers.length} aktif teklif · son dakika hamleleri · her işlem yönetici dikkati harcar${deptUnlocked("transferOps")?" · Transfer Ops evrakı hızlandırıyor":""}</div></div>
-      <button class="btn sm gold" onclick="openDeadlineDay()">⏰ Deadline Paneli</button></div></div>`;
+      <div class="tiny">${S.offers.length} aktif teklif · son dakika hamleleri${deptUnlocked("transferOps")?" · Transfer Ops evrakı hızlandırıyor":""}</div></div>
+      <button class="btn sm gold" onclick="openDeadlineDay()">⏰ Panel</button></div></div>`;
   }
-  const pu=phoneUnread();
-  if(pu){ h+=`<div class="card gold tappable" onclick="openPhone()"><div class="row"><span style="font-size:22px">📱</span>
-    <div class="grow"><span class="b">${pu} yeni mesaj</span><div class="tiny">Oyuncular, kulüpler ve rakipler seni arıyor — gelen kutusuna bak</div></div><span class="tiny">→</span></div></div>`; }
   h+=renderTutorialCard();
-  if(S.weeklyBriefing){ h+=`<div class="card tappable" style="padding:9px 12px" onclick="openWeeklyBriefing()"><div class="row"><span style="font-size:20px">📋</span><div class="grow"><span class="b" style="font-size:13px">Son Haftanın Özeti</span><div class="tiny">S${S.weeklyBriefing.s} H${S.weeklyBriefing.w} brifingi — dokun ve gör</div></div><span class="tiny">→</span></div></div>`; }
+  /* C — Şimdi Çöz: gerçek Aksiyon Merkezi'nden en yüksek öncelikli 3 iş */
+  const acts=buildActions();
+  const top3=acts.slice(0,3);
+  h+=renderSectionHeader("🎯 Şimdi Çöz", acts.length>3?{label:`Tüm ${acts.length} aksiyonu gör`,fn:"openActionCenterSheet()"}:null, {count:acts.length});
+  if(!top3.length) h+=renderEmptyState({icon:"✅",title:"Acil iş yok",desc:"Masa temiz — haftayı oynatabilirsin."});
+  else h+=top3.map(a=>`<div class="action-item ${a.cls}"><span>${a.t}${a.deleg?' <span class="tiny">· delege edilebilir</span>':''}</span><button class="btn sm ghost" onclick="${a.fn}">${a.btn}</button></div>`).join("");
+  /* D — telefon + dikkat */
+  const pu=phoneUnread();
   const at0=S.managerAttention||{max:3,used:0};
-  h+=`<div class="card"><div class="row" style="justify-content:space-between">
-    <div><span class="b" style="font-size:13.5px">🧠 Haftalık Plan</span>
-    <div class="tiny">Odak: ${(S.weeklyFocus&&S.weeklyFocus.length)?S.weeklyFocus.map(f=>{const F=FOCUS_TYPES.find(x=>x.id===f)||{};return F.icon+" "+F.label;}).join(" · "):"seçilmedi — plana göz at"}</div></div>
-    <div style="text-align:right"><span class="slotdots">${Array.from({length:at0.max},(_,i)=>`<i class="${i<at0.used?'used':''}"></i>`).join("")}</span>
-    <div><button class="btn sm gold" style="margin-top:6px" onclick="openWeeklyPlan()">Planı Aç</button></div></div></div></div>`;
+  h+=`<div class="grid2" style="margin:10px 0">
+    <div class="card tappable ${pu?'gold':''}" style="margin-bottom:0" onclick="openPhone()">
+      <div style="font-size:20px">📱</div><div class="b" style="font-size:13.5px">${pu?pu+" yeni mesaj":"Telefon sakin"}</div>
+      <div class="tiny">${pu?"Gelen kutusuna bak":"Yeni görüşme yok"}</div></div>
+    <div class="card tappable" style="margin-bottom:0" onclick="openWeeklyPlan()">
+      <div style="font-size:20px">🧠</div><div class="b" style="font-size:13.5px">Dikkat ${at0.used}/${at0.max}</div>
+      <div class="tiny">Haftalık planı aç</div><span class="slotdots" style="margin-top:4px">${Array.from({length:at0.max},(_,i)=>`<i class="${i<at0.used?'used':''}"></i>`).join("")}</span></div>
+  </div>`;
+  if(S.weeklyBriefing){ h+=`<div class="card tappable" style="padding:9px 12px" onclick="openWeeklyBriefing()"><div class="row"><span style="font-size:20px">📋</span><div class="grow"><span class="b" style="font-size:13px">Son Haftanın Özeti</span><div class="tiny">S${S.weeklyBriefing.s} H${S.weeklyBriefing.w} brifingi</div></div><span class="tiny">→</span></div></div>`; }
+  /* sezon hedefi (kompakt) */
   if(!S.seasonObjectives){
     h+=`<div class="card gold tappable" onclick="openGoalPicker()"><div class="row"><span style="font-size:22px">🎯</span>
-    <div class="grow"><span class="b">Sezon hedefini seç</span><div class="tiny">Yönetim yol haritası bekliyor — ödüllü hedef paketleri</div></div>
-    <span class="tiny">→</span></div></div>`;
+    <div class="grow"><span class="b">Sezon hedefini seç</span><div class="tiny">Ödüllü hedef paketleri seni bekliyor</div></div><span class="tiny">→</span></div></div>`;
   } else {
     const pack0=GOAL_PACKS.find(x=>x.id===S.seasonObjectives.pack);
     if(pack0) h+=`<div class="card"><span class="b" style="font-size:13.5px">${pack0.icon} Sezon Hedefleri — ${pack0.label}</span>
@@ -2594,74 +2841,84 @@ function renderHome(){
     h+=`<div class="card"><div class="row" style="justify-content:space-between"><span class="b">🎓 Başlangıç Görevleri</span><span class="tiny">${done}/${TASKS.length}</span></div>
     <div style="margin-top:6px">${TASKS.map(t=>`<div class="sumline"><span class="${S.tasks.done[t.id]?'muted':''}" style="${S.tasks.done[t.id]?'text-decoration:line-through':''}">${S.tasks.done[t.id]?"✅":"◻️"} ${t.t}</span></div>`).join("")}</div></div>`;
   }
-  const acts=buildActions();
-  h+=`<div class="mobile-only">`;
-  if(acts.length){
-    h+=`<h2 class="sec">📌 Aksiyon Merkezi <span class="cnt">${acts.length}</span></h2>`;
-    const groups=[["crit","🔴 Şimdi Çöz"],["sugg","🟡 Bu Hafta Önerilen"],["soon","🔵 Yaklaşan"]];
-    for(const [cat,label] of groups){ const g=acts.filter(a=>a.cls===cat); if(!g.length) continue;
-      h+=`<div class="tiny b" style="margin:6px 2px 4px">${label}</div>`;
-      h+=g.map(a=>`<div class="action-item ${a.cls}"><span>${a.t}${a.deleg?' <span class="tiny">· delege edilebilir</span>':''}</span><button class="btn sm ghost" onclick="${a.fn}">${a.btn}</button></div>`).join(""); }
+  /* E — portföy nabzı */
+  if(mp.length){
+    const best=[...mp].sort((a,b)=>b.value-a.value)[0];
+    const formUp=[...mp].sort((a,b)=>b.form-a.form)[0];
+    const risky=[...mp].sort((a,b)=>a.loyalty-b.loyalty)[0];
+    const cexp=[...mp].filter(p=>p.clubId).sort((a,b)=>contractWeeksLeft(a)-contractWeeksLeft(b))[0];
+    const offered=mp.filter(p=>S.offers.some(o=>o.pid===p.id));
+    h+=`<h2 class="sec">💓 Portföy Nabzı</h2><div class="card">
+    <div class="sumline"><span class="muted">Formda</span><span class="b tappable" onclick="openPlayer('${formUp.id}')">${formUp.name} · form ${Math.round(formUp.form)}</span></div>
+    <div class="sumline"><span class="muted">Sadakat riski</span><span class="b tappable" onclick="openPlayer('${risky.id}')">${risky.name} · ${Math.round(risky.loyalty)}</span></div>
+    ${cexp?`<div class="sumline"><span class="muted">Kontrat en erken</span><span class="b tappable" onclick="openPlayer('${cexp.id}')">${cexp.name} · ${Math.max(0,contractWeeksLeft(cexp))}h</span></div>`:""}
+    ${offered.length?`<div class="sumline"><span class="muted">Teklif alan</span><span class="b tappable" onclick="navigateTo('transfer')">${offered.length} oyuncu →</span></div>`:""}
+    <div class="sumline"><span class="muted">En değerli</span><span class="b tappable" onclick="openPlayer('${best.id}')">${best.name} · ${fmtM(best.value)}</span></div>
+    </div>`;
   }
-  const ins=generateAgencyInsights();
-  if(ins.length){ h+=`<h2 class="sec">🧠 Ajans Analisti</h2>`+ins.map(i=>`<div class="news"><div class="bd">${i}</div></div>`).join(""); }
-  h+=`</div>`;
-  const tier=calculateAgencyTier(), score=calculateAgencyScore();
-  const nextT=TIERS.find(t=>t.lv===tier.lv+1);
-  h+=`<div class="card gold"><div class="row"><span style="font-size:30px">${tier.icon}</span>
-    <div class="grow"><div class="b">${tier.name} <span class="tiny">· Seviye ${tier.lv}/6</span></div>
-    <div class="tiny">${tier.desc}</div></div>
-    <div style="text-align:right"><div class="tiny">AJANS SKORU</div><div class="b" style="font-size:17px;color:#B08A2E">${score}</div></div></div>
-    ${nextT?`<div class="sb" style="margin-bottom:0"><div class="lbl"><span>Sonraki: ${nextT.icon} ${nextT.name}</span><span>${score}/${nextT.min}</span></div>
-    <div class="track"><div class="fill au" style="width:${clamp(score/nextT.min*100,0,100)}%"></div></div></div>
-    <div class="tiny" style="margin-top:5px">Açılacak: ${PLAYER_CATS.filter(c=>c.tier===nextT.lv).map(c=>c.label).join(", ")||"yeni pazarlar"}</div>`
-    :`<div class="tiny" style="margin-top:6px">Zirvedesin — futbol dünyası seni konuşuyor 👑</div>`}</div>`;
+  /* F — tek yapılandırılabilir trend */
   const MET={pv:["Portföy",v=>fmtM(v)],cash:["Kasa",v=>fmtM(v)],rep:["İtibar",v=>Math.round(v)],score:["Skor",v=>Math.round(v)]};
   const vals=H.slice(-CHART.win).map(x=>x[CHART.m]);
-  h+=`<h2 class="sec">📈 Trendler</h2><div class="chartbox">
+  h+=`<h2 class="sec">📈 Trend</h2><div class="chartbox">
     <div class="seg" style="margin:0 0 8px">${Object.entries(MET).map(([k,[l]])=>`<button class="${CHART.m===k?'on':''}" onclick="setChart('${k}')">${l}</button>`).join("")}
     ${[8,16,32].map(w=>`<button class="${CHART.win===w?'on':''}" onclick="setChart(null,${w})">${w}h</button>`).join("")}</div>
     ${interactiveChart([{label:MET[CHART.m][0],color:CHART.m==="cash"?"#3E8E63":CHART.m==="rep"?"#D9AE54":"#4A7FB5",points:vals}],{fmt:MET[CHART.m][1],label:MET[CHART.m][0]+" trendi",h:120})}
     <div class="cnote">${chartComment(vals,MET[CHART.m][0])}</div></div>`;
-  if(mp.length){
-    const best=[...mp].sort((a,b)=>b.value-a.value)[0];
-    const formUp=[...mp].sort((a,b)=>b.form-a.form)[0];
-    const formDn=[...mp].sort((a,b)=>a.form-b.form)[0];
-    const risky=[...mp].sort((a,b)=>a.loyalty-b.loyalty)[0];
-    const cexp=[...mp].filter(p=>p.clubId).sort((a,b)=>contractWeeksLeft(a)-contractWeeksLeft(b))[0];
-    h+=`<h2 class="sec">💓 Portföy Nabzı</h2><div class="card">
-    <div class="sumline"><span class="muted">En değerli</span><span class="b tappable" onclick="openPlayer('${best.id}')">${best.name} · ${fmtM(best.value)}</span></div>
-    <div class="sumline"><span class="muted">Formda</span><span class="b tappable" onclick="openPlayer('${formUp.id}')">${formUp.name} · form ${Math.round(formUp.form)}</span></div>
-    <div class="sumline"><span class="muted">Form düşüşte</span><span class="b tappable" onclick="openPlayer('${formDn.id}')">${formDn.name} · form ${Math.round(formDn.form)}</span></div>
-    <div class="sumline"><span class="muted">En riskli</span><span class="b tappable" onclick="openPlayer('${risky.id}')">${risky.name} · sadakat ${Math.round(risky.loyalty)}</span></div>
-    ${cexp?`<div class="sumline"><span class="muted">Kontrat en erken</span><span class="b tappable" onclick="openPlayer('${cexp.id}')">${cexp.name} · ${Math.max(0,contractWeeksLeft(cexp))}h</span></div>`:""}
-    </div>`;
-  }
-  if(S.lastSummary&&S.lastSummary.performances.length){
-    h+=`<h2 class="sec">⚽ Bu Haftanın Sahne Işıkları</h2>`;
-    for(const perf of S.lastSummary.performances.sort((a,b)=>b.rating-a.rating).slice(0,3)){
-      const tone=perf.rating>=7.5?"good":perf.rating<5.8?"bad":"";
-      h+=`<div class="news ${tone}"><div class="src">Maç Raporu</div>
-      <div class="hl">${perf.p.name} — Rating ${perf.rating} ${perf.rating>=8?"⭐":""}</div>
-      <div class="bd">${perf.mins} dk${perf.goals?` · ${perf.goals} gol ⚽`:""}${perf.assists?` · ${perf.assists} asist`:""}${perf.ev.filter(e=>!["gol","asist"].includes(e)).slice(0,2).map(e=>" · "+e).join("")}</div></div>`;}
-  }
-  h+=`<h2 class="sec">📰 Son Haberler <button class="btn sm ghost" style="margin-left:auto" onclick="navigateTo('news')">Haber Merkezi →</button></h2>`;
-  const news=S.news.slice(0,3);
+  /* G — gelecek hafta: en yakın 3 öncelik */
+  const upcoming=[];
+  { const nxtW=BAL.transferWindows.find(([a])=>a>S.week);
+    if(inWindow(S.week)){ const w=BAL.transferWindows.find(([a,b])=>S.week>=a&&S.week<=b); if(w) upcoming.push(`🔓 Transfer penceresi H${w[1]}'e kadar açık`); }
+    else if(nxtW) upcoming.push(`🔒 Pencere H${nxtW[0]}'te açılıyor`);
+    const soonActs=acts.filter(a=>a.cls==="soon").slice(0,2); soonActs.forEach(a=>upcoming.push("🔵 "+a.t));
+    const expO=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=2)[0];
+    if(expO&&upcoming.length<3){ const p=S.world.players[expO.pid]; if(p) upcoming.push(`📩 ${p.name} teklifi H${expO.expires}'te doluyor`); }
+    if(S.week===BAL.weeksPerSeason) upcoming.unshift("🏁 Sezonun son haftası"); }
+  if(upcoming.length){ h+=`<h2 class="sec">📆 Gelecek Hafta</h2><div class="card">${upcoming.slice(0,3).map(u=>`<div class="sumline"><span>${u}</span></div>`).join("")}</div>`; }
+  /* kısa haber ucu (uzun akış yok) */
+  h+=`<h2 class="sec">📰 Gündem <button class="btn sm ghost" style="margin-left:auto" onclick="navigateTo('news')">Haber Merkezi →</button></h2>`;
+  const news=S.news.slice(0,2);
   h+= news.length? news.map(n=>`<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}">
     <div class="src">${n.kind==="me"?"AJANS GÜNDEMİ":"FUTBOL BASINI"} · S${n.season} H${n.week}</div>
     <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
-    : `<div class="empty">Henüz haber yok — haftayı oynat, gündem oluşsun.</div>`;
+    : renderEmptyState({icon:"📰",title:"Henüz haber yok",desc:"Haftayı oynat, gündem oluşsun."});
   $("scr-home").innerHTML=h;
 }
+/* tek kaynak kategorizer — hem filtre hem rozet aynı sınıflandırmayı kullanır */
+const NEWS_CATEGORIES=[
+  {key:"transfer",label:"Transfer",color:"#3D8BFF",test:/transfer|bonservis|imza|teklif|kiralık|yenileme|bosman|serbest kal/i},
+  {key:"oyuncu",label:"Oyuncular",color:"#2F9E67",test:/oyuncu|form|sakat|moral|sadakat|gol|asist|gelişim|rating/i},
+  {key:"ajans",label:"Ajansım",color:"#C99B3D",test:/ajans|departman|personel|ofis|scout ekibi|uzmanlık|danışman|pazarlama uzman/i},
+];
+function newsCategory(n){
+  const hl=(n.hl||"")+" "+(n.bd||"");
+  for(const cat of NEWS_CATEGORIES) if(cat.test.test(hl)) return cat;
+  if(n.kind==="me") return NEWS_CATEGORIES[2];
+  return {key:"dunya",label:"Dünya",color:"#5BA7E8"};
+}
+/* rozet: kriz haberleri görsel olarak kırmızı/"Kriz" gösterir ama filtre kovası aynı kalır */
+function newsBadge(n){ const cat=newsCategory(n); return n.tone==="bad"?{key:cat.key,label:"Kriz",color:"#D9534F"}:cat; }
+const NEWSF_MIGRATION={me:"ajans",world:"dunya"};
 function renderNewsFeed(){
+  NEWSF=NEWSF_MIGRATION[NEWSF]||NEWSF;
+  if(!["all","oyuncu","transfer","ajans","dunya"].includes(NEWSF)) NEWSF="all";
   let list=S.news;
-  if(NEWSF==="me") list=list.filter(n=>n.kind==="me");
-  if(NEWSF==="world") list=list.filter(n=>n.kind!=="me");
-  let h=`<div class="seg">${[["all","Tümü"],["me","Ajansım"],["world","Dünya"]].map(([k,l])=>`<button class="${NEWSF===k?'on':''}" onclick="setNewsF('${k}')">${l}</button>`).join("")}</div>`;
-  h+= list.length? list.slice(0,30).map(n=>`<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}">
-    <div class="src">${n.kind==="me"?"AJANS GÜNDEMİ":"FUTBOL BASINI"} · S${n.season} H${n.week}</div>
-    <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
-    :`<div class="empty">Bu filtrede haber yok.</div>`;
+  if(NEWSF!=="all") list=list.filter(n=>newsCategory(n).key===NEWSF);
+  let h=`<div class="page-header"><div class="page-eyebrow">HABER MERKEZİ</div>
+    <div class="page-title">Haberler</div></div>`;
+  h+=`<div class="seg">${[["all","Tümü"],["ajans","Ajansım"],["oyuncu","Oyuncular"],["transfer","Transfer"],["dunya","Dünya"]].map(([k,l])=>`<button class="${NEWSF===k?'on':''}" onclick="setNewsF('${k}')">${l}</button>`).join("")}</div>`;
+  if(!list.length) return h+renderEmptyState({icon:"📰",title:"Bu filtrede haber yok",desc:"Haftalar ilerledikçe gündem burada birikir."});
+  /* A — öne çıkan hikâye */
+  const feat=list[0]; const fb=newsBadge(feat);
+  h+=`<div class="card" style="border-left:4px solid ${fb.color};padding:16px">
+    <span class="status-chip" style="background:${fb.color}22;color:${fb.color}">${fb.label}</span>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:18px;margin:6px 0 4px">${feat.hl}</div>
+    <div class="muted">${feat.bd}</div>
+    <div class="tiny" style="margin-top:6px">S${feat.season} H${feat.week} · ${feat.kind==="me"?"Ajans Gündemi":"Futbol Basını"}</div></div>`;
+  /* B+C — kompakt kronolojik akış */
+  h+=list.slice(1,30).map(n=>{ const nb=newsBadge(n);
+    return `<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}" style="border-left-color:${nb.color}">
+    <div class="src"><span style="color:${nb.color}">${nb.label}</span> · S${n.season} H${n.week}</div>
+    <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`; }).join("");
   return h;
 }
 
@@ -2694,18 +2951,29 @@ function renderPlayers(){
   const mp=getPortfolioPlayers();
   const cap=BAL.officeLevels[S.officeLevel].cap;
   const tv=mp.reduce((t,p)=>t+p.value,0);
-  const avgAge=mp.length?(mp.reduce((t,p)=>t+p.age,0)/mp.length).toFixed(1):"—";
-  const avgMor=mp.length?Math.round(mp.reduce((t,p)=>t+p.morale,0)/mp.length):0;
-  const ga=mp.reduce((t,p)=>t+p.seasonStats.goals+p.seasonStats.assists,0);
-  const riskN=mp.filter(p=>p.loyalty<45||p.morale<38||p.rivalId).length;
+  /* haftalık portföy değer değişimi (ajans geçmişinden) */
+  const Hh=(S.history&&S.history.agencyWeekly)||[];
+  const prevPv=Hh.length>1?Hh[Hh.length-2].pv:null;
+  const pvDelta=prevPv!=null?tv-prevPv:null;
+  /* risk özeti */
+  const urgentN=mp.filter(p=>(p.agentWeeksLeft>0&&p.agentWeeksLeft<15)||(p.rivalId&&p.loyalty<45)).length;
   const offN=mp.filter(p=>S.offers.some(o=>o.pid===p.id)).length;
-  let h=renderPageHero({tone:"blue",art:"pitch",eyebrow:"PORTFÖY YÖNETİMİ",
-    title:`${mp.length} futbolcunun kariyeri elinde`,
-    desc:`Kapasite ${mp.length}/${cap} · Bu sezon ${ga} gol katkısı`,
-    metrics:[["Toplam Değer",fmtM(tv)],["Ort. Yaş",avgAge],["Ort. Moral",avgMor+" "+moodEmoji(avgMor)],["Riskli",riskN],["Teklif Alan",offN]]});
+  const sadN=mp.filter(p=>p.morale<38).length;
+  const injN=mp.filter(p=>p.injury).length;
+  const conN=mp.filter(p=>p.clubId&&contractWeeksLeft(p)<26).length;
+  let h=`<div class="page-header"><div class="page-eyebrow">MÜŞTERİ YÖNETİMİ</div>
+    <div class="page-title">Portföy</div>
+    <div class="page-subtitle">${mp.length}/${cap} müşteri · toplam değer ${fmtM(tv)}${pvDelta!=null?` · bu hafta <span class="${pvDelta>=0?'pos-delta':'neg-delta'}">${pvDelta>=0?"+":""}${fmtM(pvDelta)}</span>`:""}</div></div>`;
+  /* risk şeridi — dokununca ilgili filtre açılır */
+  h+=`<div class="filterrow" role="group" aria-label="risk özeti">
+    <button class="fchip ${PSTATE.f==='risk'?'on':''}" onclick="setPF('risk')">🔴 Acil ${urgentN}</button>
+    <button class="fchip ${PSTATE.f==='teklif'?'on':''}" onclick="setPF('teklif')">📩 Teklifli ${offN}</button>
+    <button class="fchip ${PSTATE.f==='mutsuz'?'on':''}" onclick="setPF('mutsuz')">😞 Mutsuz ${sadN}</button>
+    <button class="fchip ${PSTATE.f==='sakat'?'on':''}" onclick="setPF('sakat')">🤕 Sakat ${injN}</button>
+    <button class="fchip ${PSTATE.f==='kontrat'?'on':''}" onclick="setPF('kontrat')">📄 Kontrat ${conN}</button></div>`;
   h+=`
   <input class="search" placeholder="Oyuncu veya kulüp ara..." value="${PSTATE.q}" oninput="pQ(this.value)" aria-label="oyuncu ara">
-  <div class="filterrow">${[["all","Tümü"],["genc","Gençler"],["form","Formda"],["mutsuz","Mutsuz"],["sakat","Sakat"],["teklif","Teklif Alan"],["kontrat","Kontratı Biten"],["risk","Riskli"]].map(([k,l])=>
+  <div class="filterrow">${[["all","Tümü"],["genc","Gençler"],["form","Formda"],["mutsuz","Mutsuz"],["sakat","Sakat"],["teklif","Teklifli"],["kontrat","Kontrat"],["risk","Acil"]].map(([k,l])=>
     `<button class="fchip ${PSTATE.f===k?'on':''}" onclick="setPF('${k}')">${l}</button>`).join("")}</div>
   <div class="row" style="justify-content:flex-end;margin-bottom:8px"><label class="tiny" style="margin-right:6px">Sırala:</label>
   <select class="sel" onchange="setPS(this.value)" aria-label="sıralama">
@@ -2725,6 +2993,9 @@ function careerStage(p){
   if(p.age<=32) return "Tecrübeli Lider";
   return "Kariyer Sonu";
 }
+/* eski PDTAB değerlerinin son 6-sekme yapısına güvenli, idempotent göçü */
+const PDTAB_MIGRATION={perf:"kariyer",pazar:"soz"};
+function normalizePDTab(tab){ return PDTAB_MIGRATION[tab]||tab; }
 function openPlayer(pid){
   const p=S.world.players[pid]; if(!p) return;
   if(typeof canViewPlayer==="function"&&!canViewPlayer(pid)){ showEntityPage("player",pid,lockedEntityPage("player",pid)); return; }
@@ -2732,31 +3003,41 @@ function openPlayer(pid){
   const club=S.world.clubs[p.clubId];
   const L=leagueOf(p,S.world);
   const isMine=p.agent==="you";
-  const tabs=isMine?[["genel","Genel"],["perf","Performans"],["kariyer","Kariyer"],["soz","Sözleşme"],["pazar","Pazar"],["marka","Marka"]]
-                   :[["genel","Genel"],["perf","Performans"]];
+  const tabs=isMine?[["genel","Genel"],["kariyer","Kariyer"],["soz","Sözleşme"],["iliskiler","İlişkiler"],["gelisim","Gelişim"],["marka","Marka"]]
+                   :[["genel","Genel"],["kariyer","Kariyer"]];
+  PDTAB=normalizePDTab(PDTAB);
   if(!tabs.some(([id])=>id===PDTAB)) PDTAB="genel";
   let h=`<div class="grab"></div>
   <div class="row">${renderPlayerPortrait(p,58)}
   <div class="grow"><div class="b" style="font-size:18px;font-family:'Fraunces',serif">${p.natFlag} ${p.name}</div>
   <div class="muted">${p.age} yaş · ${POS_LABEL[p.pos]} · ${club?club.name:"Kulüpsüz"} ${L?"· "+L.flag:""}</div>
   <div>${starStr(p.ca)} <span class="tiny">${careerStage(p)}</span></div></div>
-  <div style="text-align:right"><div class="tiny">DEĞER</div><div class="b" style="color:#3E8E63;font-size:16px">${isMine?fmtM(p.value):fmtRange(p.value,(p.clubId?(S.world.clubs[p.clubId]||{}).countryId:(p.countryId||p.nat)),"playerKnowledge")}</div>
+  <div style="text-align:right"><div class="tiny">DEĞER</div><div class="b" style="color:var(--success-ink);font-size:16px">${isMine?fmtM(p.value):fmtRange(p.value,(p.clubId?(S.world.clubs[p.clubId]||{}).countryId:(p.countryId||p.nat)),"playerKnowledge")}</div>
   ${isMine?`<div class="tiny">${p.squadRole||playerRole(p)}</div>`:""}</div></div>
   ${isMine?playerDualStatus(p):""}
   <div class="seg" style="margin-top:10px">${tabs.map(([id,l])=>`<button class="${PDTAB===id?'on':''}" onclick="pdTab('${p.id}','${id}')">${l}</button>`).join("")}</div>`;
-  h+= PDTAB==="perf"? pdPerf(p): PDTAB==="kariyer"? pdCareer(p): PDTAB==="soz"? pdContract(p): PDTAB==="pazar"? pdMarket(p): PDTAB==="marka"? pdBrand(p): pdOverview(p);
+  h+= PDTAB==="kariyer"? pdCareer(p): PDTAB==="soz"? pdContract(p): PDTAB==="iliskiler"? pdRelations(p): PDTAB==="gelisim"? pdDevelopment(p): PDTAB==="marka"? pdBrand(p): pdOverview(p);
   h+=playerStickyActions(p);
   showEntityPage("player",p.id,h,{section:PDTAB});
 }
 function pdOverview(p){
   const isMine=p.agent==="you";
-  let h=`<div class="sb"><div class="lbl"><span>Form</span><span>${Math.round(p.form)}</span></div><div class="track"><div class="fill ${p.form>65?'g':p.form<40?'r':''}" style="width:${p.form}%"></div></div></div>
+  const st=p.seasonStats;
+  let h="";
+  if(st&&(st.apps||st.ratN)){
+    const avgR=st.ratN?(st.ratSum/st.ratN).toFixed(2):"—";
+    h+=renderMetricGrid([{label:"Maç",value:st.apps},{label:"Gol",value:st.goals},{label:"Asist",value:st.assists},{label:"Ort. Rating",value:avgR}]);
+    if(p.lastMatch) h+=`<div class="tiny" style="margin:-4px 2px 8px">Son maç: rating <b>${p.lastMatch.r}</b> · ${p.lastMatch.mins} dk${p.lastMatch.goals?` · ${p.lastMatch.goals} gol ⚽`:""}</div>`;
+  }
+  h+=`<div class="sb"><div class="lbl"><span>Form</span><span>${Math.round(p.form)}</span></div><div class="track"><div class="fill ${p.form>65?'g':p.form<40?'r':''}" style="width:${p.form}%"></div></div></div>
   <div class="sb"><div class="lbl"><span>Moral ${moodEmoji(p.morale)}</span><span>${Math.round(p.morale)}</span></div><div class="track"><div class="fill ${p.morale>65?'g':p.morale<40?'r':''}" style="width:${p.morale}%"></div></div></div>`;
   if(p.clubId){
     const ct=p.coachTrust??50;
     h+=`<div class="sb"><div class="lbl"><span>Hoca Güveni</span><span>${Math.round(ct)}</span></div><div class="track"><div class="fill ${ct>60?'g':ct<38?'r':'au'}" style="width:${ct}%"></div></div></div>
     <div class="tiny" style="margin:2px 2px 8px">${roleHint(p)}</div>`;
   }
+  if(p.injury) h+=`<div class="card urgent">🤕 ${p.injury.label} sakatlık — ${p.injury.weeks} hafta kaldı</div>`;
+  if(p.suspension>0) h+=`<div class="card urgent">🟥 Cezalı — ${p.suspension} hafta</div>`;
   if(!isMine && p.discovered){
     if(p.agent){ h+=`<div class="card alt" style="text-align:center;margin-top:8px"><span class="badge sad">Başka bir menajerle çalışıyor</span></div>`; }
     else {
@@ -2765,7 +3046,7 @@ function pdOverview(p){
       <div class="row" style="justify-content:space-between"><span class="muted">Kategori</span><span class="b">${cat.label}</span></div>
       <div class="sb"><div class="lbl"><span>Temsil Etme Şansı</span><span>%${w}</span></div><div class="track"><div class="fill ${w>=70?'g':w<35?'r':'au'}" style="width:${w}%"></div></div></div>
       ${w<50?`<div class="tiny" style="margin-top:2px">${getWillingnessReasons(p)[0]}</div>`:""}
-      ${p.meetCooldown>0?`<div class="tiny" style="color:#C96A6A;margin-top:4px">Aile ${p.meetCooldown} hafta sonra görüşmeye açık.</div>`
+      ${p.meetCooldown>0?`<div class="tiny" style="color:var(--danger-ink);margin-top:4px">Aile ${p.meetCooldown} hafta sonra görüşmeye açık.</div>`
         :`<button class="btn block primary" style="margin-top:8px" onclick="requestPlayerMeeting('${p.id}')">🤝 Görüşme Talep Et (${fmtM(meetCost(p))})</button>`}
       <button class="btn block ghost" style="margin-top:6px" onclick="toggleWatch('${p.id}')">${(S.watchlist||[]).includes(p.id)?"👁️ İzlemeden çıkar":"👁️ İzleme listesine ekle"}</button>
       </div>`;
@@ -2786,14 +3067,14 @@ function pdOverview(p){
     if(p.form>70) opps.push("Form zirvede — pazarlama için ideal hafta");
     if(Object.values(p.interest||{}).filter(v=>v>55).length>=2) opps.push("Birden fazla kulüp ilgili");
     if(p.age<=20&&(p.coachTrust??50)<45&&p.clubId) opps.push("Kiralık gelişim fırsatı");
-    if(risks.length){ h+=`<div class="card urgent" style="margin-top:8px"><div class="tiny" style="color:#C96A6A;font-weight:800">RİSKLER</div>${risks.slice(0,3).map(r=>`<div class="sumline"><span>⚠️ ${r}</span></div>`).join("")}</div>`; }
-    if(opps.length){ h+=`<div class="card alt"><div class="tiny" style="color:#3E8E63;font-weight:800">FIRSATLAR</div>${opps.slice(0,3).map(o=>`<div class="sumline"><span>✨ ${o}</span></div>`).join("")}</div>`; }
+    if(risks.length){ h+=`<div class="card urgent" style="margin-top:8px"><div class="tiny" style="color:var(--danger-ink);font-weight:800">RİSKLER</div>${risks.slice(0,3).map(r=>`<div class="sumline"><span>⚠️ ${r}</span></div>`).join("")}</div>`; }
+    if(opps.length){ h+=`<div class="card alt"><div class="tiny" style="color:var(--success-ink);font-weight:800">FIRSATLAR</div>${opps.slice(0,3).map(o=>`<div class="sumline"><span>✨ ${o}</span></div>`).join("")}</div>`; }
     const next= p.rivalId||p.loyalty<45? "Sadakati güçlendir: söz ver veya sözleşmeyi yenile."
       : p.morale<40? "Moral düşük: kiralık veya kulüp değişikliği değerlendir."
       : (p.clubId&&contractWeeksLeft(p)<30)? "Kulüp sözleşmesini yenilet ya da transferi planla."
       : p.form>70&&inWindow(S.week)? "Form yüksek, pencere açık: kulüplere pazarla."
       : "Gelişim yolunda — haftalık takibe devam.";
-    h+=`<div class="card gold"><span class="tiny" style="color:#8A6E2F;font-weight:800">MENAJER ÖNERİSİ</span><div style="margin-top:3px">${next}</div></div>
+    h+=`<div class="card gold"><span class="tiny" style="color:var(--premium-ink);font-weight:800">MENAJER ÖNERİSİ</span><div style="margin-top:3px">${next}</div></div>
     <button class="btn block primary" style="margin-top:4px" onclick="startPlayerMeeting('${p.id}')">🗣️ Özel Görüşme (dikkat 1)${p.meetCd>0?` · ${p.meetCd} hafta bekle`:""}</button>
     <div class="btnrow">
       <button class="btn blue" onclick="openMarketing('${p.id}')">📣 Pazarla</button>
@@ -2801,48 +3082,22 @@ function pdOverview(p){
   }
   return h;
 }
-function pdPerf(p){
+function pdCareer(p){
   const st=p.seasonStats;
-  const avgR=st.ratN?(st.ratSum/st.ratN).toFixed(2):"—";
-  let h=`<div class="kpi" style="margin-top:4px">
+  let h="";
+  if(st){ const avgR=st.ratN?(st.ratSum/st.ratN).toFixed(2):"—";
+    h+=`<div class="kpi" style="margin-top:4px">
     <div class="cell"><div class="v">${st.apps}</div><div class="l">Maç</div></div>
     <div class="cell"><div class="v">${st.goals}</div><div class="l">Gol</div></div>
     <div class="cell"><div class="v">${st.assists}</div><div class="l">Asist</div></div>
     <div class="cell"><div class="v">${avgR}</div><div class="l">Ort. Rating</div></div>
     ${(p.internationalCaps||0)?`<div class="cell"><div class="v">🎖️ ${p.internationalCaps}</div><div class="l">Milli Maç</div></div>`:""}
-  </div>
-  ${p.lastMatch?`<div class="card alt"><div class="tiny b">SON MAÇ RAPORU</div>
-  <div style="margin-top:3px">Rating <b>${p.lastMatch.r}</b> · ${p.lastMatch.mins} dk${p.lastMatch.goals?` · ${p.lastMatch.goals} gol ⚽`:""}${p.lastMatch.assists?` · ${p.lastMatch.assists} asist`:""}</div>
-  ${p.lastMatch.ev&&p.lastMatch.ev.length?`<div class="tiny" style="margin-top:3px">${p.lastMatch.ev.join(" · ")}</div>`:""}</div>`:""}
-  <div class="chartbox"><div class="tiny b" style="margin-bottom:6px">SON 12 HAFTA RATING</div>${renderRatingBars(p.ratingHistory&&p.ratingHistory.length?p.ratingHistory:p.ratings)}</div>`;
-  if(p.minutesHistory&&p.minutesHistory.length>1){
-    let rh=(p.ratingHistory&&p.ratingHistory.length?p.ratingHistory:p.ratings||[]).slice(-32);
-    let mh=p.minutesHistory.slice(-32);
-    const L=Math.min(rh.length,mh.length);
-    if(L>=2){ rh=rh.slice(-L); mh=mh.slice(-L);
-      h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">RATING + DAKİKA <span class="muted">(çift eksen)</span></div>${interactiveChart([
-        {label:"Rating",color:"#3E8E63",points:rh,axis:"left"},
-        {label:"Dakika",color:"#4A7FB5",points:mh,axis:"right"}],
-        {dualAxis:true,fmt:v=>(typeof v==="number"&&v.toFixed?v.toFixed(1):v),fmt2:v=>Math.round(v)+"dk",label:"rating ve dakika",h:120})}
-      <div class="cnote">${chartComment(p.minutesHistory,"Dakikalar")}</div></div>`;
-    } else {
-      h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">OYNAMA DAKİKASI TRENDİ</div>${interactiveChart([{label:"Dakika",color:"#4A7FB5",points:mh}],{fmt:v=>Math.round(v)+" dk",label:"dakika trendi",h:110})}</div>`;
-    }
-  }
-  h+=`<div class="sb"><div class="lbl"><span>Form</span><span>${Math.round(p.form)}</span></div><div class="track"><div class="fill ${p.form>65?'g':''}" style="width:${p.form}%"></div></div></div>
-  <div class="sb"><div class="lbl"><span>Moral</span><span>${Math.round(p.morale)}</span></div><div class="track"><div class="fill ${p.morale>65?'g':p.morale<40?'r':''}" style="width:${p.morale}%"></div></div></div>
-  ${p.injury?`<div class="card urgent">🤕 ${p.injury.label} sakatlık — ${p.injury.weeks} hafta kaldı</div>`:""}
-  ${p.suspension>0?`<div class="card urgent">🟥 Cezalı — ${p.suspension} hafta</div>`:""}`;
-  return h;
-}
-function pdCareer(p){
-  let h=careerTable(p);
+  </div>`; }
+  h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">SON 12 HAFTA RATING</div>${renderRatingBars(p.ratingHistory&&p.ratingHistory.length?p.ratingHistory:p.ratings)}</div>`;
+  h+=careerTable(p);
   if(p.valueHistory&&p.valueHistory.length>1){
     h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">PİYASA DEĞERİ</div>${interactiveChart([{label:"Değer",color:"#3E8E63",points:p.valueHistory.slice(-32)}],{fmt:fmtM,label:"piyasa değeri",h:110})}
     <div class="cnote">${chartComment(p.valueHistory,"Değer")}</div></div>`;
-  }
-  if(p.caHistory&&p.caHistory.length>1){
-    h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">GELİŞİM (CA)</div>${interactiveChart([{label:"CA",color:"#B08A2E",points:p.caHistory.slice(-32)}],{fmt:v=>v.toFixed?v.toFixed(1):v,label:"yetenek gelişimi",h:110})}</div>`;
   }
   const cp=p.careerPlan;
   h+=`<h2 class="sec" style="font-size:15px">🎯 Kariyer Planı</h2>`;
@@ -2879,7 +3134,7 @@ function pdContract(p){
   <div class="card">
   <div class="nego-line"><span class="muted">Komisyon</span><span class="b">%${Math.round(p.agentCommission*100)}</span></div>
   <div class="nego-line"><span class="muted">Kalan süre</span><span class="b ${p.agentWeeksLeft<15?'neg-delta':''}">${Math.max(0,p.agentWeeksLeft)} hafta</span></div>
-  <div class="nego-line"><span class="muted">Maaş komisyonu</span><span class="b" style="color:#3E8E63">${fmtM(p.wage*4*BAL.wageCommission)}/ay</span></div>
+  <div class="nego-line"><span class="muted">Maaş komisyonu</span><span class="b" style="color:var(--success-ink)">${fmtM(p.wage*4*BAL.wageCommission)}/ay</span></div>
   ${p.agentWeeksLeft<40?`<button class="btn block primary sm" style="margin-top:8px" onclick="renewAgentContract('${p.id}')">🤝 Sözleşmeyi Yenile</button>`:""}
   </div>
   <h2 class="sec" style="font-size:15px">🤙 Verilen Sözler</h2>`;
@@ -2889,12 +3144,10 @@ function pdContract(p){
     <span class="badge ${pr.status==='open'?'pos':pr.status==='kept'?'ok':'inj'}">${pr.status==='open'?`S${pr.deadlineSeason} H${pr.deadlineWeek}'e kadar`:pr.status==='kept'?"Tutuldu ✅":"Tutulmadı ❌"}</span></div></div>`).join("")
     : `<div class="empty">Henüz söz verilmedi.</div>`;
   h+=`<button class="btn block blue" style="margin-top:6px" onclick="openPromiseSheet('${p.id}')">🤙 Söz Ver</button>`;
-  return h;
-}
-function pdMarket(p){
+  // piyasa ilgisi + aktif teklifler (eski "Pazar" sekmesi — sözleşme bağlamına taşındı)
   const hot=Object.entries(p.interest||{}).filter(([,v])=>v>40).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const offers=S.offers.filter(o=>o.pid===p.id);
-  let h=`<h2 class="sec" style="font-size:15px">🔥 Kulüp İlgisi</h2>`;
+  h+=`<h2 class="sec" style="font-size:15px">🔥 Piyasa İlgisi</h2>`;
   if(hot.length){
     for(const [cid,v] of hot){ const c=S.world.clubs[cid]; const fit=calculateCareerFit(p,c);
       h+=`<div class="card" style="padding:10px 12px"><div class="row" style="justify-content:space-between">
@@ -2912,6 +3165,64 @@ function pdMarket(p){
     ${p.clubId&&!p.loan?`<button class="btn ghost" onclick="startLoan('${p.id}')">🔁 Kiralık Ara</button>`:""}
   </div>
   ${p.loan?`<div class="card alt" style="margin-top:8px">🔁 Kiralıkta: ${S.world.clubs[p.loan.club]?.name||"?"} · ${p.loan.weeks} hafta kaldı</div>`:""}`;
+  return h;
+}
+/* ============================================================
+   V11 — OYUNCU PROFİLİ: İLİŞKİLER SEKMESİ
+   ============================================================ */
+function pdRelations(p){
+  const c=S.world.clubs[p.clubId];
+  let h=`<div class="sb"><div class="lbl"><span>Sana Sadakati</span><span>${Math.round(p.loyalty)}</span></div><div class="track"><div class="fill ${p.loyalty>60?'g':p.loyalty<45?'r':'au'}" style="width:${p.loyalty}%"></div></div></div>
+  <div class="sb"><div class="lbl"><span>Aile Güveni</span><span>${Math.round(p.famTrust??40)}</span></div><div class="track"><div class="fill ${(p.famTrust??40)>60?'g':(p.famTrust??40)<38?'r':'au'}" style="width:${p.famTrust??40}%"></div></div></div>`;
+  if(c){ const ct=p.coachTrust??50;
+    h+=`<div class="sb"><div class="lbl"><span>Hoca Güveni</span><span>${Math.round(ct)}</span></div><div class="track"><div class="fill ${ct>60?'g':ct<38?'r':'au'}" style="width:${ct}%"></div></div></div>
+    <div class="sb"><div class="lbl"><span>Kulüp İlişkisi (${escapeHtml(c.name)})</span><span>${Math.round(c.relation||0)}</span></div><div class="track"><div class="fill ${(c.relation||0)>60?'g':(c.relation||0)<25?'r':'au'}" style="width:${c.relation||0}%"></div></div></div>`;
+  }
+  const rv=p.rivalId?RIVALS.find(x=>x.id===p.rivalId):null;
+  h+=`<div class="card ${rv?'urgent':'alt'}" style="margin-top:8px"><div class="tiny b">RAKİP AJAN BASKISI</div>
+    <div class="tiny" style="margin-top:2px">${rv?`🦈 ${escapeHtml(rv.name)} (${escapeHtml(rv.style)}) oyuncuyla temasta`:"Şu an bilinen bir rakip temas yok"}</div></div>`;
+  const prs=p.promises||[]; const openP=prs.filter(x=>x.status==="open"); const closedP=prs.filter(x=>x.status!=="open");
+  h+=`<div class="card"><div class="tiny b">SÖZLER</div>
+    <div class="tiny" style="margin-top:2px">${openP.length} açık · ${closedP.filter(x=>x.status==='kept').length} tutuldu · ${closedP.filter(x=>x.status==='broken').length} bozuldu</div>
+    <button class="btn sm ghost" style="margin-top:6px" onclick="pdTab('${p.id}','soz')">Sözleşmede gör →</button></div>`;
+  const msgs=(S.phoneInbox||[]).filter(m=>m.pid===p.id).sort((a,b)=>(b.t||0)-(a.t||0)).slice(0,5);
+  h+=renderSectionHeader("📱 Son Görüşmeler",null,{count:msgs.length});
+  h+= msgs.length? msgs.map(m=>`<div class="sumline tappable" onclick="closeSheet();openPhoneMsg('${m.id}')"><span>${escapeHtml(m.subject||"")}</span><span class="tiny">${m.outcome?escapeHtml(String(m.outcome).slice(0,28)):phoneStatusLabel(m)}</span></div>`).join("")
+    : renderEmptyState({icon:"📱",title:"Henüz görüşme yok",desc:"Telefon görüşmeleri ve delegasyon sonuçları burada listelenir."});
+  return h;
+}
+/* ============================================================
+   V11 — OYUNCU PROFİLİ: GELİŞİM SEKMESİ
+   ============================================================ */
+function pdDevelopmentRecommendation(p){
+  if(p.injury) return "Sakatlık geçirene kadar gelişim yükünü hafiflet.";
+  if(p.age<=21&&(p.coachTrust??50)<45&&p.clubId&&!p.loan) return "Hoca güveni düşük — kiralık gelişim yolunu değerlendir.";
+  if((p.devMod||1)<0.9) return "Gelişim yavaşladı — rol/kulüp uyumunu kontrol et.";
+  if(p.age<=23&&(p.pa-p.ca)>8) return "Potansiyel açığı yüksek — düzenli süre gelişimi hızlandırır.";
+  return "Gelişim istikrarlı — mevcut planı sürdür.";
+}
+function pdDevelopment(p){
+  let h=renderMetricGrid([
+    {label:"CA",value:Math.round(p.ca)},{label:"PA",value:Math.round(p.pa)},
+    {label:"Gelişim Hızı",value:p.devSpeed},{label:"Sakatlık Eğilimi",value:p.injProne>60?"Yüksek":p.injProne>35?"Orta":"Düşük",tone:p.injProne>60?"danger":null},
+  ]);
+  const dm=p.devMod||1;
+  h+=`<div class="card alt"><div class="tiny b">GELİŞİM DURUMU</div><div class="tiny" style="margin-top:2px">${dm>1.1?"▲ Hızlanıyor":dm<0.9?"▼ Yavaşlıyor":"— Stabil"} (çarpan ${dm.toFixed(2)})</div></div>`;
+  const ac=(typeof ensureAcademy==="function")?ensureAcademy(S):null;
+  const inAcademy=ac&&(ac.youthPlayers||[]).includes(p.id);
+  if(inAcademy){
+    h+=`<h2 class="sec" style="font-size:15px">🎓 Akademi Planı</h2><div class="card">
+    <div class="tiny">Plan: ${ACADEMY_PLANS.map(([id2,l2])=>`<a onclick="setAcademyPlan('${p.id}','${id2}')" style="cursor:pointer;margin-right:6px;${((S.academy.developmentPlans||{})[p.id]===id2)?'color:var(--gold);font-weight:800':''}">${l2}</a>`).join("")}</div>
+    <div class="tiny" style="margin-top:4px">${((S.academy.mentors||{})[p.id])?`🧭 Mentor: ${S.world.players[(S.academy.mentors||{})[p.id]]?.name||"?"}`:`<a onclick="setAcademyMentor('${p.id}')" style="cursor:pointer;color:var(--info-ink)">+ Mentor ata</a>`}</div></div>`;
+  } else h+=`<div class="tiny" style="margin:2px 2px 8px">Akademi dışında — gelişimi hoca güveni, süre ve kariyer planına bağlı ilerliyor.</div>`;
+  if(p.loan) h+=`<div class="card alt">🔁 Kiralık gelişim: ${S.world.clubs[p.loan.club]?.name||"?"} · ${p.loan.weeks} hafta kaldı</div>`;
+  if(p.caHistory&&p.caHistory.length>1){
+    h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">GELİŞİM (CA)</div>${interactiveChart([{label:"CA",color:"#B08A2E",points:p.caHistory.slice(-32)}],{fmt:v=>v.toFixed?v.toFixed(1):v,label:"yetenek gelişimi",h:110})}</div>`;
+  }
+  if(p.minutesHistory&&p.minutesHistory.length>1){
+    h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">OYNAMA DAKİKASI TRENDİ</div>${interactiveChart([{label:"Dakika",color:"#4A7FB5",points:p.minutesHistory.slice(-32)}],{fmt:v=>Math.round(v)+" dk",label:"dakika trendi",h:110})}</div>`;
+  }
+  h+=`<div class="card gold"><span class="tiny" style="color:var(--premium-ink);font-weight:800">SONRAKİ ADIM</span><div style="margin-top:3px">${pdDevelopmentRecommendation(p)}</div></div>`;
   return h;
 }
 /* ---------- söz / plan / pazarlama / karşılaştırma sheetleri ---------- */
@@ -2997,7 +3308,7 @@ function compareOffers(pid){
   for(const r of rows){
     h+=`<div class="card ${r===bestBal?'gold':''}">
     <div class="row" style="justify-content:space-between"><span class="b">${r.L.flag} ${r.c.name}</span><span class="tiny">${r.c.profile||""}</span></div>
-    <div class="nego-line"><span class="muted">Bonservis / Komisyon</span><span class="b">${fmtM(r.o.fee)} / <span style="color:#3E8E63">${fmtM(r.o.comm)}</span></span></div>
+    <div class="nego-line"><span class="muted">Bonservis / Komisyon</span><span class="b">${fmtM(r.o.fee)} / <span style="color:var(--success-ink)">${fmtM(r.o.comm)}</span></span></div>
     <div class="nego-line"><span class="muted">Maaş</span><span class="b">${fmtM(r.o.wage)}/hf</span></div>
     <div class="nego-line"><span class="muted">Ekstralar</span><span class="b">${[r.o.signBonus?`imza ${fmtM(r.o.signBonus)}`:"",r.o.sellOn?`sell-on %${r.o.sellOn}`:"",r.o.playGuar?"oynama garantisi":""].filter(Boolean).join(" · ")||"—"}</span></div>
     <div class="nego-line"><span class="muted">Kariyer uyumu / Oynama</span><span class="b" style="color:${r.fit.score>=65?'#3E8E63':r.fit.score<38?'#C96A6A':'#B08A2E'}">${r.fit.score}/100 · %${r.fit.play}</span></div>
@@ -3074,7 +3385,7 @@ function openNegoTable(oid,msg){
     <div class="nego-line"><span class="muted">Oynama garantisi</span>
       <button class="btn sm ${o.ask.playGuar?'primary':'ghost'}" onclick="negoAdj('${oid}','playGuar',0)">${o.ask.playGuar?"İsteniyor ✅":"İstenmiyor"}</button></div>
     <div class="nego-line"><span class="muted">Ajans komisyonu (%${Math.round(p.agentCommission*100)})</span>
-      <span class="b" style="color:#3E8E63">${fmtM(Math.round(v.fee*p.agentCommission))}</span></div>
+      <span class="b" style="color:var(--success-ink)">${fmtM(Math.round(v.fee*p.agentCommission))}</span></div>
     <div class="tiny" style="margin-top:6px">Talep yükü: <b>${heat}</b> · Kulüp sabrı: ${pat} tur</div>
     <div class="patience"><div class="pf" style="width:${clamp(pat/3*100,5,100)}%"></div></div>
   </div>
@@ -3146,7 +3457,7 @@ function openSponsorNego(spid,msg){
     ${negoRow("Aylık ödeme",fmtM(pay),`spAdj('${spid}','pay',-1)`,`spAdj('${spid}','pay',1)`)}
     ${negoRow("Süre",SP_DUR[sp.ask.dur]+" hf",`spAdj('${spid}','dur',-1)`,`spAdj('${spid}','dur',1)`)}
     ${negoRow("Ajans payı","%"+SP_SHARE[sp.ask.share],`spAdj('${spid}','share',-1)`,`spAdj('${spid}','share',1)`)}
-    <div class="nego-line"><span class="muted">Ajansa aylık</span><span class="b" style="color:#3E8E63">${fmtM(cut)}</span></div>
+    <div class="nego-line"><span class="muted">Ajansa aylık</span><span class="b" style="color:var(--success-ink)">${fmtM(cut)}</span></div>
     <div class="tiny" style="margin-top:4px">Kalan deneme hakkı: ${2-(sp.tries||0)} · Skandal maddesi: var</div>
   </div>
   <button class="btn block primary" onclick="sendSponsorOffer('${spid}')">📨 Şartları Gönder</button>
@@ -3219,20 +3530,36 @@ function investPlayer(pid){ const p=S.world.players[pid];
 function renderScout(){
   const un=S.reports.filter(r=>!r.opened).length;
   if(SEG.scout==="dunya") SEG.scout="gorev"; // V8: Dünya artık bağımsız ekran
-  let h=segBar("scout",[["gorev","Görevler"],["rapor",un?`Raporlar (${un})`:"Raporlar"],["izleme","İzleme"]]);
-  h+=`<div class="card alt tappable" style="padding:9px 12px" onclick="navigateTo('world')"><div class="row"><span style="font-size:18px">🌍</span><div class="grow"><span class="b" style="font-size:13px">Dünya & Fırsat Merkezi</span><div class="tiny">Ligler, kulüpler, bölgeler ve scout fırsatları → ayrı ekran</div></div><span class="tiny">→</span></div></div>`;
+  let h=`<div class="page-header"><div class="page-eyebrow">İSTİHBARAT AĞI</div>
+    <div class="page-title">Keşif</div>
+    <div class="page-subtitle">${S.scouts.filter(sc=>sc.assign).length} aktif görev · ${un?un+" açılmamış rapor":"rapor bekleniyor"}</div></div>`;
+  h+=segBar("scout",[["gorev","Görevler"],["rapor",un?`Raporlar (${un})`:"Raporlar"],["izleme","İzleme"],["pazar","Pazarlar"]]);
   if(SEG.scout==="rapor") h+=scoutReports();
   else if(SEG.scout==="izleme") h+=scoutWatchlist();
+  else if(SEG.scout==="pazar") h+=scoutMarkets();
   else h+=scoutSquad();
   $("scr-scout").innerHTML=h;
+}
+function scoutMarkets(){
+  const cs=(S.world.countries||[]).map(c=>({c,lvl:accessLevel(c.id),a:maFor(c.id)}))
+    .filter(x=>x.lvl>=1).sort((a,b)=>b.lvl-a.lvl||((b.a.knowledgeXP||0)-(a.a.knowledgeXP||0)));
+  let h=`<h2 class="sec" style="margin-top:0">🗺️ Pazar Bilgin <span class="cnt">${cs.length}</span></h2>`;
+  if(!cs.length) return h+renderEmptyState({icon:"🗺️",title:"Henüz tanıdığın pazar yok",desc:"Scout görevleri ve oyuncu bağlantıları pazar bilgini büyütür.",action:{label:"Dünyaya Git",fn:"navigateTo('world')"}});
+  for(const {c,lvl,a} of cs){
+    const assigned=S.scouts.some(sc=>sc.assign&&(S.world.leagues.find(l=>l.id===sc.assign.leagueId)||{}).countryId===c.id);
+    h+=`<div class="card tappable" style="padding:10px 12px" onclick="openEntity('country','${c.id}')"><div class="row">
+      <span style="font-size:20px">${c.flag}</span>
+      <div class="grow"><span class="b" style="font-size:13px">${escapeHtml(c.name)}</span>
+      <div class="tiny">bilgi ${Math.round(a.knowledgeXP||0)} · scout doğruluğu %${Math.round(a.scoutAccuracy||30)}${assigned?" · 🔭 scout sahada":""}</div></div>
+      ${marketBadge(c.id)}</div></div>`;
+  }
+  h+=`<div class="card alt tappable" style="padding:9px 12px" onclick="navigateTo('world')"><span class="tiny b">🌍 Tüm dünya ve kilitli pazarlar →</span></div>`;
+  return h;
 }
 function scoutSquad(){
   const cap=BAL.officeLevels[S.officeLevel].scoutCap;
   const wl=(S.watchlist||[]).length;
-  let h=renderPageHero({tone:"earth",art:"folder",eyebrow:"KEŞİF MERKEZİ",
-    title:"Scoutların sahada",
-    desc:`${S.scouts.filter(sc=>sc.assign).length} aktif görev · elmas avı sürüyor`,
-    metrics:[["Scout",S.scouts.length+"/"+cap],["Yeni Rapor",S.reports.filter(r=>!r.opened).length],["İzleme",wl],["Toplam Keşif",S.reports.length]]});
+  let h=renderMetricGrid([{label:"Scout",value:S.scouts.length+"/"+cap},{label:"Yeni Rapor",value:S.reports.filter(r=>!r.opened).length},{label:"İzleme",value:wl},{label:"Toplam Keşif",value:S.reports.length}]);
   h+=`<h2 class="sec">Scout Kadrom</h2>`;
   h+=S.scouts.map(sc=>{
     const L=sc.assign?S.world.leagues.find(l=>l.id===sc.assign.leagueId):null;
@@ -3251,7 +3578,7 @@ function scoutReports(){
   let h=`<h2 class="sec" style="margin-top:0">📬 Gelen Raporlar <span class="cnt">${S.reports.filter(r=>!r.opened).length}</span></h2>`;
   const unopened=S.reports.filter(r=>!r.opened);
   if(unopened.length) h+=unopened.map(r=>`<div class="envelope" onclick="openReport('${r.id}')">
-    <div class="env-ic">✉️</div>YENİ SCOUT RAPORU<div class="tiny" style="color:#8A6E2F">${r.scout} · dokun ve aç</div></div>`).join("");
+    <div class="env-ic">✉️</div>YENİ SCOUT RAPORU<div class="tiny" style="color:var(--premium-ink)">${r.scout} · dokun ve aç</div></div>`).join("");
   else h+=`<div class="empty">Yeni rapor yok. Scoutların sahada — birkaç hafta içinde döner. 🔭</div>`;
   const opened=S.reports.filter(r=>r.opened).slice(0,8);
   if(opened.length){ h+=`<h2 class="sec">📂 Açılan Raporlar</h2>`;
@@ -3390,9 +3717,9 @@ function openReportSheet(rid, fresh){
   <div class="b" style="font-family:'Fraunces',serif;font-size:20px">${p.natFlag} ${p.name}</div>
   <div class="muted">${p.age} yaş · ${POS_LABEL[p.pos]} · ${club?club.name:""} ${L?"· "+L.flag+" "+L.name:""}</div>
   <span class="badge pos" style="margin-top:4px;display:inline-block">${cat.label}</span></div>
-  <div class="card gold"><div class="tiny" style="color:#8A6E2F">TAHMİNİ POTANSİYEL</div>
+  <div class="card gold"><div class="tiny" style="color:var(--premium-ink)">TAHMİNİ POTANSİYEL</div>
   <div class="range-bar"><div class="rng" style="left:${r.lo}%;width:${r.hi-r.lo}%"></div></div>
-  <div class="range-scale"><span>0</span><span class="b" style="color:#8A6E2F;font-size:13px">${r.lo} — ${r.hi}</span><span>100</span></div>
+  <div class="range-scale"><span>0</span><span class="b" style="color:var(--premium-ink);font-size:13px">${r.lo} — ${r.hi}</span><span>100</span></div>
   <div style="text-align:center;margin-top:6px"><span class="confring">Güven: %${r.conf}</span></div></div>
   <div class="card alt"><em class="muted">"${r.note}"</em></div>
   <div class="card">
@@ -3408,7 +3735,7 @@ function openReportSheet(rid, fresh){
   </div>
   <div class="row" style="justify-content:space-around;text-align:center;margin:8px 0">
     <div><div class="tiny">MEVCUT SEVİYE</div><div>${starStr(p.ca)}</div></div>
-    <div><div class="tiny">DEĞER</div><div class="b" style="color:#3E8E63">${fmtM(p.value)}</div></div></div>`;
+    <div><div class="tiny">DEĞER</div><div class="b" style="color:var(--success-ink)">${fmtM(p.value)}</div></div></div>`;
   if(signed) h+=`<div class="card" style="text-align:center"><span class="badge ok">✍️ Bu oyuncu senin müşterin</span></div>`;
   else if(taken) h+=`<div class="card" style="text-align:center"><span class="badge sad">Bir rakip menajer önce davrandı 😤</span></div>`;
   else {
@@ -3418,7 +3745,7 @@ function openReportSheet(rid, fresh){
     if(p.meetCooldown>0) h+=`<div class="card alt" style="text-align:center">⏳ Aile ${p.meetCooldown} hafta sonra görüşmeye açık.</div>`;
     else h+=`<div class="muted" style="margin:6px 2px">Görüşme masrafı: <b>${fmtM(meetCost(p))}</b> · Oyuncu ve ailesi ajansını değerlendirecek.</div>
     <button class="btn block primary" ${full?"disabled":""} onclick="requestPlayerMeeting('${p.id}')">🤝 Görüşme Talep Et</button>
-    ${full?'<div class="tiny" style="text-align:center;margin-top:6px;color:#C96A6A">Müşteri kapasiten dolu — ofisi büyüt</div>':''}
+    ${full?'<div class="tiny" style="text-align:center;margin-top:6px;color:var(--danger-ink)">Müşteri kapasiten dolu — ofisi büyüt</div>':''}
     <div class="btnrow">
       <button class="btn ghost" ${r.second?"disabled":""} onclick="requestSecondLook('${r.id}')">🔍 ${r.second?"İkinci gözlem yapıldı":"Bir Kez Daha İzle (€2K)"}</button>
       <button class="btn ghost" onclick="toggleWatch('${p.id}')">${(S.watchlist||[]).includes(p.id)?"👁️ İzlemeden çıkar":"👁️ İzle"}</button></div>`;
@@ -3553,22 +3880,25 @@ function renderTransfer(){
   const win=inWindow(S.week);
   // V8: Teklifler + Pipeline + Pazarlama tek "Transfer Masası"nda
   if(!["masa","kiralik","gecmis"].includes(SEG.transfer)) SEG.transfer="masa";
-  let h=segBar("transfer",[["masa",S.offers.length?`Transfer Masası (${S.offers.length})`:"Transfer Masası"],["kiralik","Kiralıklar"],["gecmis","Geçmiş"]]);
+  let h=`<div class="page-header"><div class="page-eyebrow">PAZARLIK MASASI</div>
+    <div class="page-title">Transfer</div>
+    <div class="page-subtitle">${win?"🔓 Pencere açık":"🔒 Pencere kapalı"} · ${S.offers.length} aktif teklif</div></div>`;
+  h+=segBar("transfer",[["masa",S.offers.length?`Transfer Masası (${S.offers.length})`:"Transfer Masası"],["kiralik","Kiralıklar"],["gecmis","Geçmiş"]]);
   if(SEG.transfer==="kiralik"){ $("scr-transfer").innerHTML=h+renderLoans(); return; }
   if(SEG.transfer==="gecmis"){
     const th=(S.history&&S.history.transferHistory)||[];
     h+=`<h2 class="sec" style="margin-top:0">📜 Transfer Geçmişi</h2>`;
     h+= th.length? th.map(t=>`<div class="card" style="padding:10px 12px">
       <div class="row" style="justify-content:space-between"><span class="b" style="font-size:13px">${t.name}</span><span class="tiny">S${t.s} H${t.w}</span></div>
-      <div class="tiny">${t.from} → ${t.to} · ${fmtM(t.fee)} · komisyon <span style="color:#3E8E63">${fmtM(t.comm)}</span></div></div>`).join("")
+      <div class="tiny">${t.from} → ${t.to} · ${fmtM(t.fee)} · komisyon <span style="color:var(--success-ink)">${fmtM(t.comm)}</span></div></div>`).join("")
       :`<div class="empty">Henüz tamamlanmış transfer yok. İlk imza en zorudur patron.</div>`;
     $("scr-transfer").innerHTML=h; return;
   }
   const seasonT=((S.history&&S.history.transferHistory)||[]).filter(t=>t.s===S.season).length;
-  h+=renderPageHero({tone:"green",art:"arrows",eyebrow:"TRANSFER MERKEZİ",
-    title:win?"Pencere açık — telefonlar susmuyor":"Pencere kapalı — ilgiyi biriktir",
-    desc:win?"Teklifleri karşılaştır, masada kazan.":"Pazarlama kampanyalarıyla pencereye hazırlan.",
-    metrics:[["Aktif Teklif",S.offers.length],["Bu Sezon",seasonT+" transfer"],["Toplam Komisyon",fmtM(S.totalCommission)]]});
+  h+=`<div class="card alt accent-bar" style="padding:12px 14px">
+    <div class="b" style="font-size:14px">${win?"🔓 Pencere açık — telefonlar susmuyor":"🔒 Pencere kapalı — ilgiyi biriktir"}</div>
+    <div class="tiny" style="margin-top:2px">${win?"Teklifleri karşılaştır, masada kazan.":"Pazarlama kampanyalarıyla pencereye hazırlan."}</div></div>`;
+  h+=renderMetricGrid([{label:"Bu Sezon",value:seasonT+" transfer"},{label:"Toplam Komisyon",value:fmtM(S.totalCommission)}]);
   if(!win){ const nxt=BAL.transferWindows.find(([a])=>a>S.week);
     h+=`<div class="card alt" style="text-align:center">⏳ Sonraki pencere: <b>${nxt?`Hafta ${nxt[0]}`:`Gelecek sezon Hafta ${BAL.transferWindows[0][0]}`}</b><br><span class="tiny">Pencere kapalıyken pazarlama kampanyalarıyla ilgiyi biriktir.</span></div>`; }
   if(S.offers.length){
@@ -3587,7 +3917,7 @@ function renderTransfer(){
         <div class="muted">${L.flag} ${c.name}</div>
         <div class="tiny">⏰ Hafta ${o.expires}'e kadar geçerli</div></div>
         <div style="text-align:right"><div class="tiny">BONSERVİS</div><div class="b" style="font-size:15px">${fmtM(o.fee)}</div>
-        <div class="tiny" style="color:#3E8E63">payın ${fmtM(o.comm)}</div></div></div></div>`;}).join("");
+        <div class="tiny" style="color:var(--success-ink)">payın ${fmtM(o.comm)}</div></div></div></div>`;}).join("");
     }
   } else h+=`<div class="empty">Masada teklif yok. Formda oyuncu + pencere + pazarlama = telefon çalar. 📞</div>`;
   // Pipeline aşamaları — aynı ekranda
@@ -3613,10 +3943,10 @@ function openOffer(oid,opts){ opts=opts||{}; const _sec=opts.section||"review";
   <div class="card" style="margin-top:10px">
     <div class="nego-line"><span class="muted">Bonservis</span><span class="b">${fmtM(o.fee)}</span></div>
     <div class="nego-line"><span class="muted">Oyuncu maaşı</span><span class="b">${fmtM(o.wage)}/hafta <span class="${o.wage>p.wage?'pos-delta':'neg-delta'}">(${o.wage>p.wage?"+":""}${Math.round((o.wage/p.wage-1)*100)}%)</span></span></div>
-    <div class="nego-line"><span class="muted">Ajans komisyonu (%${Math.round(p.agentCommission*100)})</span><span class="b" style="color:#3E8E63">${fmtM(o.comm)}</span></div>
+    <div class="nego-line"><span class="muted">Ajans komisyonu (%${Math.round(p.agentCommission*100)})</span><span class="b" style="color:var(--success-ink)">${fmtM(o.comm)}</span></div>
     ${o.signBonus?`<div class="nego-line"><span class="muted">İmza parası</span><span class="b">${fmtM(o.signBonus)}</span></div>`:""}
-    ${o.sellOn?`<div class="nego-line"><span class="muted">Sonraki satıştan pay</span><span class="b" style="color:#B08A2E">%${o.sellOn}</span></div>`:""}
-    ${o.playGuar?`<div class="nego-line"><span class="muted">Oynama garantisi</span><span class="b" style="color:#3E8E63">Var ✅</span></div>`:""}
+    ${o.sellOn?`<div class="nego-line"><span class="muted">Sonraki satıştan pay</span><span class="b" style="color:var(--premium-ink)">%${o.sellOn}</span></div>`:""}
+    ${o.playGuar?`<div class="nego-line"><span class="muted">Oynama garantisi</span><span class="b" style="color:var(--success-ink)">Var ✅</span></div>`:""}
     <div class="tiny" style="margin-top:6px">Kulüp sabrı · ${pat} pazarlık turu kaldı</div>
     <div class="patience"><div class="pf" style="width:${clamp(pat/3*100,5,100)}%"></div></div></div>
   <div class="card">
@@ -3634,7 +3964,7 @@ function openOffer(oid,opts){ opts=opts||{}; const _sec=opts.section||"review";
     <div class="sumline"><span>3️⃣ Temsil yetkisi</span><span class="badge ${repValid(o.pid)?'ok':'sad'}">${repValid(o.pid)?"✅ Geçerli":"Yok"}</span></div>
     ${(function(){ try{ const el=offerEligibility(o); const pv=el.permit.verdict;
       let x=`<div class="sumline"><span>4️⃣ Uygunluk & Kayıt</span><span class="badge ${(pv!=="uygun-değil"&&el.reg.ok&&(pv!=="itiraz"||o._permitAppealed)&&!o._permitDenied)?"ok":"inj"}">${o._permitDenied?"❌ İzin reddedildi":pv==="uygun-değil"?"❌ İzin yok":pv==="itiraz"&&!o._permitAppealed?"⚠️ İtiraz gerekli":!el.reg.ok?"⚠️ Kayıt sorunu":"✅ Uygun"}</span></div>`;
-      if(el.reg&&!el.reg.ok){ x+=`<div class="tiny" style="color:#C96A6A">${escapeHtml(el.reg.reason)}</div>`;
+      if(el.reg&&!el.reg.ok){ x+=`<div class="tiny" style="color:var(--danger-ink)">${escapeHtml(el.reg.reason)}</div>`;
       x+=`<button class="btn sm gold" style="margin-top:6px" onclick="openRegistrationSolutions('${o.id}')">🔁 Çözüm Seçenekleri</button>`; }
       else if(el.reg&&el.reg.note) x+=`<div class="tiny">${escapeHtml(el.reg.note)}</div>`;
       { const _ck=countryKnow((S.world.clubs[o.cid]||{}).countryId||"tr"); if((_ck.regulationKnowledge||0)<50) x+=`<div class=\"tiny\">ℹ️ Regülasyon bilgin düşük — değerlendirme tahminidir</div>`;
@@ -3663,18 +3993,28 @@ function doReject(oid){ S.offers=S.offers.filter(x=>x.id!==oid); if(S.negotiatio
   toast("Teklif reddedildi"); save(); closeSheet();
   if(TAB==="entity"&&UI.route&&UI.route.entityId===oid) navigateTo("transfer","masa"); else renderAll(); }
 
-/* ---------- AJANS MERKEZİ (segmentli) ---------- */
+/* ---------- AJANS MERKEZİ (7 sekme: Genel / Departmanlar / Personel / Finans / Ofis / Uzmanlık / Marka) ---------- */
 let LFILT="all";
 function setLF(f){ LFILT=f; renderAll(); }
+const AGENCY_SECTION_MAP={
+  merkez:"genel",ayar:"genel",kariyer:"genel",rakip:"genel",iliski:"genel",iliskiler:"genel",
+  departman:"departmanlar",operasyon:"departmanlar",
+  varlik:"finans",sponsor:"marka",
+};
 function renderAgency(){
-  // V8: 4 bölüm — Genel / Operasyon / Finans & Ticari / İlişkiler
-  const map={merkez:"genel",departman:"operasyon",varlik:"finans",sponsor:"finans",rakip:"iliskiler",iliski:"iliskiler",ayar:"genel",kariyer:"genel"};
-  if(map[SEG.agency]) SEG.agency=map[SEG.agency];
-  if(!["genel","operasyon","finans","iliskiler"].includes(SEG.agency)) SEG.agency="genel";
-  let h=segBar("agency",[["genel","Genel"],["operasyon","Operasyon"],["finans","Finans & Ticari"],["iliskiler","İlişkiler"]]);
-  if(SEG.agency==="operasyon"){ $("scr-agency").innerHTML=h+agOperations(); mountCharts(); return; }
-  if(SEG.agency==="finans"){ $("scr-agency").innerHTML=h+agFinanceCommercial(); mountCharts(); return; }
-  if(SEG.agency==="iliskiler"){ $("scr-agency").innerHTML=h+agRelationsIntel(); mountCharts(); return; }
+  if(AGENCY_SECTION_MAP[SEG.agency]) SEG.agency=AGENCY_SECTION_MAP[SEG.agency];
+  if(!["genel","departmanlar","personel","finans","ofis","uzmanlik","marka"].includes(SEG.agency)) SEG.agency="genel";
+  const _tier=calculateAgencyTier();
+  let h=`<div class="page-header"><div class="page-eyebrow">ŞİRKET YÖNETİMİ</div>
+    <div class="page-title">Ajans</div>
+    <div class="page-subtitle">${_tier.icon} ${_tier.name} · ${Object.values(S.departments||{}).filter(d=>d.unlocked).length} açık departman</div></div>`;
+  h+=segBar("agency",[["genel","Genel"],["departmanlar","Departmanlar"],["personel","Personel"],["finans","Finans"],["ofis","Ofis"],["uzmanlik","Uzmanlık"],["marka","Marka"]]);
+  if(SEG.agency==="departmanlar"){ $("scr-agency").innerHTML=h+agDepartmanlarTab(); mountCharts(); return; }
+  if(SEG.agency==="personel"){ $("scr-agency").innerHTML=h+agPersonelTab(); mountCharts(); return; }
+  if(SEG.agency==="finans"){ $("scr-agency").innerHTML=h+agFinansTab(); mountCharts(); return; }
+  if(SEG.agency==="ofis"){ $("scr-agency").innerHTML=h+agOfisTab(); mountCharts(); return; }
+  if(SEG.agency==="uzmanlik"){ $("scr-agency").innerHTML=h+agUzmanlikTab(); mountCharts(); return; }
+  if(SEG.agency==="marka"){ $("scr-agency").innerHTML=h+agMarkaTab(); mountCharts(); return; }
   $("scr-agency").innerHTML=h+agCenter();
 }
 function agRegionalOffices(){
@@ -3686,46 +4026,120 @@ function agRegionalOffices(){
       ${open?'<span class="badge ok">Açık</span>':`<button class="btn sm ${S.cash>=o.cost?'gold':'ghost'}" ${S.cash>=o.cost?"":"disabled"} onclick="openRegionalOffice('${o.id}')">${fmtM(o.cost)}</button>`}</div></div>`; }
   return h;
 }
-function agOperations(){
-  return agDepartments()+academyPanel()+agRegionalOffices();
+function agDepartmanlarTab(){
+  return agDepartments()+academyPanel();
 }
-function agFinanceCommercial(){
+function setStaffQ(v){ STAFFQ=(v||"").toLowerCase(); const el=$("stafflist"); if(el) el.innerHTML=buildStaffList(); }
+function buildStaffList(){
+  let staff=(S.staffDirectory||[]).slice();
+  if(STAFFQ) staff=staff.filter(s=>s.name.toLowerCase().includes(STAFFQ)||s.role.toLowerCase().includes(STAFFQ)||(DEPT_MAP[s.departmentId]?.name||"").toLowerCase().includes(STAFFQ));
+  staff.sort((a,b)=>b.quality-a.quality);
+  if(!staff.length) return renderEmptyState({icon:"🧑‍💼",title:"Henüz personel yok",desc:"Departmanlardan personel al — kadron burada listelenir.",action:{label:"Departmanlar",fn:"gotoAgency('departmanlar')"}});
+  return staff.map(s=>{ const def=DEPT_MAP[s.departmentId];
+    return `<div class="data-row"><div class="avatar sm" style="background:#8896B0;color:#fff">${initials(s.name)}</div>
+    <div class="grow"><span class="b" style="font-size:13px">${escapeHtml(s.name)}</span>
+    <div class="tiny">${def?def.icon+" "+def.name:"—"} · ${escapeHtml(s.role)} · kalite ${s.quality}</div>
+    <div class="tiny">moral ${Math.round(s.morale)} · iş yükü ${Math.round(s.workload)} · ${fmtM(s.salary)}/hf</div></div>
+    <a onclick="fireDeptStaff('${s.id}')" style="cursor:pointer;color:var(--danger-ink)" aria-label="işten çıkar">✖</a></div>`; }).join("");
+}
+function agPersonelTab(){
+  let h=`<h2 class="sec" style="margin-top:0">⚖️ Genel Danışmanlık</h2>
+  <div class="card"><div class="row"><span style="font-size:22px">⚖️</span>
+  <div class="grow"><span class="b">Hukuk Danışmanı</span><div class="tiny">Pazarlık ve yenilemede el güçlenir · €700/hafta</div></div>
+  ${S.staff.lawyer?'<span class="badge ok">Kadroda</span>':`<button class="btn sm primary" onclick="hireStaff('lawyer')">İşe Al</button>`}</div></div>
+  <div class="card"><div class="row"><span style="font-size:22px">📣</span>
+  <div class="grow"><span class="b">Pazarlama Uzmanı</span><div class="tiny">Sponsor payı %20→%30 · €600/hafta</div></div>
+  ${S.staff.marketer?'<span class="badge ok">Kadroda</span>':`<button class="btn sm primary" onclick="hireStaff('marketer')">İşe Al</button>`}</div></div>`;
+  h+=renderSectionHeader("🧑‍💼 Departman Personeli",null,{count:(S.staffDirectory||[]).length});
+  h+=`<input class="search" placeholder="İsim, rol veya departman ara..." value="${escapeHtml(STAFFQ)}" oninput="setStaffQ(this.value)" aria-label="personel ara">
+  <div id="stafflist">${buildStaffList()}</div>`;
+  return h;
+}
+function agFinansTab(){
   const deptCost=Object.values(S.departments||{}).reduce((s,d)=>s+(d.unlocked?d.weeklyCost:0),0);
+  const H=(S.history&&S.history.agencyWeekly)||[]; const last=H[H.length-1];
+  const warnings=[];
+  if(S.cash<deptCost*4) warnings.push("Kasa, bir aylık departman giderini karşılamıyor olabilir.");
+  if(last&&last.exp>last.inc) warnings.push("Bu hafta gider gelirden yüksekti.");
   const kb=`<div class="card tappable gold" style="padding:10px 12px" onclick="openFinanceEntity()"><div class="row"><span style="font-size:20px">💰</span>
-    <div class="grow"><span class="b" style="font-size:13px">Tam Finans Merkezi</span><div class="tiny">Kasa akışı, gelir/gider, departman maliyetleri, komisyonlar → tam sayfa</div></div><span class="tiny">→</span></div></div>`;
-  return kb+agFinance()+`<div class="divider"></div>`+agSponsors()+`<div class="divider"></div>`+agAssets();
+    <div class="grow"><span class="b" style="font-size:13px">Tam Finans Merkezi</span><div class="tiny">Kasa akışı, gelir/gider, tahmin → tam sayfa</div></div><span class="tiny">→</span></div></div>`;
+  let h=kb+renderMetricGrid([
+    {label:"Ticari Gelir",value:fmtM(S.sponsorDeals.reduce((t,d)=>t+(d.cut||0),0))},
+    {label:"Sponsor Ağı",value:Math.round(S.sponsorNetwork||0)},
+    {label:"Departman Gideri",value:fmtM(deptCost)},
+  ]);
+  if(warnings.length) h+=`<div class="card urgent">${warnings.map(w=>`<div class="tiny">⚠️ ${w}</div>`).join("")}</div>`;
+  return h+agFinance()+`<div class="divider"></div>`+agAssets();
 }
-function agRelationsIntel(){
-  return agRelations()+`<div class="divider"></div>`+agRivalsV6();
-}
-function agCenter(){
-  const of=BAL.officeLevels[S.officeLevel];
-  const next=BAL.officeLevels[S.officeLevel+1];
-  const tier=calculateAgencyTier(), score=calculateAgencyScore();
-  let h=renderPageHero({tone:"corp",art:"building",eyebrow:"AJANS ŞİRKETİ",
-    title:S.agencyName,
-    desc:`${tier.icon} ${tier.name} · ${S.agentName}`,
-    metrics:[["Skor",score],["Personel",(S.staff.lawyer?1:0)+(S.staff.marketer?1:0)+S.scouts.length],["Varlık",S.assets.length],["Sponsor",S.sponsorDeals.length]]});
-  h+=`<button class="btn block gold" style="margin-bottom:10px" onclick="openSpecTree()">🌟 Uzmanlık Ağacı${(S.agencySpecializations&&S.agencySpecializations.points)?` (${S.agencySpecializations.points} puan)`:""}</button>`;
-  h+=(typeof officeCompareCard==="function")?officeCompareCard():"";
-  h+=`<div class="card"><div class="row"><span style="font-size:34px">${of.icon}</span>
+function agOfisTab(){
+  const of=BAL.officeLevels[S.officeLevel]; const next=BAL.officeLevels[S.officeLevel+1];
+  let h=`<div class="card"><div class="row"><span style="font-size:34px">${of.icon}</span>
   <div class="grow"><div class="b">${of.name}</div>
   <div class="tiny">${of.cap} müşteri · ${of.scoutCap} scout · kira ${fmtM(of.rent)}/hafta</div></div></div>
   ${next?`<button class="btn block gold" style="margin-top:10px" ${S.cash<next.cost?"disabled":""} onclick="upgradeOffice()">
   ⬆️ ${next.name}'ne Taşın — ${fmtM(next.cost)}</button>
-  <div class="tiny" style="text-align:center;margin-top:5px">${next.cap} müşteri · ${next.scoutCap} scout kapasitesi açılır</div>`:""}
-  </div>
-  <div class="sb"><div class="lbl"><span>İtibar</span><span>${Math.round(S.rep)}/100</span></div>
-  <div class="track"><div class="fill au" style="width:${S.rep}%"></div></div></div>
-  <div class="sb"><div class="lbl"><span>Statü</span><span>${S.status+S.assets.reduce((t,a)=>t+a.st,0)}</span></div>
-  <div class="track"><div class="fill" style="width:${clamp(S.status+S.assets.reduce((t,a)=>t+a.st,0),0,100)}%"></div></div></div>`;
+  <div class="tiny" style="text-align:center;margin-top:5px">${next.cap} müşteri · ${next.scoutCap} scout kapasitesi açılır</div>`:`<div class="tiny" style="margin-top:6px">En üst ofis seviyesindesin.</div>`}
+  </div>`;
+  h+=(typeof officeCompareCard==="function")?officeCompareCard():"";
+  h+=agRegionalOffices();
+  return h;
+}
+function agUzmanlikTab(){
+  const sp=S.agencySpecializations||{points:0,paths:{}};
+  return `<div class="card alt" style="margin-bottom:10px"><div class="tiny b">UZMANLIK PUANI</div><div class="b" style="font-size:20px">${sp.points}</div></div>`+renderSpecTreeBody();
+}
+function agMarkaTab(){
+  const rp=repProfile();
+  let h=renderMetricGrid([
+    {label:"Medya Gücü",value:Math.round(S.mediaPower||0)},
+    {label:"Ticari Ağ",value:Math.round(S.sponsorNetwork||0)},
+    {label:"İtibar",value:Math.round(S.rep)},
+    {label:"Aktif Sponsor",value:S.sponsorDeals.length},
+  ]);
+  h+=`<h2 class="sec">🎖️ İtibar Profili</h2><div class="card">
+  ${[["playerTrust","Oyuncu Güveni"],["clubTrust","Kulüp Güveni"],["youthDevelopment","Genç Geliştirme"],["negotiation","Pazarlık"],["media","Medya"],["ethical","Etik"],["international","Uluslararası"]].map(([k,l])=>
+   `<div class="sb"><div class="lbl"><span>${l}</span><span>${Math.round(rp[k]??50)}</span></div><div class="track"><div class="fill ${(rp[k]??50)>60?'g':(rp[k]??50)<40?'r':'au'}" style="width:${rp[k]??50}%"></div></div></div>`).join("")}
+  <div class="tiny" style="margin-top:4px">Gençler geliştirme itibarına, kulüpler pazarlığa, aileler etiğe, sponsorlar medyaya, global yıldızlar uluslararası itibara bakar.</div></div>`;
+  h+=agSponsors();
+  const agNews=(S.news||[]).filter(n=>n.kind==="me").slice(0,5);
+  h+=renderSectionHeader("📰 Son Ajans Haberleri",{label:"Tümü →",fn:"NEWSF='me';navigateTo('news')"});
+  h+= agNews.length? agNews.map(n=>`<div class="news me ${n.tone||""}"><div class="src">S${n.season} H${n.week}</div><div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
+    : renderEmptyState({icon:"📰",title:"Henüz ajans haberi yok",desc:"Haftalar ilerledikçe ajans gündemi burada birikir."});
+  return h;
+}
+function agRecommendedUpgrade(){
+  const next=BAL.officeLevels[S.officeLevel+1];
+  if(next&&S.cash>=next.cost) return {text:`Ofis yükseltmeye hazırsın: ${next.name} — ${fmtM(next.cost)}`,fn:"gotoAgency('ofis')",label:"Ofis"};
+  const lockedDept=DEPT_DEFS.find(d=>{ const dd=S.departments[d.id]; return dd&&!dd.unlocked&&calculateAgencyTier().lv>=d.unlockTier&&S.cash>=d.cost; });
+  if(lockedDept) return {text:`${lockedDept.name} departmanını açabilirsin — ${fmtM(lockedDept.cost)}`,fn:"gotoAgency('departmanlar')",label:"Departmanlar"};
+  const understaffed=DEPT_DEFS.find(d=>{ const dd=S.departments[d.id]; return dd&&dd.unlocked&&deptStaff(S,d.id).length<dd.level; });
+  if(understaffed) return {text:`${understaffed.name} personel eksik — kapasitesini kullanamıyorsun`,fn:"gotoAgency('personel')",label:"Personel"};
+  if(next) return {text:`Sonraki ofis: ${next.name} — ${fmtM(next.cost)} gerekiyor (kasan yetersiz)`,fn:"gotoAgency('ofis')",label:"Ofis"};
+  return {text:"Ajans sağlıklı çalışıyor — büyümeye devam et.",fn:"gotoAgency('departmanlar')",label:"Departmanlar"};
+}
+function agCenter(){
+  const tier=calculateAgencyTier(), score=calculateAgencyScore();
+  const cap=BAL.officeLevels[S.officeLevel];
+  const deptDefsUnlocked=DEPT_DEFS.filter(d=>S.departments[d.id]&&S.departments[d.id].unlocked);
+  const avgEff=deptDefsUnlocked.length?Math.round(deptDefsUnlocked.reduce((t,d)=>t+S.departments[d.id].efficiency,0)/deptDefsUnlocked.length):0;
+  const deptCost=Object.values(S.departments||{}).reduce((s,d)=>s+(d.unlocked?d.weeklyCost:0),0);
+  const activeTasks=(S.departmentTasks||[]).filter(t=>t.status==="active").length;
+  let h=renderMetricGrid([
+    {label:"Müşteri Kapasitesi",value:myPlayers().length+"/"+cap.cap},
+    {label:"Scout Kapasitesi",value:S.scouts.length+"/"+cap.scoutCap},
+    {label:"Departman",value:deptDefsUnlocked.length+"/"+DEPT_DEFS.length},
+    {label:"Ort. Verim",value:"%"+avgEff},
+    {label:"Haftalık Gider",value:fmtM(deptCost)},
+    {label:"Aktif Görev",value:activeTasks},
+  ]);
+  const rec=agRecommendedUpgrade();
+  h+=`<div class="card alt accent-bar"><div class="tiny b" style="margin-bottom:2px">💡 ÖNERİLEN SONRAKİ ADIM</div>
+  <div class="row" style="justify-content:space-between"><span class="tiny">${rec.text}</span><button class="btn sm ghost" onclick="${rec.fn}">${rec.label} →</button></div></div>`;
   h+=`<div class="card gold"><div class="row"><span style="font-size:30px">${tier.icon}</span>
   <div class="grow"><div class="b">${tier.name}</div><div class="tiny">Ajans skoru: <b>${score}</b>/100</div></div></div>
   <div style="margin-top:8px">
     <div class="sumline"><span class="muted">Track record</span><span class="b">${Math.round(calculateTrackRecordScore())}</span></div>
     <div class="sumline"><span class="muted">Tamamlanan transfer</span><span class="b">${S.trackRecord.transfers}${S.trackRecord.biggestFee?` · en büyük ${fmtM(S.trackRecord.biggestFee)}`:""}</span></div>
-    <div class="sumline"><span class="muted">Medya gücü</span><span class="b">${Math.round(S.mediaPower||0)}</span></div>
-    <div class="sumline"><span class="muted">Sponsor ağı</span><span class="b">${Math.round(S.sponsorNetwork||0)}</span></div>
     <div class="sumline"><span class="muted">Kulüp ilişkileri</span><span class="b">${Math.round(clubRelAvg())}</span></div>
     ${S.shady>0?`<div class="sumline"><span class="muted">Şaibe</span><span class="neg-delta">-${Math.round(S.shady)}</span></div>`:""}
   </div></div>`;
@@ -3736,19 +4150,7 @@ function agCenter(){
     <span class="tiny">${opn?"görüşmeye açık":TIERS[cat.tier-1].name+" gerekli"}</span></div>`;
   }
   h+=`</div>`;
-  h+=`<h2 class="sec">🧑‍💼 Personel</h2>
-  <div class="card"><div class="row"><span style="font-size:22px">⚖️</span>
-  <div class="grow"><span class="b">Hukuk Danışmanı</span><div class="tiny">Pazarlık ve yenilemede el güçlenir · €700/hafta</div></div>
-  ${S.staff.lawyer?'<span class="badge ok">Kadroda</span>':`<button class="btn sm primary" onclick="hireStaff('lawyer')">İşe Al</button>`}</div></div>
-  <div class="card"><div class="row"><span style="font-size:22px">📣</span>
-  <div class="grow"><span class="b">Pazarlama Uzmanı</span><div class="tiny">Sponsor payı %20→%30 · €600/hafta</div></div>
-  ${S.staff.marketer?'<span class="badge ok">Kadroda</span>':`<button class="btn sm primary" onclick="hireStaff('marketer')">İşe Al</button>`}</div></div>
-  <div class="card lockcard">🔒 Medya Danışmanı · Veri Analisti · Bölgesel Temsilci — üst ofis seviyelerinde açılır</div>`;
-  const rp=repProfile();
-  h+=`<h2 class="sec">🎖️ İtibar Profili</h2><div class="card">
-  ${[["playerTrust","Oyuncu Güveni"],["clubTrust","Kulüp Güveni"],["youthDevelopment","Genç Geliştirme"],["negotiation","Pazarlık"],["media","Medya"],["ethical","Etik"],["international","Uluslararası"]].map(([k,l])=>
-   `<div class="sb"><div class="lbl"><span>${l}</span><span>${Math.round(rp[k]??50)}</span></div><div class="track"><div class="fill ${(rp[k]??50)>60?'g':(rp[k]??50)<40?'r':'au'}" style="width:${rp[k]??50}%"></div></div></div>`).join("")}
-  <div class="tiny" style="margin-top:4px">Gençler geliştirme itibarına, kulüpler pazarlığa, aileler etiğe, sponsorlar medyaya, global yıldızlar uluslararası itibara bakar.</div></div>`;
+  h+=`<div id="ag-relations">${agRelations()}</div><div class="divider"></div><div id="ag-rivals">${agRivalsV6()}</div>`;
   return h;
 }
 function agSponsors(){
@@ -3771,7 +4173,7 @@ function agSponsors(){
     return `<div class="card"><div class="row"><span style="font-size:20px">👟</span>
     <div class="grow"><span class="b">${d.brand}</span> <span class="muted">× ${p?p.name:""}</span>
     <div class="tiny">${d.weeksLeft} hafta kaldı · skandal maddesi var</div></div>
-    <span class="b" style="color:#3E8E63">+${fmtM(d.cut)}/ay</span></div></div>`;}).join("")
+    <span class="b" style="color:var(--success-ink)">+${fmtM(d.cut)}/ay</span></div></div>`;}).join("")
     :`<div class="empty">Aktif sponsorluk yok.</div>`;
   return h;
 }
@@ -3794,8 +4196,8 @@ function agFinance(){
   let h=`<h2 class="sec" style="margin-top:0">💰 Finans Merkezi</h2>
   <div class="kpi">
     <div class="cell"><div class="v" style="color:${S.cash>=0?'#3E8E63':'#C96A6A'}">${fmtM(S.cash)}</div><div class="l">Nakit</div></div>
-    <div class="cell"><div class="v" style="color:#3E8E63">+${fmtM(inc4)}</div><div class="l">Gelir (4h)</div></div>
-    <div class="cell"><div class="v" style="color:#C96A6A">-${fmtM(exp4)}</div><div class="l">Gider (4h)</div></div>
+    <div class="cell"><div class="v" style="color:var(--success-ink)">+${fmtM(inc4)}</div><div class="l">Gelir (4h)</div></div>
+    <div class="cell"><div class="v" style="color:var(--danger-ink)">-${fmtM(exp4)}</div><div class="l">Gider (4h)</div></div>
     <div class="cell"><div class="v" style="color:${inc4-exp4>=0?'#3E8E63':'#C96A6A'}">${inc4-exp4>=0?"+":""}${fmtM(inc4-exp4)}</div><div class="l">Net (4h)</div></div>
     <div class="cell"><div class="v">${fmtM(passive)}</div><div class="l">Pasif/ay</div></div>
   </div>`;
@@ -3834,16 +4236,16 @@ function agAssets(){
     <span style="font-size:26px">${a.icon}</span>
     <div class="grow"><span class="b">${a.type}</span>
     <div class="tiny">${a.income?`+${fmtM(a.income)}/ay · `:""}${a.cost?`-${fmtM(a.cost)}/ay bakım · `:""}+${a.st} statü</div>
-    ${a.perk?`<div class="tiny" style="color:#B08A2E">✨ ${a.perk}</div>`:""}</div>
+    ${a.perk?`<div class="tiny" style="color:var(--premium-ink)">✨ ${a.perk}</div>`:""}</div>
     <button class="btn sm danger" onclick="sellAsset(${i})">Sat</button></div></div>`).join("");
-    if(passive) h+=`<div class="card alt" style="text-align:center">Aylık net pasif gelir: <b style="color:#3E8E63">${fmtM(passive)}</b></div>`;
+    if(passive) h+=`<div class="card alt" style="text-align:center">Aylık net pasif gelir: <b style="color:var(--success-ink)">${fmtM(passive)}</b></div>`;
   } else h+=`<div class="empty">Henüz varlığın yok. Komisyonlar birikince fırsatlara bak 👇</div>`;
   h+=`<h2 class="sec">🛍️ Haftanın Fırsatları</h2>`;
   h+=S.assetMarket.map((a,i)=>`<div class="card ${a.deal?'gold':''}"><div class="row">
     <span style="font-size:26px">${a.icon}</span>
     <div class="grow"><span class="b">${a.type}</span> ${a.deal?'<span class="badge hot">Fırsat!</span>':''}
     <div class="tiny">${a.inc?`+${fmtM(a.inc)}/ay gelir · `:""}${a.cost?`-${fmtM(a.cost)}/ay bakım · `:""}+${a.st} statü</div>
-    ${a.perk?`<div class="tiny" style="color:#B08A2E">✨ ${a.perk}</div>`:""}</div>
+    ${a.perk?`<div class="tiny" style="color:var(--premium-ink)">✨ ${a.perk}</div>`:""}</div>
     <button class="btn sm ${a.deal?'gold':'ghost'}" ${S.cash<a.price?"disabled":""} onclick="buyAsset(${i})">${fmtM(a.price)}</button></div></div>`).join("");
   return h;
 }
@@ -3874,7 +4276,9 @@ function agRivals(){
 }
 function agSettings(){
   const st=S.settings||{};
-  let h=`<h2 class="sec" style="margin-top:0">⚙️ Ayarlar</h2>
+  let h=`<div class="page-header"><div class="page-eyebrow">SİSTEM</div>
+    <div class="page-title">Ayarlar</div></div>`;
+  h+=`<h2 class="sec" style="margin-top:0">⚙️ Oyun</h2>
   <div class="card">
     <div class="sumline"><span>⚡ Hızlı hafta modu <span class="tiny">(özet ekranı yok)</span></span>
     <button class="btn sm ${st.fastMode?'primary':'ghost'}" onclick="toggleSetting('fastMode')">${st.fastMode?"Açık":"Kapalı"}</button></div>
@@ -3969,9 +4373,10 @@ function restoreBackupSave(){
 }
 
 /* ---------- sheet / karar / özet ---------- *//* ---------- sheet / karar / özet ---------- */
-function openSheet(html){ $("sheet").innerHTML=html; $("sheetwrap").classList.add("open"); try{ mountCharts(); }catch(e){} }
+function openSheet(html){ $("sheet").innerHTML=html; $("sheetwrap").classList.add("open"); document.body.classList.add("sheet-open"); try{ mountCharts(); }catch(e){} }
 function closeSheet(){
   $("sheetwrap").classList.remove("open");
+  document.body.classList.remove("sheet-open");
   // telefon → diplomasi masası eylemsiz kapatılırsa mesajı yeniden yanıt-bekliyor durumuna al
   if(typeof _phoneDiplomacyMsgId!=="undefined" && _phoneDiplomacyMsgId){
     const pm=(S.phoneInbox||[]).find(x=>x.id===_phoneDiplomacyMsgId);
@@ -4002,8 +4407,8 @@ function openSummary(sum){
   <div class="card" style="margin-top:10px">
   <div class="sumline"><span class="muted">Kasa değişimi</span><span class="${sum.cashDelta>=0?'pos-delta':'neg-delta'}">${sum.cashDelta>=0?"+":""}${fmtM(sum.cashDelta)}</span></div>
   ${best?`<div class="sumline"><span class="muted">Haftanın yıldızı</span><span class="b">${best.p.name} ⭐${best.rating}</span></div>`:""}
-  ${sum.newReports?`<div class="sumline"><span class="muted">Yeni scout raporu</span><span class="b" style="color:#B08A2E">✉️ ${sum.newReports} adet</span></div>`:""}
-  ${sum.newOffers?`<div class="sumline"><span class="muted">Yeni transfer teklifi</span><span class="b" style="color:#3E8E63">📩 ${sum.newOffers} adet</span></div>`:""}
+  ${sum.newReports?`<div class="sumline"><span class="muted">Yeni scout raporu</span><span class="b" style="color:var(--premium-ink)">✉️ ${sum.newReports} adet</span></div>`:""}
+  ${sum.newOffers?`<div class="sumline"><span class="muted">Yeni transfer teklifi</span><span class="b" style="color:var(--success-ink)">📩 ${sum.newOffers} adet</span></div>`:""}
   ${(S.weeklyFocus&&S.weeklyFocus.length)?`<div class="sumline"><span class="muted">Haftalık odak</span><span class="b">${S.weeklyFocus.map(f=>{const F=FOCUS_TYPES.find(x=>x.id===f)||{};return F.icon;}).join(" ")} etkin</span></div>`:""}
   <div class="sumline"><span class="muted">İtibar</span><span class="b">★ ${Math.round(S.rep)}</span></div></div>
   ${sum.newReports?`<button class="btn block gold" onclick="closeSheet();switchTab('scout')">✉️ Raporları Aç</button>`:""}
@@ -4228,7 +4633,10 @@ function loanRolePush(pid){
 }
 /* ---------- kariyer & iliskiler segmentleri ---------- */
 function agCareer(){
-  let h=`<h2 class="sec" style="margin-top:0">🎯 Sezon Hedefleri</h2>`;
+  let h=`<div class="page-header"><div class="page-eyebrow">KARİYER</div>
+    <div class="page-title">${escapeHtml(S.agentName||"Menajer")}</div>
+    <div class="page-subtitle">${S.trackRecord.transfers} transfer · ${fmtM(S.totalCommission)} toplam komisyon</div></div>`;
+  h+=`<h2 class="sec" style="margin-top:0">🎯 Sezon Hedefleri</h2>`;
   if(!S.seasonObjectives) h+=`<div class="card gold tappable" onclick="openGoalPicker()"><b>Hedef paketi seç →</b><div class="tiny">Sezon sonunda tamamlanan her hedef ödüllendirilir</div></div>`;
   else { const pack=GOAL_PACKS.find(x=>x.id===S.seasonObjectives.pack);
     if(pack) h+=`<div class="card"><div class="b" style="font-size:13.5px;margin-bottom:4px">${pack.icon} ${pack.label} paket</div>`+pack.goals.map(([gid,label])=>{const pr=goalProgress(gid);
@@ -4271,40 +4679,81 @@ function pickAppr(id){ window._appr=id; renderOnboarding(); }
 function pickDiff(id){ window._diff=id; renderOnboarding(); }
 function pickWorld(id){ window._worldPreset=id; renderOnboarding(); }
 function pickCountry(id){ window._startCountry=id; renderOnboarding(); }
+window._obStep=window._obStep||1;
+function obStep(n){
+  /* isim alanlarını adım geçişinde kaybetme */
+  const nm=$("ob-name"), ag=$("ob-agency");
+  if(nm&&nm.value!==undefined) window._obName=nm.value;
+  if(ag&&ag.value!==undefined) window._obAgency=ag.value;
+  window._obStep=clamp(n,1,5); renderOnboarding(); window.scrollTo(0,0);
+}
 function renderOnboarding(){
   document.querySelectorAll(".screen").forEach(sc=>sc.classList.remove("active"));
   $("topbar").innerHTML=""; $("tabbar").innerHTML="";
   const sb=$("sidebar"); if(sb) sb.innerHTML="";
   const cp=$("ctxpanel"); if(cp) cp.innerHTML="";
   document.querySelector(".playbar").style.display="none";
+  document.body.dataset.mode="light"; document.body.dataset.accent="agency";
   $("scr-home").classList.add("active");
-  $("scr-home").innerHTML=`<div style="padding-top:30px;max-width:520px;margin:0 auto">
+  const step=window._obStep||1;
+  const STEPS=["Kimlik","Ülke","Yaklaşım","Dünya & Zorluk","Özet"];
+  const prog=`<div class="row" style="gap:5px;margin:14px 0 12px" role="progressbar" aria-valuenow="${step}" aria-valuemax="5" aria-label="kurulum adımı">
+    ${STEPS.map((s,i)=>`<div style="flex:1;height:5px;border-radius:99px;background:${i<step?'var(--brand-700)':'var(--div)'}"></div>`).join("")}</div>
+    <div class="tiny b" style="text-align:center;margin-bottom:10px">Adım ${step}/5 · ${STEPS[step-1]}</div>`;
+  let body="";
+  if(step===1){
+    body=`<div class="card"><div class="tiny">MENAJER ADIN</div>
+    <input class="txt" id="ob-name" placeholder="ör. Gökhan Demir" maxlength="24" value="${escapeHtml(window._obName||"")}">
+    <div class="tiny" style="margin-top:12px">AJANS ADIN</div>
+    <input class="txt" id="ob-agency" placeholder="ör. GD Sports Management" maxlength="28" value="${escapeHtml(window._obAgency||"")}">
+    <div class="tiny" style="margin-top:8px">Bu isimler kariyerin boyunca basında ve sözleşmelerde görünür.</div></div>
+    <button class="btn block primary" onclick="obStep(2)">Devam →</button>`;
+  } else if(step===2){
+    body=`<div class="card"><div class="tiny" style="margin-bottom:6px">BAŞLANGIÇ ÜLKEN</div>
+    <div class="tiny" style="margin-bottom:8px">Ofisin, ilk müşterilerin ve açık pazarın bu ülkede olur.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+    ${START_COUNTRIES.map(([id,l])=>`<button class="opt" style="margin-top:0;padding:9px;border-color:${window._startCountry===id?'var(--premium)':'var(--div)'};background:${window._startCountry===id?'var(--premium-soft)':'var(--card)'}" onclick="pickCountry('${id}')"><div class="ot" style="font-size:13px">${l} ${window._startCountry===id?"✓":""}</div></button>`).join("")}</div></div>
+    <div class="btnrow"><button class="btn ghost" onclick="obStep(1)">← Geri</button><button class="btn primary" onclick="obStep(3)">Devam →</button></div>`;
+  } else if(step===3){
+    body=`<div class="card"><div class="tiny" style="margin-bottom:6px">BAŞLANGIÇ YAKLAŞIMIN</div>
+    <div class="tiny" style="margin-bottom:8px">Yaklaşımın başlangıç bonusunu ve oyun tarzını belirler.</div>
+    ${APPROACHES.map(a=>`<button class="opt" style="border-color:${window._appr===a.id?'var(--premium)':'var(--div)'};background:${window._appr===a.id?'var(--premium-soft)':'var(--card)'}" onclick="pickAppr('${a.id}')">
+      <div class="ot">${a.icon} ${a.label} ${window._appr===a.id?"✓":""}</div><div class="oh">${a.desc}</div></button>`).join("")}</div>
+    <div class="btnrow"><button class="btn ghost" onclick="obStep(2)">← Geri</button><button class="btn primary" onclick="obStep(4)">Devam →</button></div>`;
+  } else if(step===4){
+    body=`<div class="card"><div class="tiny" style="margin-bottom:6px">ZORLUK</div>
+    <div class="tiny" style="margin-bottom:8px">Başlangıç sermayeni ve rakip ajansların agresifliğini belirler.</div>
+    ${[["rahat","🌤️ Rahat","Yüksek başlangıç parası, yumuşak rakipler"],["dengeli","⚖️ Dengeli","Standart deneyim"],["zorlu","🔥 Zorlu","Az para, agresif rakipler, yüksek kira"]].map(([id,l,d])=>`<button class="opt" style="border-color:${(window._diff||'dengeli')===id?'var(--premium)':'var(--div)'};background:${(window._diff||'dengeli')===id?'var(--premium-soft)':'var(--card)'}" onclick="pickDiff('${id}')">
+      <div class="ot">${l} ${(window._diff||'dengeli')===id?"✓":""}</div><div class="oh">${d}</div></button>`).join("")}</div>
+    <div class="card"><div class="tiny" style="margin-bottom:6px">DÜNYA BOYUTU</div>
+    <div class="tiny" style="margin-bottom:8px">Lig, kulüp ve oyuncu sayısını — yani keşfedilecek pazarın büyüklüğünü belirler.</div>
+    ${Object.values(WORLD_PRESETS).map(p=>`<button class="opt" style="border-color:${window._worldPreset===p.id?'var(--premium)':'var(--div)'};background:${window._worldPreset===p.id?'var(--premium-soft)':'var(--card)'}" onclick="pickWorld('${p.id}')">
+      <div class="ot">${p.id==="compact"?"📦":p.id==="standard"?"🌍":"🗺️"} ${p.label} ${window._worldPreset===p.id?"✓":""}</div><div class="oh">${p.desc}</div></button>`).join("")}</div>
+    <div class="btnrow"><button class="btn ghost" onclick="obStep(3)">← Geri</button><button class="btn primary" onclick="obStep(5)">Devam →</button></div>`;
+  } else {
+    const appr=APPROACHES.find(a=>a.id===window._appr)||APPROACHES[0];
+    body=`<div class="card"><div class="tiny b" style="margin-bottom:6px">KURULUŞ ÖZETİ</div>
+    <div class="sumline"><span class="muted">Menajer</span><b>${escapeHtml(window._obName||"Gökhan Demir")}</b></div>
+    <div class="sumline"><span class="muted">Ajans</span><b>${escapeHtml(window._obAgency||"GD Sports Management")}</b></div>
+    <div class="sumline"><span class="muted">Ülke</span><b>${(COUNTRY_BY_ID[window._startCountry]||{}).name||"Türkiye"}</b></div>
+    <div class="sumline"><span class="muted">Yaklaşım</span><b>${appr.icon} ${appr.label}</b></div>
+    <div class="sumline"><span class="muted">Zorluk</span><b>${window._diff||"dengeli"}</b></div>
+    <div class="sumline"><span class="muted">Dünya</span><b>${(WORLD_PRESETS[window._worldPreset]||{}).label}</b></div></div>
+    <div class="card alt"><b>Başlangıç paketin 🧳</b><div class="muted" style="margin-top:4px">
+    • Mütevazı bir mahalle ofisi<br>• Başlangıç sermayesi<br>• Yerel alt ligden 2 genç müşteri<br>• Sahada 1 scout<br>• Büyük hayaller...</div></div>
+    <div class="btnrow"><button class="btn ghost" onclick="obStep(4)">← Geri</button></div>
+    <button class="btn block primary" style="padding:15px;font-size:16px;margin-top:8px" onclick="startGame()">🚀 Ajansı Kur</button>`;
+  }
+  $("scr-home").innerHTML=`<div style="padding-top:26px;max-width:520px;margin:0 auto">
   <div class="hero"><div class="tag">Futbolcu Menajerliği Simülasyonu</div>
   <h1>Agent Empire</h1>
-  <div class="muted" style="max-width:300px;margin:0 auto">Mahalle menajerliğinden dünya çapında ajans imparatorluğuna. Elmasları bul, kariyerleri yönet, komisyonu topla.</div></div>
-  <div class="card"><div class="tiny">MENAJER ADIN</div>
-  <input class="txt" id="ob-name" placeholder="ör. Gökhan Demir" maxlength="24">
-  <div class="tiny" style="margin-top:12px">AJANS ADIN</div>
-  <input class="txt" id="ob-agency" placeholder="ör. GD Sports Management" maxlength="28"></div>
-  <div class="card"><div class="tiny" style="margin-bottom:6px">BAŞLANGIÇ YAKLAŞIMIN</div>
-  ${APPROACHES.map(a=>`<button class="opt" style="border-color:${window._appr===a.id?'var(--gold)':'var(--div)'};background:${window._appr===a.id?'var(--gold-soft)':'var(--card)'}" onclick="pickAppr('${a.id}')">
-    <div class="ot">${a.icon} ${a.label} ${window._appr===a.id?"✓":""}</div><div class="oh">${a.desc}</div></button>`).join("")}</div>
-  <div class="card"><div class="tiny" style="margin-bottom:6px">ZORLUK</div>
-  ${[["rahat","🌤️ Rahat","Yüksek başlangıç parası, yumuşak rakipler"],["dengeli","⚖️ Dengeli","Standart deneyim"],["zorlu","🔥 Zorlu","Az para, agresif rakipler, yüksek kira"]].map(([id,l,d])=>`<button class="opt" style="border-color:${(window._diff||'dengeli')===id?'var(--gold)':'var(--div)'};background:${(window._diff||'dengeli')===id?'var(--gold-soft)':'var(--card)'}" onclick="pickDiff('${id}')">
-    <div class="ot">${l} ${(window._diff||'dengeli')===id?"✓":""}</div><div class="oh">${d}</div></button>`).join("")}</div>
-  <div class="card"><div class="tiny" style="margin-bottom:6px">DÜNYA BOYUTU</div>
-  ${Object.values(WORLD_PRESETS).map(p=>`<button class="opt" style="border-color:${window._worldPreset===p.id?'var(--gold)':'var(--div)'};background:${window._worldPreset===p.id?'var(--gold-soft)':'var(--card)'}" onclick="pickWorld('${p.id}')">
-    <div class="ot">${p.id==="compact"?"📦":p.id==="standard"?"🌍":"🗺️"} ${p.label} ${window._worldPreset===p.id?"✓":""}</div><div class="oh">${p.desc}</div></button>`).join("")}</div>
-  <div class="card"><div class="tiny" style="margin-bottom:6px">BAŞLANGIÇ ÜLKEN</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-  ${START_COUNTRIES.map(([id,l])=>`<button class="opt" style="margin-top:0;padding:9px;border-color:${window._startCountry===id?'var(--gold)':'var(--div)'};background:${window._startCountry===id?'var(--gold-soft)':'var(--card)'}" onclick="pickCountry('${id}')"><div class="ot" style="font-size:13px">${l} ${window._startCountry===id?"✓":""}</div></button>`).join("")}</div></div>
-  <div class="card alt"><b>Başlangıç paketin 🧳</b><div class="muted" style="margin-top:4px">
-  • ${(COUNTRY_BY_ID[window._startCountry]||{}).name||"Türkiye"}'de mütevazı bir mahalle ofisi<br>• €150K sermaye<br>• Yerel alt ligden 2 genç müşteri<br>• Sahada 1 scout<br>• ${(WORLD_PRESETS[window._worldPreset]||{}).label} dünya · büyük hayaller...</div></div>
-  <button class="btn block primary" style="padding:15px;font-size:16px" onclick="startGame()">🚀 Ajansı Kur</button></div>`;
+  <div class="muted" style="max-width:320px;margin:0 auto">Oyuncuların kariyerini sen yönetirsin: elmasları bul, kariyerleri büyüt, masada kazan.</div></div>
+  ${prog}${body}</div>`;
 }
 function startGame(){
-  const n=$("ob-name").value.trim()||"Gökhan Demir";
-  const a=$("ob-agency").value.trim()||"GD Sports Management";
+  const nmEl=$("ob-name"), agEl=$("ob-agency");
+  const n=((nmEl&&nmEl.value)||window._obName||"").trim()||"Gökhan Demir";
+  const a=((agEl&&agEl.value)||window._obAgency||"").trim()||"GD Sports Management";
   newGame(n,a);
   S.approach=window._appr||"genc";
   if(S.approach==="genc"&&S.scouts[0]){ S.scouts[0].quality=3; S.scouts[0].reliability=clamp(S.scouts[0].reliability+10,10,95); }
@@ -4323,9 +4772,7 @@ function startGame(){
 /* ---------- V8: bağımsız route ekranları ---------- */
 function renderWorld(){ $("scr-world").innerHTML=renderWorldV9(); mountCharts(); }
 function renderNews(){
-  $("scr-news").innerHTML=renderPageHero({tone:"blue",art:"folder",eyebrow:"HABER MERKEZİ",title:"Dünya & Ajans Haberleri",
-    desc:"Ajansın, oyuncuların, transferler, kupalar ve rakipler hakkında son gelişmeler.",metrics:[["Toplam",(S.news||[]).length]]})
-    +renderNewsFeed();
+  $("scr-news").innerHTML=renderNewsFeed();
 }
 function renderSettings(){ $("scr-settings").innerHTML=agSettings(); }
 function renderCareer(){ $("scr-career").innerHTML=agCareer(); mountCharts(); }
@@ -5102,9 +5549,9 @@ function openContractLayer(oid, msg){
    <div class="card alt">
      <div class="sumline"><span class="muted">Oyuncu/aile memnuniyeti</span><b>${heat(pLoad)}</b></div>
      <div class="sumline"><span class="muted">Kulüp direnci</span><b>${heat(cLoad)}</b></div>
-     ${s.revealed.minWage?`<div class="tiny" style="color:#C96A6A">🔴 Oyuncu en az ${fmtM(rl.minWage)} maaş istiyor</div>`:""}
-     ${s.revealed.release?`<div class="tiny" style="color:#C96A6A">🔴 Release clause %${Math.round(rl.releaseMaxPct*100)}'ü geçmemeli</div>`:""}
-     ${s.revealed.duration?`<div class="tiny" style="color:#C96A6A">🔴 En fazla ${rl.maxDuration} yıl istiyor</div>`:""}
+     ${s.revealed.minWage?`<div class="tiny" style="color:var(--danger-ink)">🔴 Oyuncu en az ${fmtM(rl.minWage)} maaş istiyor</div>`:""}
+     ${s.revealed.release?`<div class="tiny" style="color:var(--danger-ink)">🔴 Release clause %${Math.round(rl.releaseMaxPct*100)}'ü geçmemeli</div>`:""}
+     ${s.revealed.duration?`<div class="tiny" style="color:var(--danger-ink)">🔴 En fazla ${rl.maxDuration} yıl istiyor</div>`:""}
      ${rl.wantsRelease?`<div class="tiny">ℹ️ Bu oyuncu bir çıkış yolu (release clause) bekliyor.</div>`:""}
    </div>
    <button class="btn block primary" onclick="persuadePlayerContract('${oid}')">🗣️ Oyuncu & Kulübü İkna Et (1 tur)</button>
@@ -5364,16 +5811,40 @@ function simPhone(sum){
   }
 }
 function phoneUnread(){ return (S.phoneInbox||[]).filter(m=>!m.done&&!m.hiddenFromInbox).length; }
+/* gönderen tipi renk işaretleri (spec: Player yeşil, Club mavi, Sponsor altın, Rival mor, Medya turuncu) */
+const PHONE_SENDER_COLOR={oyuncu:"#2F9E67",aile:"#2F9E67",kulup:"#3D8BFF",td:"#3D8BFF",sponsor:"#C99B3D",rakip:"#7656C9",gazeteci:"#F28C38",hukuk:"#667387",scout:"#168A64",personel:"#667387"};
+let PHONE_FILTER="all";
+function setPhoneFilter(f){ PHONE_FILTER=f; openPhone(); }
 function openPhone(){
-  const inbox=(S.phoneInbox||[]).filter(m=>!m.hiddenFromInbox);
+  const all=(S.phoneInbox||[]).filter(m=>!m.hiddenFromInbox);
+  const FILTERS=[["all","Tümü"],["acil","Acil"],["bekliyor","Yanıt Bekliyor"],["delege","Delege"],["takip","Takip"],["cozuldu","Çözüldü"]];
+  const match=m=>{
+    const st=m.status||(m.done?"resolved":"unread");
+    if(PHONE_FILTER==="acil") return m.urgency==="yüksek"&&!m.done;
+    if(PHONE_FILTER==="bekliyor") return st==="unread"||st==="awaiting_response"||st==="in_conversation";
+    if(PHONE_FILTER==="delege") return st==="delegated";
+    if(PHONE_FILTER==="takip") return st==="awaiting_followup";
+    if(PHONE_FILTER==="cozuldu") return m.done;
+    return true;
+  };
+  const inbox=all.filter(match);
   let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">MENAJER TELEFONU</div>
-    <div class="b" style="font-family:'Fraunces',serif;font-size:18px">📱 Gelen Kutusu</div></div>`;
-  if(!inbox.length) h+=`<div class="empty">Kutun temiz — yeni mesaj yok.</div>`;
-  else h+=inbox.map(m=>`<div class="card tappable ${!m.done?'gold':''}" onclick="openPhoneMsg('${m.id}')" style="padding:10px 12px">
+    <div class="b" style="font-family:'Fraunces',serif;font-size:18px">📱 Gelen Kutusu</div></div>
+    <div class="filterrow" role="group" aria-label="mesaj filtreleri">${FILTERS.map(([k,l])=>`<button class="fchip ${PHONE_FILTER===k?'on':''}" onclick="setPhoneFilter('${k}')">${l}</button>`).join("")}</div>`;
+  if(!inbox.length) h+=renderEmptyState({icon:"📱",title:PHONE_FILTER==="all"?"Kutun temiz":"Bu filtrede mesaj yok",
+    desc:PHONE_FILTER==="all"?"Oyuncular, kulüpler ve sponsorlar aradığında burada görürsün.":"Farklı bir filtre dene.",
+    action:PHONE_FILTER!=="all"?{label:"Tümünü Gör",fn:"setPhoneFilter('all')"}:null});
+  else h+=inbox.map(m=>{
+    const ctxBits=[];
+    if(m.pid&&S.world.players[m.pid]) ctxBits.push("👤 "+S.world.players[m.pid].name);
+    if(m.cid&&S.world.clubs[m.cid]) ctxBits.push("🏟️ "+S.world.clubs[m.cid].name);
+    const rem=(m.expiresAtTick!=null&&!m.done)?Math.max(0,m.expiresAtTick-nowTick()):null;
+    return `<div class="card tappable ${!m.done?'gold':''}" onclick="openPhoneMsg('${m.id}')" style="padding:10px 12px;border-left:3px solid ${m.urgency==="yüksek"&&!m.done?"#D9534F":(PHONE_SENDER_COLOR[m.fromType]||"var(--div)")}">
     <div class="row" style="justify-content:space-between"><span class="b" style="font-size:13px">${PHONE_ICON[m.fromType]||"✉️"} ${escapeHtml(m.from)}</span>
     <span class="badge ${phoneStatusBadgeClass(m)}">${phoneStatusLabel(m)}</span></div>
     <div class="tiny b">${escapeHtml(m.subject)}</div>
-    <div class="tiny">S${m.s} H${m.w}${m.urgency==="yüksek"?" · 🔴 acil":""}</div></div>`).join("");
+    <div class="tiny">${ctxBits.length?ctxBits.map(escapeHtml).join(" · ")+" · ":""}S${m.s} H${m.w}${m.urgency==="yüksek"&&!m.done?" · 🔴 acil":""}${rem!=null?` · son ${rem} hafta`:""}</div></div>`;
+  }).join("");
   openSheet(h);
 }
 const PHONE_ICON={oyuncu:"👤",aile:"👨‍👩‍👦",kulup:"🏟️",td:"📋",scout:"🔭",personel:"🧑‍💼",sponsor:"👟",gazeteci:"📰",rakip:"🦈",hukuk:"⚖️"};
@@ -6135,10 +6606,8 @@ function agDepartments(){
   const tier=calculateAgencyTier();
   const totalCost=Object.values(S.departments).reduce((s,d)=>s+(d.unlocked?d.weeklyCost:0),0);
   const openN=Object.values(S.departments).filter(d=>d.unlocked).length;
-  let h=renderPageHero({tone:"corp",art:"building",eyebrow:"AJANS DEPARTMANLARI",
-    title:"Departman Yönetimi",
-    desc:"Departmanları aç, personel al, görev delege et. Her departman oyunu gerçekten değiştirir.",
-    metrics:[["Açık",openN+"/"+DEPT_DEFS.length],["Personel",(S.staffDirectory||[]).length],["Haftalık",fmtM(totalCost)],["Seviye",tier.lv]]});
+  let h=renderMetricGrid([{label:"Açık",value:openN+"/"+DEPT_DEFS.length},{label:"Personel",value:(S.staffDirectory||[]).length},{label:"Haftalık",value:fmtM(totalCost)},{label:"Seviye",value:tier.lv}]);
+  h+=`<div class="tiny" style="margin:2px 2px 10px">Departmanları aç, personel al, görev delege et. Her departman oyunu gerçekten değiştirir.</div>`;
   // aktif delege görevler
   const tasks=(S.departmentTasks||[]).filter(t=>t.status==="active");
   if(tasks.length){ h+=`<div class="card alt"><div class="tiny b" style="margin-bottom:6px">🔄 AKTİF DELEGE GÖREVLER</div>`;
@@ -6173,7 +6642,7 @@ function agDepartments(){
         <button class="btn sm ghost" onclick="openDeptDelegate('${def.id}')">📤 Görev Ver</button>
         <button class="btn sm ${d.level<5&&S.cash>0?'gold':'ghost'}" ${d.level>=5?"disabled":""} onclick="upgradeDepartment('${def.id}')">${d.level>=5?"Maks":"⬆️ Yükselt"}</button>
       </div>
-      ${staff.length?`<div class="tiny" style="margin-top:8px">${staff.map(s=>`${escapeHtml(s.name)} <span class="muted">(${escapeHtml(s.role)}, ${s.workload>85?'🔴':s.morale<35?'😔':'🙂'})</span> <a onclick="fireDeptStaff('${s.id}')" style="cursor:pointer;color:#C96A6A">✖</a>`).join(" · ")}</div>`:""}
+      ${staff.length?`<div class="tiny" style="margin-top:8px">${staff.map(s=>`${escapeHtml(s.name)} <span class="muted">(${escapeHtml(s.role)}, ${s.workload>85?'🔴':s.morale<35?'😔':'🙂'})</span> <a onclick="fireDeptStaff('${s.id}')" style="cursor:pointer;color:var(--danger-ink)">✖</a>`).join(" · ")}</div>`:""}
     </div>`;
   }
   return h;
@@ -6250,7 +6719,7 @@ function openRivalAgency(rid){
   } else if(RVTAB==="portfoy"){
     if(_hidP) h+=`<div class="tiny" style="margin-bottom:6px">🔒 ${_hidP} oyuncu kilitli pazarlarda</div>`;
     h+= _visP.length? _visP.map(p=>`<div class="card" style="padding:9px 12px"><div class="row"><div class="grow"><span class="b" style="font-size:13px">${p.natFlag} ${p.name}</span>
-      <div class="tiny">${p.age}y · ${POS_LABEL[p.pos]} · ${S.world.clubs[p.clubId]?.name||"?"}</div></div><span class="b" style="color:#3E8E63">${fmtM(p.value)}</span></div></div>`).join("")
+      <div class="tiny">${p.age}y · ${POS_LABEL[p.pos]} · ${S.world.clubs[p.clubId]?.name||"?"}</div></div><span class="b" style="color:var(--success-ink)">${fmtM(p.value)}</span></div></div>`).join("")
       : `<div class="empty">Bu ajansın açık portföyü yok.</div>`;
   } else if(RVTAB==="bolge"){
     h+=`<div class="card">`+Object.entries(rv.regionPresence||{}).map(([lid,v])=>{ const L=S.world.leagues.find(l=>l.id===lid);
@@ -6262,8 +6731,8 @@ function openRivalAgency(rid){
   } else if(RVTAB==="finans"){
     h+=`<div class="card">
       <div class="sumline"><span class="muted">Kasa</span><b>${fmtM(rv.cash)}</b></div>
-      <div class="sumline"><span class="muted">Haftalık gelir</span><b style="color:#3E8E63">${fmtM(rv.weeklyIncome||0)}</b></div>
-      <div class="sumline"><span class="muted">Haftalık gider</span><b style="color:#C96A6A">${fmtM(rv.weeklyExpense||0)}</b></div>
+      <div class="sumline"><span class="muted">Haftalık gelir</span><b style="color:var(--success-ink)">${fmtM(rv.weeklyIncome||0)}</b></div>
+      <div class="sumline"><span class="muted">Haftalık gider</span><b style="color:var(--danger-ink)">${fmtM(rv.weeklyExpense||0)}</b></div>
       <div class="sumline"><span class="muted">Ofis seviyesi</span><b>${(BAL.officeLevels[rv.officeLevel]||{}).name||rv.officeLevel}</b></div></div>`;
     if((rv.valueTrend||[]).length>=2) h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:4px">Portföy değeri trendi (bin €)</div>`+interactiveChart([{label:"Değer",color:"#3E8E63",points:rv.valueTrend}],{label:"portföy değeri",h:100,fmt:v=>fmtM(v*1000)})+`</div>`;
   } else if(RVTAB==="hedef"){
@@ -7095,7 +7564,7 @@ function pushHistory(route){
 function popHistory(){ const h=(S.uiState&&S.uiState.entityHistory)||[]; return h.length?h.pop():null; }
 function captureScreenFilters(screen){
   if(screen==="players") return {q:PSTATE.q,f:PSTATE.f,s:PSTATE.s};
-  if(screen==="world") return {q:WORLDQ};
+  if(screen==="world") return {q:WORLDQ,tab:WORLDTAB};
   if(screen==="scout") return {seg:SEG.scout};
   if(screen==="transfer") return {seg:SEG.transfer};
   if(screen==="agency") return {seg:SEG.agency};
@@ -7104,7 +7573,7 @@ function captureScreenFilters(screen){
 function restoreScreenFilters(screen,filters){
   if(!filters) return;
   if(screen==="players"){ if(filters.q!=null)PSTATE.q=filters.q; if(filters.f)PSTATE.f=filters.f; if(filters.s)PSTATE.s=filters.s; }
-  else if(screen==="world"){ if(filters.q!=null)WORLDQ=filters.q; }
+  else if(screen==="world"){ if(filters.q!=null)WORLDQ=filters.q; if(filters.tab)WORLDTAB=filters.tab; }
   else if(screen==="scout"&&filters.seg) SEG.scout=filters.seg;
   else if(screen==="transfer"&&filters.seg) SEG.transfer=filters.seg;
   else if(screen==="agency"&&filters.seg) SEG.agency=filters.seg;
@@ -7122,8 +7591,17 @@ function entityBreadcrumb(){
     crumbs.push(go("Dünya","navigateTo('world')")); if(l){ crumbs.push(go(l.country,`openEntity('country','${l.countryId}')`)); crumbs.push(escapeHtml(l.name)); } }
   else if(r.entityType==="club"){ const c=S.world.clubs[r.entityId]; crumbs.push(go("Dünya","navigateTo('world')"));
     if(c){ crumbs.push(go(c.countryId,`openEntity('country','${c.countryId}')`)); const l=S.world.leagues.find(x=>x.id===c.leagueId); if(l)crumbs.push(go(l.name,`openEntity('league','${l.id}')`)); crumbs.push(escapeHtml(c.name)); } }
-  else if(r.entityType==="rivalAgency"){ crumbs.push(go("Rakip İstihbaratı","gotoAgency('iliskiler')")); const rv=rivalById(r.entityId); crumbs.push(rv?escapeHtml(rv.name):"Rakip"); }
+  else if(r.entityType==="rivalAgency"){ crumbs.push(go("Rakip İstihbaratı","gotoAgency('genel')")); const rv=rivalById(r.entityId); crumbs.push(rv?escapeHtml(rv.name):"Rakip"); }
   else if(r.entityType==="negotiation"){ crumbs.push(go("Transfer","navigateTo('transfer')")); crumbs.push("Pazarlık"); }
+  else if(r.entityType==="department"){ crumbs.push(go("Ajans","gotoAgency('departmanlar')")); const def=DEPT_MAP[r.entityId]; crumbs.push(def?escapeHtml(def.name):"Departman"); }
+  else if(r.entityType==="finance"){ crumbs.push(go("Ajans","gotoAgency('finans')")); crumbs.push("Finans Merkezi"); }
+  else if(r.entityType==="competition"){ crumbs.push(go("Dünya","navigateTo('world')"));
+    let comp=null; try{ const ce=ensureCompetitions(S); comp=Object.values(ce.domestic).find(x=>x.id===r.entityId)||ce.continental.find(x=>x.id===r.entityId); }catch(e){}
+    crumbs.push(comp?escapeHtml(comp.name):"Turnuva"); }
+  else if(r.entityType==="scoutFind"){ crumbs.push(go("Keşif","navigateTo('scout')"));
+    const rep=(S.reports||[]).find(x=>x.id===r.entityId); const pp=rep?S.world.players[rep.pid]:null;
+    crumbs.push(pp?escapeHtml(pp.name):"Scout Raporu"); }
+  else if(r.entityType==="match"){ crumbs.push(go("Dünya","navigateTo('world')")); crumbs.push("Oyuncu Performansı"); }
   else crumbs.push("Detay");
   return crumbs.join(' <span style="opacity:.5">›</span> ');
 }
@@ -7167,7 +7645,7 @@ function entityExists(type,id){
   if(type==="finance") return true;
   if(type==="competition"){ try{ const c=ensureCompetitions(S); return Object.values(c.domestic).some(x=>x.id===id)||c.continental.some(x=>x.id===id); }catch(e){ return false; } }
   if(type==="scoutFind") return !!S.reports.find(r=>r.id===id);
-  if(type==="match") return !!(S.matchCenter||[]).find(m=>m.id===id);
+  if(type==="match") return id==="__list"||!!(S.matchCenter||[]).find(m=>m.id===id);
   return true;
 }
 function renderEntity(){ const r=UI.route; if(!r||r.screen!=="entity") return;
@@ -7354,8 +7832,9 @@ function buildCalendarEvents(){
 }
 function renderCalendar(){
   const wk=S.week; const events=buildCalendarEvents();
-  let h=renderPageHero({tone:"blue",art:"folder",eyebrow:"SEZON TAKVİMİ",title:`Sezon ${S.season} · Hafta ${wk}`,
-    desc:"Yaklaşan pencereler, deadline'lar, sözleşme bitişleri ve sezon fazları.",metrics:[["Hafta",wk+"/"+BAL.weeksPerSeason],["Olay",events.length]]});
+  let h=`<div class="page-header"><div class="page-eyebrow">SEZON TAKVİMİ</div>
+    <div class="page-title">Takvim</div>
+    <div class="page-subtitle">Sezon ${S.season} · Hafta ${wk}/${BAL.weeksPerSeason} · ${events.length} yaklaşan olay</div></div>`;
   const phase= inWindow(wk)?"🔓 Transfer dönemi": wk<=4?"🌱 Sezon öncesi": wk>=BAL.weeksPerSeason-3?"🏁 Sezon sonu": wk<BAL.weeksPerSeason/2?"⚽ İlk yarı":"⚽ İkinci yarı";
   h+=`<div class="card alt"><b>${phase}</b></div>`;
   const soon=events.filter(e=>e.w<=wk+4);
@@ -7399,7 +7878,7 @@ function persistScreenFilters(){
   if(!S) return; S.uiState=S.uiState||{}; S.uiState.screenFilters=S.uiState.screenFilters||{};
   const sf=S.uiState.screenFilters;
   sf.players={query:PSTATE.q,riskFilter:PSTATE.f,sort:PSTATE.s};
-  sf.world={query:WORLDQ};
+  sf.world={query:WORLDQ,tab:WORLDTAB};
   sf.scout={segment:SEG.scout};
   sf.transfer={segment:SEG.transfer};
   sf.agency={section:SEG.agency};
@@ -7408,6 +7887,7 @@ function loadScreenFilters(){
   const sf=(S.uiState&&S.uiState.screenFilters)||{};
   if(sf.players){ if(sf.players.query!=null)PSTATE.q=sf.players.query; if(sf.players.riskFilter)PSTATE.f=sf.players.riskFilter; if(sf.players.sort)PSTATE.s=sf.players.sort; }
   if(sf.world&&sf.world.query!=null) WORLDQ=sf.world.query;
+  if(sf.world&&sf.world.tab) WORLDTAB=sf.world.tab;
   if(sf.scout&&sf.scout.segment) SEG.scout=sf.scout.segment;
   if(sf.transfer&&sf.transfer.segment) SEG.transfer=sf.transfer.segment;
   if(sf.agency&&sf.agency.section) SEG.agency=sf.agency.section;
@@ -7580,13 +8060,32 @@ function buildWeeklyBriefing(before,after,sum){
   try{ buildScoredActions().slice(0,3).forEach(a=>B.next.push({text:a.t,route:a.fn})); }catch(e){}
   return B;
 }
+let WB_EXPANDED={};
+function wbExpand(k){ WB_EXPANDED[k]=true; renderWeeklyBriefing(); }
 function renderWeeklyBriefing(){
   const B=S.weeklyBriefing;
-  if(!B){ $("scr-weeklyBriefing").innerHTML=`<button class="btn ghost sm" onclick="navigateTo('home')">← Geri</button><div class="empty">Henüz haftalık özet yok — bir hafta oynat.</div>`; return; }
+  if(!B){ $("scr-weeklyBriefing").innerHTML=`<button class="btn ghost sm" onclick="navigateTo('home')">← Geri</button>`+renderEmptyState({icon:"📋",title:"Henüz haftalık özet yok",desc:"Bir hafta oynat — gelişmeler burada özetlenir.",action:{label:"Ana Sayfa",fn:"navigateTo('home')"}}); return; }
   let h=`<div class="ent-head"><button class="btn ghost sm" onclick="navigateTo('home')">← Geri</button><div class="ent-crumb tiny">Sezon ${B.s} · Hafta ${B.w} Özeti</div></div>`;
-  h+=renderPageHero({tone:"gold",art:"crown",eyebrow:`SEZON ${B.s} · HAFTA ${B.w}`,title:"Haftalık Brifing",desc:"Bu hafta ne oldu, gelecek hafta ne yapmalısın.",metrics:[["Kasa",fmtM(S.cash)],["İtibar",Math.round(S.rep)]]});
-  const block=(title,arr)=>{ if(!arr||!arr.length) return ""; let x=`<h2 class="sec">${title}</h2>`;
-    x+=arr.map(i=>`<div class="sumline ${i.route?'tappable':''}" ${i.route?`onclick="${i.route}"`:""}><span>${escapeHtml(i.text)}</span>${i.route?'<span class="tiny">→</span>':""}</div>`).join(""); return x; };
+  h+=`<div class="page-header"><div class="page-eyebrow">SEZON ${B.s} · HAFTA ${B.w}</div>
+    <div class="page-title">Haftalık Brifing</div>
+    <div class="page-subtitle">Bu hafta ne oldu, gelecek hafta ne yapmalısın.</div></div>`;
+  /* metrik deltaları — ajans geçmişinin son iki kaydından */
+  { const Hh=(S.history&&S.history.agencyWeekly)||[];
+    const cur=Hh[Hh.length-1], prev=Hh[Hh.length-2];
+    const d=(k)=>cur&&prev?(cur[k]-prev[k]):null;
+    h+=renderMetricGrid([
+      {label:"Kasa",value:fmtM(S.cash),delta:d("cash"),deltaText:d("cash")!=null?fmtM(Math.abs(d("cash"))):null},
+      {label:"Portföy",value:cur?fmtM(cur.pv):"—",delta:d("pv"),deltaText:d("pv")!=null?fmtM(Math.abs(d("pv"))):null},
+      {label:"İtibar",value:String(Math.round(S.rep)),delta:d("rep")!=null?Math.round(d("rep")):null},
+      {label:"Skor",value:cur?String(Math.round(cur.score)):"—",delta:d("score")!=null?Math.round(d("score")):null},
+    ]); }
+  const block=(title,arr)=>{ if(!arr||!arr.length) return ""; const k=title.replace(/\W/g,"");
+    const expanded=WB_EXPANDED[k]||arr.length<=3;
+    const shown=expanded?arr:arr.slice(0,3);
+    let x=`<h2 class="sec">${title}${arr.length>3?` <span class="cnt">${arr.length}</span>`:""}</h2>`;
+    x+=shown.map(i=>`<div class="sumline ${i.route?'tappable':''}" ${i.route?`onclick="${i.route}"`:""}><span>${escapeHtml(i.text)}</span>${i.route?'<span class="tiny">→</span>':""}</div>`).join("");
+    if(!expanded) x+=`<button class="section-action" onclick="wbExpand('${k}')">Tümünü gör (${arr.length}) →</button>`;
+    return x; };
   h+=block("🌟 Önemli Gelişmeler",B.important);
   h+=block("👤 Oyuncular",B.players);
   h+=block("💼 Transfer",B.transfer);
@@ -7599,8 +8098,8 @@ function renderWeeklyBriefing(){
   h+=block("🎓 Akademi",B.academyNews);
   h+=block("👟 Sponsor",B.sponsor);
   h+=block("📱 Telefon",B.phone);
-  if(B.next&&B.next.length){ h+=`<h2 class="sec">🎯 Gelecek Hafta</h2>`;
-    h+=B.next.map(i=>`<div class="action-item sugg"><span>${escapeHtml(i.text)}</span><button class="btn sm ghost" onclick="${i.route}">Git</button></div>`).join(""); }
+  if(B.next&&B.next.length){ h+=`<h2 class="sec">🎯 Gelecek Haftanın ${Math.min(3,B.next.length)} Önceliği</h2>`;
+    h+=B.next.slice(0,3).map(i=>`<div class="action-item sugg"><span>${escapeHtml(i.text)}</span><button class="btn sm ghost" onclick="${i.route}">Git</button></div>`).join(""); }
   $("scr-weeklyBriefing").innerHTML=h;
 }
 function openWeeklyBriefing(){ navigateTo("weeklyBriefing"); }
@@ -7635,12 +8134,95 @@ function renderDepartmentEntity(deptId){
   return h;
 }
 function openDepartmentEntity(deptId){ showEntityPage("department",deptId,`<div class="grab"></div>`+renderDepartmentEntity(deptId)); }
-function renderFinanceEntity(){
-  let h=`<div class="b" style="font-family:'Fraunces',serif;font-size:18px;margin-bottom:6px">💰 Finans Merkezi</div>`;
-  h+= (typeof agFinance==="function"? agFinance() : "");
+function finSummaryTab(){
+  const Hh=(S.history&&S.history.agencyWeekly)||[];
+  const lastH=Hh[Hh.length-1]; const net=lastH?(lastH.inc-lastH.exp):0;
+  const rw=runwayWeeks();
+  const seasonNet=Hh.filter(x=>x.s===S.season).reduce((t,x)=>t+(x.inc-x.exp),0);
   const deptCost=Object.values(S.departments||{}).reduce((s,d)=>s+(d.unlocked?d.weeklyCost:0),0);
-  h+=`<h2 class="sec">Departman Maliyetleri</h2><div class="card"><div class="sumline"><span class="muted">Toplam haftalık departman gideri</span><b>${fmtM(deptCost)}</b></div>
+  let h=renderMetricGrid([
+    {label:"Kasa",value:fmtM(S.cash),tone:S.cash<0?"danger":null},
+    {label:"Runway",value:rw!=null?rw+" hafta":"∞",tone:rw!=null&&rw<10?"warning":null},
+    {label:"Haftalık Net",value:(net>=0?"+":"")+fmtM(net),tone:net>=0?"success":"danger"},
+    {label:"Sezon Net",value:(seasonNet>=0?"+":"")+fmtM(seasonNet),tone:seasonNet>=0?"success":"danger"},
+  ]);
+  h+=`<h2 class="sec" style="font-size:15px">Departman & Ofis Giderleri</h2><div class="card">
+    <div class="sumline"><span class="muted">Toplam haftalık departman gideri</span><b>${fmtM(deptCost)}</b></div>
     <div class="sumline"><span class="muted">Bölgesel ofis gideri</span><b>${fmtM(typeof regionalOfficeWeeklyCost==="function"?regionalOfficeWeeklyCost():0)}</b></div></div>`;
+  h+=renderSectionHeader("📒 Son Hareketler",null);
+  h+= S.ledger.slice(0,6).map(l=>`<div class="sumline"><span class="muted">H${l.w} · ${l.label}</span><span class="${l.amt>=0?'pos-delta':'neg-delta'}">${l.amt>=0?"+":""}${fmtM(l.amt)}</span></div>`).join("")
+    || renderEmptyState({icon:"📒",title:"Henüz kayıt yok",desc:"Haftalar ilerledikçe kasa hareketleri burada birikir."});
+  return h;
+}
+function _finLedgerSlice(){ return S.ledger.slice(0,60); }
+function finIncomeTab(){
+  const cut=_finLedgerSlice();
+  const grp=(rx)=>cut.filter(l=>rx.test(l.label));
+  const sum=a=>a.reduce((t,l)=>t+Math.abs(l.amt),0);
+  const incParts=[
+    {label:"Transfer/İmza",v:sum(grp(/ransfer|Bosman|yenileme|İmza par/).filter(l=>l.amt>0)),color:"#D9AE54"},
+    {label:"Maaş komisyonu",v:sum(grp(/maaş komisyon/).filter(l=>l.amt>0)),color:"#5FBF87"},
+    {label:"Varlık/Sponsor",v:sum(grp(/arlık|Sponsor/).filter(l=>l.amt>0)),color:"#7FB3E8"},
+    {label:"Diğer",v:sum(cut.filter(l=>l.amt>0&&!/ransfer|Bosman|yenileme|İmza par|maaş komisyon|arlık|Sponsor/.test(l.label))),color:"#93A0B8"},
+  ].filter(p=>p.v>0);
+  let h=incParts.length?`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">GELİR KAYNAKLARI</div>${renderDonut(incParts,{label:"gelir dağılımı"})}</div>`:"";
+  h+=renderSectionHeader("💰 Gelir Kayıtları",null);
+  const incLedger=S.ledger.filter(l=>l.amt>0).slice(0,20);
+  h+= incLedger.length? incLedger.map(l=>`<div class="sumline"><span class="muted">H${l.w} · ${l.label}</span><span class="pos-delta">+${fmtM(l.amt)}</span></div>`).join("")
+    : renderEmptyState({icon:"💰",title:"Henüz gelir kaydı yok",desc:"Komisyon, sponsor ve varlık gelirleri burada listelenir."});
+  return h;
+}
+function finExpenseTab(){
+  const cut=_finLedgerSlice();
+  const grp=(rx)=>cut.filter(l=>rx.test(l.label));
+  const sum=a=>a.reduce((t,l)=>t+Math.abs(l.amt),0);
+  const expParts=[
+    {label:"Ofis/Kira",v:sum(grp(/kira|Ofis yük/).filter(l=>l.amt<0)),color:"#C96A6A"},
+    {label:"Scout",v:sum(grp(/[Ss]cout/).filter(l=>l.amt<0)),color:"#D9A15E"},
+    {label:"Personel",v:sum(grp(/danışman|uzmanı maaş/).filter(l=>l.amt<0)),color:"#8FA8C9"},
+    {label:"Yatırım/Diğer",v:sum(cut.filter(l=>l.amt<0&&!/kira|Ofis yük|[Ss]cout|danışman|uzmanı maaş/.test(l.label))),color:"#93A0B8"},
+  ].filter(p=>p.v>0);
+  const deptCost=Object.values(S.departments||{}).reduce((s,d)=>s+(d.unlocked?d.weeklyCost:0),0);
+  const H=(S.history&&S.history.agencyWeekly)||[]; const last=H[H.length-1];
+  let h="";
+  if(last&&last.exp>last.inc) h+=`<div class="card urgent">⚠️ Bu hafta gider gelirden yüksekti (${fmtM(last.exp)} > ${fmtM(last.inc)}).</div>`;
+  if(S.cash<deptCost*4) h+=`<div class="card urgent">⚠️ Kasa, bir aylık departman giderini karşılamıyor olabilir.</div>`;
+  h+=expParts.length?`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">GİDER KAYNAKLARI</div>${renderDonut(expParts,{label:"gider dağılımı"})}</div>`:"";
+  h+=renderSectionHeader("📉 Gider Kayıtları",null);
+  const expLedger=S.ledger.filter(l=>l.amt<0).slice(0,20);
+  h+= expLedger.length? expLedger.map(l=>`<div class="sumline"><span class="muted">H${l.w} · ${l.label}</span><span class="neg-delta">${fmtM(l.amt)}</span></div>`).join("")
+    : renderEmptyState({icon:"📉",title:"Henüz gider kaydı yok"});
+  return h;
+}
+function setFinWin(w){ FINWIN=w; openFinanceEntity(); }
+function finCashflowTab(){
+  const H=(S.history&&S.history.agencyWeekly)||[];
+  const cashVals=H.slice(-FINWIN).map(x=>x.cash);
+  let h=`<div class="seg" style="margin:0 0 8px">${[8,16,32].map(w=>`<button class="${FINWIN===w?'on':''}" onclick="setFinWin(${w})">${w}h</button>`).join("")}</div>`;
+  h+=`<div class="chartbox"><div class="tiny b" style="margin-bottom:6px">KASA TRENDİ</div>${interactiveChart([{label:"Kasa",color:"#3E8E63",points:cashVals}],{fmt:fmtM,label:"kasa trendi",h:140})}
+  <div class="cnote">${chartComment(cashVals,"Kasa")}</div></div>`;
+  return h;
+}
+function finForecastTab(){
+  const rw=runwayWeeks();
+  const H=(S.history&&S.history.agencyWeekly)||[]; const last4=H.slice(-4);
+  const inc4=last4.reduce((t,x)=>t+x.inc,0), exp4=last4.reduce((t,x)=>t+x.exp,0);
+  let h=`<div class="card ${rw!=null&&rw<10?'urgent':'alt'}">${rw!=null?`⏳ Mevcut gider hızıyla kasan yaklaşık <b>${rw} hafta</b> dayanır.`:`✅ Nakit akışın pozitif — kasa erimiyor, büyümeye devam ediyor.`}</div>`;
+  h+=renderMetricGrid([{label:"Son 4h Gelir",value:fmtM(inc4)},{label:"Son 4h Gider",value:fmtM(exp4)},{label:"Net",value:(inc4-exp4>=0?"+":"")+fmtM(inc4-exp4),tone:inc4-exp4>=0?"success":"danger"}]);
+  h+=`<div class="tiny" style="margin-top:6px">Tahmin, son 4 haftalık ortalama gelir/gidere dayanır — ani bir transfer veya sponsor anlaşması bunu hızla değiştirebilir.</div>`;
+  return h;
+}
+function setFinTab(t){ FINTAB=t; openFinanceEntity(); }
+function renderFinanceEntity(){
+  if(!["ozet","gelir","gider","nakit","tahmin"].includes(FINTAB)) FINTAB="ozet";
+  let h=`<div class="page-header"><div class="page-eyebrow">MALİ YÖNETİM</div>
+    <div class="page-title">Finans Merkezi</div></div>`;
+  h+=`<div class="seg">${[["ozet","Özet"],["gelir","Gelirler"],["gider","Giderler"],["nakit","Nakit Akışı"],["tahmin","Tahmin"]].map(([k,l])=>`<button class="${FINTAB===k?'on':''}" onclick="setFinTab('${k}')">${l}</button>`).join("")}</div>`;
+  if(FINTAB==="gelir") h+=finIncomeTab();
+  else if(FINTAB==="gider") h+=finExpenseTab();
+  else if(FINTAB==="nakit") h+=finCashflowTab();
+  else if(FINTAB==="tahmin") h+=finForecastTab();
+  else h+=finSummaryTab();
   return h;
 }
 function openFinanceEntity(){ showEntityPage("finance","agency",`<div class="grab"></div>`+renderFinanceEntity()); }
@@ -8128,17 +8710,21 @@ function respecSpecializations(){
   sp.points+=spent; sp.paths={};
   toast("Uzmanlıklar sıfırlandı — puanlar iade edildi ♻️"); requestSave("respec"); closeSheet(); renderAll();
 }
-function openSpecTree(){
+function renderSpecTreeBody(){
   const sp=S.agencySpecializations||{points:0,paths:{}};
-  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">AJANS UZMANLIK AĞACI</div>
-   <div class="b" style="font-family:'Fraunces',serif;font-size:18px">Uzmanlık Puanı: ${sp.points}</div>
-   <div class="tiny">Seviye atladıkça puan kazanırsın. Her yol 3 kademe.</div></div>`;
+  let h=`<div class="tiny" style="margin-bottom:8px">Seviye atladıkça puan kazanırsın. Her yol 3 kademe.</div>`;
   for(const p of SPEC_PATHS){ const lvl=specLevel(p.id);
     h+=`<div class="card" style="padding:10px 12px"><div class="row"><span style="font-size:20px">${p.icon}</span>
      <div class="grow"><span class="b" style="font-size:13px">${p.label}</span> <span class="tiny">${"●".repeat(lvl)}${"○".repeat(3-lvl)}</span>
      <div class="tiny">${p.tiers[Math.min(lvl,2)]}${lvl>0?` · son 10 haftada ${(typeof specTriggerCount==="function")?specTriggerCount(p.id,10):0} tetik`:""}</div></div>
      <button class="btn sm ${sp.points>0&&lvl<3?'gold':'ghost'}" ${sp.points>0&&lvl<3?"":"disabled"} onclick="spendSpecPoint('${p.id}')">${lvl>=3?"MAX":"⬆"}</button></div></div>`; }
   h+=`<button class="btn block ghost" style="margin-top:8px" onclick="respecSpecializations()">♻️ Yeniden Dağıt (€40K)</button>`;
+  return h;
+}
+function openSpecTree(){
+  const sp=S.agencySpecializations||{points:0,paths:{}};
+  const h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">AJANS UZMANLIK AĞACI</div>
+   <div class="b" style="font-family:'Fraunces',serif;font-size:18px">Uzmanlık Puanı: ${sp.points}</div></div>`+renderSpecTreeBody();
   openSheet(h);
 }
 /* ============================================================
@@ -8677,15 +9263,15 @@ function marketBadge(cid){
   const cls=lvl>=3?"ok":lvl>=2?"hot":lvl>=1?"sad":"inj";
   return `<span class="badge ${cls}">${L}</span>`;
 }
-function renderWorldV9(){
+function setWorldTab(t){ WORLDTAB=t; renderWorld(); }
+function worldMarketsTab(){
   let h="";
-  // 1. Kariyer Rotam
+  // kariyer rotam
   const tier=calculateAgencyTier().lv;
   const route=S.careerRoute?CAREER_ROUTES.find(r=>r.id===S.careerRoute.primary):null;
   h+=`<div class="card gold"><div class="row" style="justify-content:space-between"><span class="tiny b">🧭 KARİYER ROTAM</span>
     ${tier>=2?`<button class="btn sm ghost" onclick="openRoutePicker()">${route?"Değiştir":"Rota Seç"}</button>`:`<span class="tiny">Tier 2'de açılır</span>`}</div>
     <div class="b" style="margin-top:4px">${route?route.label:"Henüz rota seçilmedi"}</div>`;
-  // sonraki hedef pazar
   const locked=(S.world.countries||[]).map(c=>({c,lvl:accessLevel(c.id),a:maFor(c.id)})).filter(x=>x.lvl<3)
     .sort((a,b)=>((b.a.networkXP||0)+(b.a.knowledgeXP||0))-((a.a.networkXP||0)+(a.a.knowledgeXP||0)));
   if(locked.length){ const t=locked[0]; const paths=marketUnlockPaths(t.c.id);
@@ -8694,14 +9280,12 @@ function renderWorldV9(){
       <div class="sb" style="margin:4px 0 0"><div class="track"><div class="fill au" style="width:${prog}%"></div></div></div>
       <div class="tiny" style="margin-top:4px">En hızlı yol: ${escapeHtml((paths.find(p=>!p.done)||paths[0]).desc)}</div>`; }
   h+=`</div>`;
-  // 5. Geçici davetler
   const temps=(S.temporaryAccess||[]).filter(t=>t.expiresAtTick>nowTick());
   if(temps.length){ h+=`<h2 class="sec">📩 Geçici Davetler <span class="cnt">${temps.length}</span></h2>`;
     h+=temps.map(t=>{ const club=t.type==="club"?S.world.clubs[t.entityId]:null; const cd=COUNTRY_BY_ID[t.countryId]||{};
       return `<div class="card gold tappable" onclick="${club?`openEntity('club','${t.entityId}')`:`openEntity('country','${t.countryId}')`}">
         <span class="b" style="font-size:13px">${cd.flag||""} ${club?escapeHtml(club.name):escapeHtml(cd.name||t.countryId)}</span>
         <div class="tiny">${escapeHtml(t.source)} · ${t.expiresAtTick-nowTick()} hafta geçerli</div></div>`; }).join(""); }
-  // 2. Açık pazarlarım
   const open=(S.world.countries||[]).filter(c=>accessLevel(c.id)>=3);
   h+=`<h2 class="sec">🌍 Açık Pazarlarım <span class="cnt">${open.length}</span></h2>`;
   h+=open.map(c=>{ const st=countryStats(c.id); const a=maFor(c.id);
@@ -8709,37 +9293,53 @@ function renderWorldV9(){
       <span style="font-size:20px">${c.flag}</span><div class="grow"><span class="b" style="font-size:13px">${escapeHtml(c.name)}</span>
       <div class="tiny">${st.mine?`⭐ ${st.mine} müşteri · `:""}network ${Math.round(a.networkXP||0)} · bilgi ${Math.round(a.knowledgeXP||0)}</div></div>
       ${marketBadge(c.id)}</div></div>`; }).join("")||`<div class="empty">Henüz açık pazar yok.</div>`;
-  // 3. Gelişen bağlantılar
   const growing=(S.world.countries||[]).filter(c=>{ const l=accessLevel(c.id); return l>=1&&l<3; });
   if(growing.length){ h+=`<h2 class="sec">📈 Gelişen Bağlantılar <span class="cnt">${growing.length}</span></h2>`;
     h+=growing.map(c=>{ const a=maFor(c.id);
       return `<div class="card tappable" style="padding:9px 12px" onclick="openEntity('country','${c.id}')"><div class="row">
         <span style="font-size:20px">${c.flag}</span><div class="grow"><span class="b" style="font-size:13px">${escapeHtml(c.name)}</span>
         <div class="tiny">network ${Math.round(a.networkXP||0)}/60 · bilgi ${Math.round(a.knowledgeXP||0)}/40</div></div>${marketBadge(c.id)}</div></div>`; }).join(""); }
-  // 4. Kilitli bölgeler (kompakt)
   const closed=(S.world.countries||[]).filter(c=>accessLevel(c.id)===0);
   if(closed.length){ h+=`<h2 class="sec">🔒 Kilitli Bölgeler <span class="cnt">${closed.length}</span></h2>
     <div class="card" style="padding:10px 12px">${closed.map(c=>`<a onclick="openEntity('country','${c.id}')" style="cursor:pointer;margin-right:10px;font-size:20px" title="${escapeHtml(c.name)}">${c.flag}</a>`).join("")}
     <div class="tiny" style="margin-top:4px">Bayrağa dokun → açma şartlarını gör</div></div>`; }
-  // 8. Piyasa trendleri
+  h+=`<div class="divider"></div><h2 class="sec">🔍 Tüm Dünya</h2>`+worldViewV7();
+  return h;
+}
+function worldOpportunitiesTab(){
+  let h="";
   const trends=(S.marketTrends||[]).filter(t=>t.season===S.season&&t.endsWeek>S.week&&(accessLevel(t.countryId)>=1||(typeof specLevel==="function"&&specLevel("data")>=2)));
-  if(trends.length){ h+=`<h2 class="sec">📊 Piyasa Trendleri</h2>`;
+  if(trends.length){ h+=`<h2 class="sec" style="margin-top:0">📊 Piyasa Trendleri</h2>`;
     h+=trends.map(t=>`<div class="card alt" style="padding:9px 12px"><span class="b" style="font-size:12.5px">${escapeHtml(t.label)}</span>
       <div class="tiny">talep x${t.demandMultiplier.toFixed(2)} · H${t.endsWeek}'e kadar · güven %${t.confidence}</div></div>`).join(""); }
-  // turnuvalar
+  h+=renderWorldOpportunities();
+  if(!trends.length&&!h.trim()) h=renderEmptyState({icon:"📍",title:"Henüz fırsat yok",desc:"Pazar bilgisi ve ağın büyüdükçe kulüp ve oyuncu fırsatları burada listelenir."});
+  return h;
+}
+function worldTournamentsTab(){
   const comp=ensureCompetitions(S);
   const activeComps=[...Object.values(comp.domestic).filter(c=>accessLevel(c.countryId)>=1),...comp.continental];
-  if(activeComps.length){ h+=`<h2 class="sec">🏆 Kupalar & Turnuvalar</h2>`;
-    h+=activeComps.slice(0,8).map(c=>`<div class="card tappable" style="padding:9px 12px" onclick="openCompetition('${c.id}')">
+  if(!activeComps.length) return renderEmptyState({icon:"🏆",title:"Henüz erişilebilir turnuva yok",desc:"Pazar erişimin genişledikçe kupalar ve ligler burada görünür."});
+  let h=`<h2 class="sec" style="margin-top:0">🏆 Kupalar & Turnuvalar</h2>`;
+  h+=activeComps.slice(0,10).map(c=>{
+    const myClients=myPlayers().filter(p=>p.clubId&&c.alive&&c.alive.includes(p.clubId));
+    return `<div class="card tappable" style="padding:9px 12px" onclick="openCompetition('${c.id}')">
       <div class="row"><span style="font-size:18px">🏆</span><div class="grow"><span class="b" style="font-size:13px">${escapeHtml(c.name)}</span>
-      <div class="tiny">${c.completed?`Şampiyon: ${S.world.clubs[c.winnerClubId]?.name||"?"}`:`${c.alive.length} takım · sonraki tur H${c.roundWeeks[c.currentRound]||"—"}`}</div></div><span class="tiny">→</span></div></div>`).join(""); }
-  if((S.matchCenter||[]).length){ h+=`<h2 class="sec">🎦 Maç Merkezi</h2>`;
-    h+=(S.matchCenter||[]).slice(0,3).map(m=>{ const H2=S.world.clubs[m.home],A2=S.world.clubs[m.away];
-      return `<div class="card tappable" style="padding:9px 12px" onclick="openMatch('${m.id}')"><div class="row"><span style="font-size:18px">🎦</span><div class="grow"><span class="b" style="font-size:13px">${H2?escapeHtml(H2.name):"?"} ${m.score} ${A2?escapeHtml(A2.name):"?"}</span><div class="tiny">${escapeHtml(m.comp)} · ${escapeHtml(m.stage)} · H${m.week}</div></div><span class="tiny">→</span></div></div>`; }).join(""); }
-  // 6-7. fırsatlar (mevcut motor)
-  h+=renderWorldOpportunities();
-  // 9-10. tüm dünya araması
-  h+=`<div class="divider"></div><h2 class="sec">🔍 Tüm Dünya</h2>`+worldViewV7();
+      <div class="tiny">${c.completed?`Şampiyon: ${S.world.clubs[c.winnerClubId]?.name||"?"}`:`${c.alive.length} takım · sonraki tur H${c.roundWeeks[c.currentRound]||"—"}`}</div>
+      ${myClients.length?`<div class="tiny" style="color:var(--success-ink)">⭐ ${myClients.length} müşterin bu turnuvada</div>`:""}</div><span class="tiny">→</span></div></div>`; }).join("");
+  return h;
+}
+function renderWorldV9(){
+  if(!["pazarlar","firsatlar","turnuvalar","performans"].includes(WORLDTAB)) WORLDTAB="pazarlar";
+  let h=`<div class="page-header"><div class="page-eyebrow">FIRSAT MERKEZİ</div>
+    <div class="page-title">Dünya</div>
+    <div class="page-subtitle">${(S.world.countries||[]).length} ülke · ${(S.world.leagues||[]).length} lig</div></div>`;
+  h+=`<div class="seg" role="tablist">${[["pazarlar","Pazarlar"],["firsatlar","Fırsatlar"],["turnuvalar","Turnuvalar"],["performans","Oyuncu Performansları"]].map(([id,l])=>
+    `<button role="tab" aria-selected="${WORLDTAB===id}" class="${WORLDTAB===id?'on':''}" onclick="setWorldTab('${id}')">${l}</button>`).join("")}</div>`;
+  if(WORLDTAB==="firsatlar") h+=worldOpportunitiesTab();
+  else if(WORLDTAB==="turnuvalar") h+=worldTournamentsTab();
+  else if(WORLDTAB==="performans") h+=renderPlayerPerformanceList({noHeader:true});
+  else h+=worldMarketsTab();
   return h;
 }
 function lockedCountryPage(cid){
@@ -8836,7 +9436,7 @@ function negoQuickBar(oid){
 function officeCompareCard(){
   const cur=BAL.officeLevels[S.officeLevel]; const next=BAL.officeLevels[S.officeLevel+1];
   if(!next) return "";
-  const row=(l,a,b)=>`<div class="sumline"><span class="muted">${l}</span><span><b>${a}</b> <span style="color:#3E8E63">→ ${b}</span></span></div>`;
+  const row=(l,a,b)=>`<div class="sumline"><span class="muted">${l}</span><span><b>${a}</b> <span style="color:var(--success-ink)">→ ${b}</span></span></div>`;
   return `<div class="card"><div class="tiny b" style="margin-bottom:4px">MEVCUT → SONRAKİ OFİS</div>
     ${row("Ofis",cur.name,next.name)}
     ${row("Müşteri kapasitesi",cur.cap,next.cap)}
@@ -8858,7 +9458,8 @@ function pdBrand(p){
   if(b.activeDeals.length){ h+=`<div class="card"><div class="tiny b" style="margin-bottom:4px">SPONSOR ANLAŞMALARI</div>`;
     for(const d of b.activeDeals){ const cat=SPONSOR_CATS.find(c=>c[0]===d.cat)||["","Marka","👟"];
       h+=`<div class="sumline"><span>${cat[2]} ${escapeHtml(d.brand)} <span class="tiny">(${cat[1]})</span></span>
-        <span class="b">${fmtM(d.yearly)}/yıl · ${d.weeksLeft}h</span></div>`; }
+        <span class="b">${fmtM(d.yearly)}/yıl · ${d.weeksLeft}h</span></div>
+        <div class="tiny">${d.exclusivity?"🔒 münhasır":"münhasır değil"} · ${d.moralityClause?"⚖️ ahlak maddesi":"ahlak maddesi yok"}${d.socialObligation?` · sosyal medya ${d.socialObligation.missed||0} kaçırılan`:""}</div>`; }
     h+=`<div class="tiny" style="margin-top:4px">Ajans payı: %${Math.round((b.activeDeals[0].agencyShare||0.15)*100)} · aylık gelir kasaya işlenir</div></div>`; }
   else h+=`<div class="empty">Aktif sponsor yok. Medya popülerliği ${Math.round(p.mediaPop||0)} — 50 üzerinde teklifler gelir.</div>`;
   h+=`<div class="tiny" style="margin-top:6px">Sponsor teklifleri kararlar olarak gelir; reddetmek oyuncu moralini hafif etkiler.</div>`;
@@ -8931,7 +9532,9 @@ function extendBriefingV9(B,sum){
       const lastR=(c.rounds||[])[c.rounds.length-1];
       if(lastR&&lastR.week===S.week){ const myR=lastR.results.find(r=>myPlayersAtClub(r.home).length||myPlayersAtClub(r.away).length);
         if(myR){ B.tournaments.push({text:`🏆 ${c.name}: ${S.world.clubs[myR.home]?.name||"?"} ${myR.score} ${S.world.clubs[myR.away]?.name||"?"}`,route:`openCompetition('${c.id}')`}); } } }
-    { const mc=(S.matchCenter||[])[0]; if(mc&&mc.week===S.week&&mc.season===S.season) B.tournaments.push({text:`🎦 Maç Merkezi: ${S.world.clubs[mc.home]?.name||"?"} ${mc.score} ${S.world.clubs[mc.away]?.name||"?"}`,route:`openMatch('${mc.id}')`}); }
+    { const mc=(S.matchCenter||[]).find(m=>m.week===S.week&&m.season===S.season&&m.lines&&m.lines.length);
+      if(mc){ const best=mc.lines.slice().sort((a,b)=>(b.rating||0)-(a.rating||0))[0];
+        B.tournaments.push({text:`⭐ Performans: ${best.name} ${best.rating} puan (${mc.comp})`,route:`openMatch('${mc.id}')`}); } }
     for(const k of (S.workPermitCases||[]).slice(0,2)){ if(k.s===S.season&&Math.abs(k.w-S.week)<=1)
       B.regulation.push({text:`${k.result==="onay"?"✅":"❌"} Çalışma izni itirazı: ${S.world.players[k.pid]?.name||"?"} — ${k.result}`,route:null}); }
     const ac=S.academy; if(ac&&ac.intakeHistory&&ac.intakeHistory[0]&&ac.intakeHistory[0].s===S.season&&S.week<=3)
@@ -9429,27 +10032,82 @@ function maybeStoreMatch(comp,stage,r,gh,ga){
     nextStage:comp.alive&&comp.alive.length>1?`Sıradaki: ${comp.alive.length} takım`:"Turnuva bitti"});
   if(S.matchCenter.length>10) S.matchCenter.length=10;
 }
-function openMatch(mid){
-  const m=(S.matchCenter||[]).find(x=>x.id===mid);
-  if(!m){ toast("Maç kaydı bulunamadı"); navigateTo("world"); return; }
-  const H=S.world.clubs[m.home],A=S.world.clubs[m.away];
-  let h=`<div style="text-align:center"><div class="tiny">${escapeHtml(m.comp)} · ${escapeHtml(m.stage)} · S${m.season} H${m.week}</div>
-    <div class="b" style="font-family:'Fraunces',serif;font-size:20px;margin-top:6px">${H?escapeHtml(H.name):"?"} <span style="color:var(--gold)">${m.score}</span> ${A?escapeHtml(A.name):"?"}</div>
-    <div class="tiny">Seyirci: ${(m.att||0).toLocaleString()}</div></div>
-    <div class="card"><div class="tiny b" style="margin-bottom:6px">MAÇ İSTATİSTİKLERİ</div>
-    <div class="sb"><div class="lbl"><span>Topla oynama</span><span>%${m.poss} — %${100-m.poss}</span></div>
-    <div class="track"><div class="fill" style="width:${m.poss}%"></div></div></div>
-    <div class="sumline"><span class="muted">Şut</span><b>${m.shots[0]} — ${m.shots[1]}</b></div>
-    <div class="sumline"><span class="muted">İsabetli şut</span><b>${m.sot[0]} — ${m.sot[1]}</b></div>
-    ${(m.events||[]).map(e=>`<div class="tiny">· ${escapeHtml(e)}</div>`).join("")}</div>`;
-  if(m.lines&&m.lines.length){
-    h+=`<div class="card"><div class="tiny b" style="margin-bottom:4px">⭐ TEMSİL ETTİĞİN OYUNCULAR</div>`;
-    for(const l of m.lines) h+=`<div class="sumline tappable" onclick="openEntity('player','${l.pid}')">
-      <span>${escapeHtml(l.name)} <span class="tiny">(${S.world.clubs[l.club]?.name||""})</span></span>
-      <b>${l.mins} dk · ${l.rating}${l.goals?` · ⚽${l.goals}`:""}</b></div>`;
-    h+=`<div class="tiny" style="margin-top:4px">Yüksek rating → değer, marka ve kulüp ilgisi artışı</div></div>`;
+/* ============================================================
+   V10 — OYUNCU PERFORMANS RAPORU
+   Kullanıcıya dönük "Maç Merkezi" yerine oyuncu-ajan odaklı sunum.
+   İç maç simülasyonu ve matchCenter anlık görüntüleri aynen korunur;
+   eski "match" rotaları bu rapora güvenli şekilde düşer.
+   ============================================================ */
+function renderPlayerPerformanceList(opts){
+  opts=opts||{};
+  const entries=(S.matchCenter||[]).filter(m=>m.lines&&m.lines.length);
+  let h=opts.noHeader?"":`<div class="page-header"><div class="page-eyebrow">MÜŞTERİ SAHNESİ</div>
+    <div class="page-title">Oyuncu Performansları</div>
+    <div class="page-subtitle">Temsil ettiğin oyuncuların turnuva sahnesindeki son çıkışları</div></div>`;
+  if(!entries.length){
+    h+=renderEmptyState({icon:"🎯",title:"Henüz kayıtlı performans yok",
+      desc:"Müşterilerin kupa ve turnuva maçlarında süre aldıkça performans raporları burada birikir.",
+      action:opts.noHeader?null:{label:"Dünyaya Git",fn:"navigateTo('world')"}});
+  } else {
+    for(const m of entries.slice(0,10)){
+      const best=m.lines.slice().sort((a,b)=>(b.rating||0)-(a.rating||0))[0];
+      h+=`<div class="card tappable" onclick="openEntity('match','${m.id}')"><div class="row">
+        <span style="font-size:20px">⭐</span>
+        <div class="grow"><span class="b" style="font-size:13.5px">${escapeHtml(best.name)} — ${best.rating} puan</span>
+        <div class="tiny">${escapeHtml(m.comp)} · ${escapeHtml(m.stage)} · S${m.season} H${m.week}${m.lines.length>1?` · +${m.lines.length-1} müşterin daha`:""}</div></div>
+        <span class="tiny">→</span></div></div>`;
+    }
   }
-  h+=`<div class="card alt tiny">${escapeHtml(m.nextStage||"")}</div>`;
+  return h;
+}
+function openPlayerPerformances(){
+  showEntityPage("match","__list",renderPlayerPerformanceList());
+}
+function openMatch(mid){
+  if(mid==="__list"){ openPlayerPerformances(); return; }
+  const m=(S.matchCenter||[]).find(x=>x.id===mid);
+  if(!m){ toast("Performans kaydı bulunamadı"); openPlayerPerformances(); return; }
+  const H=S.world.clubs[m.home],A=S.world.clubs[m.away];
+  const myLines=(m.lines||[]).filter(l=>S.world.players[l.pid]);
+  const primary=myLines.slice().sort((a,b)=>(b.rating||0)-(a.rating||0))[0]||null;
+  const pp=primary?S.world.players[primary.pid]:null;
+  let h=`<div class="page-header"><div class="page-eyebrow">OYUNCU PERFORMANS RAPORU</div>`;
+  if(primary&&pp){
+    const opCid=primary.club===m.home?m.away:m.home;
+    const op=S.world.clubs[opCid];
+    h+=`<div class="page-title">${escapeHtml(primary.name)}</div>
+      <div class="page-subtitle">${S.world.clubs[primary.club]?escapeHtml(S.world.clubs[primary.club].name):"?"} — rakip ${op?escapeHtml(op.name):"?"} · ${escapeHtml(m.comp)} · ${escapeHtml(m.stage)} · S${m.season} H${m.week}</div></div>`;
+    h+=renderMetricGrid([
+      {label:"Puan",value:String(primary.rating),tone:primary.rating>=7?"success":primary.rating<6?"danger":null},
+      {label:"Dakika",value:primary.mins+"'"},
+      {label:"Gol",value:String(primary.goals||0)},
+      {label:"Skor",value:m.score},
+    ]);
+    h+=`<div class="card"><div class="tiny b" style="margin-bottom:6px">PERFORMANS ETKİLERİ</div>
+      <div class="sumline"><span class="muted">Form etkisi</span><b>${primary.rating>=7.2?"▲ Yükselişte":primary.rating<6?"▼ Baskı altında":"— Stabil"}</b></div>
+      <div class="sumline"><span class="muted">Değer etkisi</span><b>${primary.rating>=7.5?"Piyasa değeri artıyor":primary.rating>=6.5?"Değeri koruyor":"Kısa vadeli baskı"}</b></div>
+      <div class="sumline"><span class="muted">Hoca güveni</span><b>${primary.rating>=7?"Güçleniyor":"İzleniyor"}</b></div>
+      <div class="sumline"><span class="muted">Vitrin etkisi</span><b>${(m.comp||"").includes("Şampiyon")||(m.stage||"").includes("Final")?"Yüksek görünürlük 🌍":"Bölgesel görünürlük"}</b></div>
+      <div class="tiny" style="margin-top:4px">Yüksek puan → değer, marka, sponsor bonusu ve yeni kulüp ilgisi</div></div>`;
+    h+=`<button class="btn block primary" style="margin-bottom:10px" onclick="openEntity('player','${primary.pid}')">👤 ${escapeHtml(primary.name)} Profilini Aç</button>`;
+  } else {
+    h+=`<div class="page-title">Maç Kaydı</div>
+      <div class="page-subtitle">${escapeHtml(m.comp)} · ${escapeHtml(m.stage)} · S${m.season} H${m.week}</div></div>`;
+  }
+  if(myLines.length>1){
+    h+=`<div class="card"><div class="tiny b" style="margin-bottom:4px">⭐ BU MAÇTAKİ DİĞER MÜŞTERİLERİN</div>`;
+    for(const l of myLines){ if(primary&&l.pid===primary.pid) continue;
+      h+=`<div class="sumline tappable" onclick="openEntity('player','${l.pid}')">
+        <span>${escapeHtml(l.name)} <span class="tiny">(${S.world.clubs[l.club]?.name||""})</span></span>
+        <b>${l.mins} dk · ${l.rating}${l.goals?` · ⚽${l.goals}`:""}</b></div>`; }
+    h+=`</div>`;
+  }
+  h+=`<div class="card alt"><div class="tiny b" style="margin-bottom:6px">MAÇ BAĞLAMI</div>
+    <div class="sumline"><span class="muted">Sonuç</span><b>${H?escapeHtml(H.name):"?"} ${m.score} ${A?escapeHtml(A.name):"?"}</b></div>
+    <div class="sumline"><span class="muted">Topla oynama</span><b>%${m.poss} — %${100-m.poss}</b></div>
+    <div class="sumline"><span class="muted">Şut (isabet)</span><b>${m.shots[0]} (${m.sot[0]}) — ${m.shots[1]} (${m.sot[1]})</b></div>
+    <div class="sumline"><span class="muted">Seyirci</span><b>${(m.att||0).toLocaleString()}</b></div>
+    <div class="tiny" style="margin-top:4px">${escapeHtml(m.nextStage||"")}</div></div>`;
   showEntityPage("match",mid,h);
 }
 /* ============================================================
