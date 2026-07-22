@@ -106,6 +106,13 @@ body[data-mode="dark"][data-accent="rival"]{--accent:#9D82E4;--accent-ink:#B49EE
 body[data-mode="dark"][data-accent="briefing"]{--accent:#DCB165;--accent-ink:#E5C384}
 body[data-mode="dark"][data-accent="home"]{--accent:#5FC793;--accent-ink:#7BD7A8}
 body[data-mode="dark"][data-accent="agency"]{--accent:#DCB165;--accent-ink:#E5C384}
+body[data-mode="dark"][data-accent="world"]{--accent:#6AA6FF;--accent-ink:#8FBBFF}
+body[data-mode="dark"][data-accent="calendar"]{--accent:#6AA6FF;--accent-ink:#8FBBFF}
+body[data-mode="dark"][data-accent="career"]{--accent:#DCB165;--accent-ink:#E5C384}
+body[data-mode="dark"][data-accent="settings"]{--accent:#9AAEC4;--accent-ink:#B8C4D2}
+body[data-mode="dark"][data-accent="competition"]{--accent:#E0748A;--accent-ink:#EFA0B0}
+body[data-mode="dark"][data-accent="player"]{--accent:#5FC793;--accent-ink:#7BD7A8}
+body[data-mode="dark"][data-accent="finance"]{--accent:#9FB0C7;--accent-ink:#C3D0E0}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{
@@ -502,7 +509,7 @@ body[data-mode="dark"] .envelope{color:#3A2C0D}
 body[data-mode="dark"] .kcol{background:var(--bg-dark-alt)}
 </style>
 </head>
-<body>
+<body data-mode="dark" data-accent="home">
 <div id="app">
   <div class="topbar" id="topbar"></div>
   <div class="sidebar" id="sidebar"></div>
@@ -2364,7 +2371,13 @@ let WORLDTAB="pazarlar";
 let FINTAB="ozet";
 let FINWIN=16;
 function setSeg(t,v){ SEG[t]=v; renderAll(); window.scrollTo(0,0); }
-function gotoAgency(seg){ SEG.agency=seg; TAB="agency"; renderAll(); window.scrollTo(0,0); }
+function gotoAgency(seg){
+  const raw=seg||"genel";
+  const normalized=(typeof AGENCY_SECTION_MAP!=="undefined"&&AGENCY_SECTION_MAP[raw])||raw;
+  navigateTo("agency",normalized);
+  const anchor=typeof AGENCY_MENU_ANCHORS!=="undefined"?AGENCY_MENU_ANCHORS[raw]:null;
+  if(anchor) scrollToAnchor(anchor);
+}
 function segBar(tab,items){ return `<div class="seg" role="tablist">`+items.map(([id,label])=>
   `<button role="tab" aria-selected="${SEG[tab]===id}" class="${SEG[tab]===id?'on':''}" onclick="setSeg('${tab}','${id}')">${label}</button>`).join("")+`</div>`; }
 
@@ -2620,25 +2633,27 @@ function moodEmoji(m){ return m>75?"😄":m>55?"🙂":m>38?"😐":"😔"; }
 const PAGE_APPEARANCE={
   home:{mode:"dark",accent:"home"}, players:{mode:"dark",accent:"portfolio"},
   scout:{mode:"dark",accent:"scout"}, transfer:{mode:"dark",accent:"transfer"},
-  agency:{mode:"dark",accent:"agency"}, world:{mode:"atmospheric",accent:"world"},
-  news:{mode:"dark",accent:"news"}, calendar:{mode:"light",accent:"calendar"},
-  weeklyBriefing:{mode:"dark",accent:"briefing"}, career:{mode:"light",accent:"career"},
-  settings:{mode:"light",accent:"settings"},
+  agency:{mode:"dark",accent:"agency"}, world:{mode:"dark",accent:"world"},
+  news:{mode:"dark",accent:"news"}, calendar:{mode:"dark",accent:"calendar"},
+  weeklyBriefing:{mode:"dark",accent:"briefing"}, career:{mode:"dark",accent:"career"},
+  settings:{mode:"dark",accent:"settings"},
 };
 const ENTITY_APPEARANCE={
-  player:{mode:"light",accent:"player"}, country:{mode:"atmospheric",accent:"world"},
-  league:{mode:"atmospheric",accent:"world"}, club:{mode:"atmospheric",accent:"world"},
+  player:{mode:"dark",accent:"player"}, country:{mode:"dark",accent:"world"},
+  league:{mode:"dark",accent:"world"}, club:{mode:"dark",accent:"world"},
   rivalAgency:{mode:"dark",accent:"rival"}, negotiation:{mode:"dark",accent:"transfer"},
-  department:{mode:"light",accent:"agency"}, finance:{mode:"light",accent:"finance"},
-  competition:{mode:"atmospheric",accent:"competition"}, scoutFind:{mode:"dark",accent:"scout"},
-  match:{mode:"light",accent:"player"},
+  department:{mode:"dark",accent:"agency"}, finance:{mode:"dark",accent:"finance"},
+  competition:{mode:"dark",accent:"competition"}, scoutFind:{mode:"dark",accent:"scout"},
+  match:{mode:"dark",accent:"player"},
 };
 function applyPageAppearance(route){
   try{
     let app;
-    const r=route||((typeof UI!=="undefined"&&UI.route)||{screen:TAB});
-    if(r.screen==="entity"||TAB==="entity") app=ENTITY_APPEARANCE[r.entityType]||{mode:"light",accent:"home"};
-    else app=PAGE_APPEARANCE[r.screen||TAB]||{mode:"light",accent:"home"};
+    const visibleScreen=TAB||(route&&route.screen)||((typeof UI!=="undefined"&&UI.route&&UI.route.screen))||"home";
+    if(visibleScreen==="entity"){
+      const entityRoute=(route&&route.screen==="entity")?route:((typeof UI!=="undefined"&&UI.route)||{});
+      app=ENTITY_APPEARANCE[entityRoute.entityType]||{mode:"dark",accent:"home"};
+    } else app=PAGE_APPEARANCE[visibleScreen]||{mode:"dark",accent:"home"};
     document.body.dataset.mode=app.mode;
     document.body.dataset.accent=app.accent;
   }catch(e){}
@@ -4766,6 +4781,7 @@ function startGame(){
   S.cash=DIFF().cash;
   save();
   document.querySelector(".playbar").style.display="";
+  setActiveRoute({screen:"home"});
   TAB="home"; renderAll();
   setTimeout(()=>toast("Hoş geldin patron! İlk haftayı oynat ⚽","gold"),400);
 }
@@ -4779,8 +4795,15 @@ function renderCareer(){ $("scr-career").innerHTML=agCareer(); mountCharts(); }
 const SCREEN_RENDERERS={home:()=>renderHome(),players:()=>renderPlayers(),scout:()=>renderScout(),transfer:()=>renderTransfer(),agency:()=>renderAgency(),
   world:()=>renderWorld(),news:()=>renderNews(),settings:()=>renderSettings(),career:()=>renderCareer(),
   calendar:()=>renderCalendar(),entity:()=>renderEntity(),weeklyBriefing:()=>renderWeeklyBriefing()};
+function syncVisibleRoute(){
+  if(TAB==="entity") return;
+  if(!UI.route||UI.route.screen!==TAB){
+    setActiveRoute({screen:TAB,section:(SEG&&SEG[TAB]!==undefined)?SEG[TAB]:null});
+  }
+}
 function renderAll(){
   if(!S){ renderOnboarding(); return; }
+  syncVisibleRoute();
   renderChrome();
   (SCREEN_RENDERERS[TAB]||SCREEN_RENDERERS.home)();
   try{ mountCharts(); }catch(e){ console.error("mountCharts",e); }
@@ -7591,7 +7614,7 @@ function entityBreadcrumb(){
     crumbs.push(go("Dünya","navigateTo('world')")); if(l){ crumbs.push(go(l.country,`openEntity('country','${l.countryId}')`)); crumbs.push(escapeHtml(l.name)); } }
   else if(r.entityType==="club"){ const c=S.world.clubs[r.entityId]; crumbs.push(go("Dünya","navigateTo('world')"));
     if(c){ crumbs.push(go(c.countryId,`openEntity('country','${c.countryId}')`)); const l=S.world.leagues.find(x=>x.id===c.leagueId); if(l)crumbs.push(go(l.name,`openEntity('league','${l.id}')`)); crumbs.push(escapeHtml(c.name)); } }
-  else if(r.entityType==="rivalAgency"){ crumbs.push(go("Rakip İstihbaratı","gotoAgency('genel')")); const rv=rivalById(r.entityId); crumbs.push(rv?escapeHtml(rv.name):"Rakip"); }
+  else if(r.entityType==="rivalAgency"){ crumbs.push(go("Rakip İstihbaratı","gotoAgency('rakip')")); const rv=rivalById(r.entityId); crumbs.push(rv?escapeHtml(rv.name):"Rakip"); }
   else if(r.entityType==="negotiation"){ crumbs.push(go("Transfer","navigateTo('transfer')")); crumbs.push("Pazarlık"); }
   else if(r.entityType==="department"){ crumbs.push(go("Ajans","gotoAgency('departmanlar')")); const def=DEPT_MAP[r.entityId]; crumbs.push(def?escapeHtml(def.name):"Departman"); }
   else if(r.entityType==="finance"){ crumbs.push(go("Ajans","gotoAgency('finans')")); crumbs.push("Finans Merkezi"); }
