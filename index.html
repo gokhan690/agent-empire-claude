@@ -527,7 +527,7 @@ body[data-mode="dark"] .kcol{background:var(--bg-dark-alt)}
   <div class="screen entity-screen" id="scr-entity"></div>
   <div class="context-panel" id="ctxpanel"></div>
   <div class="playbar"><div class="playbar-inner">
-  <button class="playbtn" id="playbtn" onclick="playWeek()">⚽ Haftayı Oynat</button></div></div>
+  <button class="playbtn" id="playbtn" onclick="handlePlayWeekClick()">⚽ Haftayı Oynat</button></div></div>
   <div class="tabbar"><div class="tabbar-inner" id="tabbar"></div></div>
 </div>
 <div class="drawer-wrap" id="drawerwrap" aria-hidden="true"><div class="drawer-bg" onclick="closeMainMenu()"></div><div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Ana menü"></div></div>
@@ -974,6 +974,7 @@ function newGame(agentName, agencyName){
   S.uiState.bottomNav="5tab"; S.uiState.entityHistory=[]; S.uiState.scrollPositions={};
   S.uiState.chartTooltipMode="auto";
   S.settings.edgeSwipeMenu=true;
+  S.settings.managementMode="balanced";
   // başlangıç: seçilen ülkenin alt liginden 2 genç müşteri + 1 scout
   const startLeagues = world.leagues.filter(l=>l.countryId===startCountry).sort((a,b)=>b.tier-a.tier);
   const startLeague = startLeagues.find(l=>l.tier>=2) || startLeagues[0] || world.leagues[0];
@@ -1817,9 +1818,30 @@ function repairPhoneMessages(state){
   }
   return state;
 }
+/* ============================================================
+   V11-A/B — YÖNETİM MODU (guided week / management mode)
+   Zorluk (difficulty) ekonomik baskıyı; yönetim modu ise rutin işin
+   ne kadarının öne çıkarılacağını kontrol eder. İkisi bağımsızdır.
+   ============================================================ */
+const MANAGEMENT_MODES=[
+  {id:"controlled",label:"Kontrollü",desc:"Tüm önemli ve rutin işleri kendin yönet.",cap:6},
+  {id:"balanced",label:"Dengeli",desc:"Kritik kararlar sende, rutin işler gruplanır ve kolayca devredilir.",cap:3},
+  {id:"executive",label:"Yönetici",desc:"Yalnız stratejik kararlar öne çıkar; rutin işler ekipler tarafından yönetilmek üzere hazırlanır.",cap:2},
+];
+function managementMode(){ const m=S&&S.settings&&S.settings.managementMode; return MANAGEMENT_MODES.some(x=>x.id===m)?m:"balanced"; }
+function managementModeDef(){ return MANAGEMENT_MODES.find(x=>x.id===managementMode())||MANAGEMENT_MODES[1]; }
+function setManagementMode(id){
+  if(!MANAGEMENT_MODES.some(x=>x.id===id)) return;
+  S.settings=S.settings||{}; S.settings.managementMode=id;
+  save(); renderAll();
+  toast(`Yönetim modu: ${MANAGEMENT_MODES.find(x=>x.id===id).label}`,"gold");
+}
 function repairSaveState(st){
   if(!st) return st;
   migrateSaveState(st);
+  // V11 — yönetim modu: eksik/bozuk değer her zaman "balanced"a onarılır (schemaRevision kapısından bağımsız)
+  st.settings=st.settings||{};
+  if(!MANAGEMENT_MODES.some(m=>m.id===st.settings.managementMode)) st.settings.managementMode="balanced";
   // güvenlik: eksik V6 koleksiyonlarını doldur
   st.departments=st.departments||{}; st.staffDirectory=st.staffDirectory||[];
   st.departmentTasks=st.departmentTasks||[]; st.negotiationSessions=st.negotiationSessions||{};
@@ -2353,12 +2375,25 @@ const TABS=[
 ];
 function playCtaLabel(){
   if(!S) return "⚽ Haftayı Oynat";
-  const crit=(S.decisions||[]).length;
-  if(crit) return `⚡ ${crit} Kritik Karar Var`;
+  const r=(typeof getWeekReadiness==="function")?getWeekReadiness():null;
+  if(r&&r.state==="blocked") return `⚡ ${S.decisions.length} Karar Bekliyor`;
   if(typeof deadlineActive==="function"&&deadlineActive()) return "⏰ Deadline — Haftayı Oynat";
   if(S.week===BAL.weeksPerSeason) return "🏁 Sezon Sonunu Tamamla";
-  if(typeof buildActions==="function"&&buildActions().some(a=>a.cls==="crit")) return "⚠️ Kritik İş Var — Oynat";
+  if(r&&r.state==="attention") return `⚠️ ${r.count} Kritik İş Var — Haftayı Oynat`;
   return "⚽ Haftayı Oynat";
+}
+function handlePlayWeekClick(){
+  if(!S) return;
+  const r=(typeof getWeekReadiness==="function")?getWeekReadiness():{state:"ready"};
+  // 1) sert engel — playWeek() zaten ilk karara yönlendirir, haftayı ilerletmez
+  if(r.state==="blocked"){ playWeek(); return; }
+  // 2) deadline ve 3) sezon sonu — eski davranış korunur: doğrudan oynat, onay istemez
+  if(typeof deadlineActive==="function"&&deadlineActive()){ playWeek(); return; }
+  if(S.week===BAL.weeksPerSeason){ playWeek(); return; }
+  // 4) attention — hızlı modda direkt oyna, değilse onay sayfası
+  if(r.state==="attention" && !(S.settings&&S.settings.fastMode)){ openWeekReadinessSheet(); return; }
+  // 5) hazır
+  playWeek();
 }
 const NAVI={home:"home",players:"users",scout:"search",transfer:"swap",agency:"build"};
 let SEG={home:"ozet",scout:"gorev",transfer:"teklif",agency:"genel"};
@@ -2775,16 +2810,76 @@ function playerCard(p, compact){
 /* ---------- ANA (dashboard) ---------- */
 function setChart(m,w){ if(m)CHART.m=m; if(w)CHART.win=w; renderAll(); }
 function setNewsF(f){ NEWSF=f; renderAll(); }
+/* ============================================================
+   V11-A düzeltme — paylaşılan öncelik kartı. Home/Aksiyon Merkezi/
+   Haftalık Yönetim Masası hepsi AYNI kartı kullanır (ikinci bir
+   render şablonu oluşturulmaz). risk/etki/deadline/ana aksiyon/
+   uygun olduğunda gerçek delege aksiyonunu gösterir.
+   ============================================================ */
+function _riskBadgeClass(risk){ return risk==="yüksek"?"inj":risk==="orta"?"hot":"ok"; }
+function _riskLabel(risk){ return risk==="yüksek"?"Yüksek Risk":risk==="orta"?"Orta Risk":"Düşük Risk"; }
+function renderPriorityCard(p,opts){
+  opts=opts||{};
+  const pre=opts.closeSheetFirst?"closeSheet();":"";
+  const chips=[`<span class="badge ${_riskBadgeClass(p.risk)}">${_riskLabel(p.risk)}</span>`];
+  if(p.deadlineText) chips.push(`<span class="badge sad">⏰ ${escapeHtml(p.deadlineText)}</span>`);
+  if(p.routine) chips.push(`<span class="badge ok">Rutin</span>`);
+  const secondary=p.secondaryActionLabel?`<button class="btn sm ghost" onclick="${pre}${p.secondaryActionFn}">${escapeHtml(p.secondaryActionLabel)}</button>`:"";
+  return `<div class="action-item ${p.category}"><span class="grow" style="min-width:0">
+    <div style="margin-bottom:3px;display:flex;gap:4px;flex-wrap:wrap">${chips.join("")}</div>
+    <span class="b" style="display:block">${escapeHtml(p.title)}</span>
+    <span class="tiny" style="display:block;margin-top:1px">${escapeHtml(p.impact)} · ${escapeHtml(p.reason)}</span></span>
+    <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;margin-left:6px">
+    <button class="btn sm ghost" onclick="${pre}${p.actionFn}">${escapeHtml(p.actionLabel)}</button>
+    ${secondary}</div></div>`;
+}
 function openActionCenterSheet(){
-  const acts=buildActions();
+  const g=buildGuidedWeekModel(); const acts=g.allPriorities;
   let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">AKSİYON MERKEZİ</div>
     <div class="b" style="font-family:'Fraunces',serif;font-size:17px">Bu Haftanın İşleri</div></div>`;
+  if(g.teamSummaryText) h+=`<div class="tiny" style="margin:6px 2px">🤝 ${escapeHtml(g.teamSummaryText)}</div>`;
   if(!acts.length) h+=renderEmptyState({icon:"✅",title:"Acil iş yok",desc:"Haftayı gönül rahatlığıyla oynatabilirsin."});
   else { const groups=[["crit","🔴 Şimdi Çöz"],["sugg","🟡 Bu Hafta Önerilen"],["soon","🔵 Yaklaşan"]];
-    for(const [cat,label] of groups){ const g=acts.filter(a=>a.cls===cat); if(!g.length) continue;
+    for(const [cat,label] of groups){ const grp=acts.filter(a=>a.category===cat); if(!grp.length) continue;
       h+=`<div class="tiny b" style="margin:10px 2px 4px">${label}</div>`;
-      h+=g.map(a=>`<div class="action-item ${a.cls}"><span>${a.t}${a.deleg?' <span class="tiny">· delege edilebilir</span>':''}</span><button class="btn sm ghost" onclick="closeSheet();${a.fn}">${a.btn}</button></div>`).join(""); } }
+      h+=grp.map(a=>renderPriorityCard(a,{closeSheetFirst:true})).join(""); } }
   openSheet(h);
+}
+let HOME_MORE_OPEN=false;
+function toggleHomeMore(){ HOME_MORE_OPEN=!HOME_MORE_OPEN; renderHome(); }
+function renderGuidedWeekCard(g){
+  const parts=[];
+  if(g.counts.blocking) parts.push(`${g.counts.blocking} kritik karar`);
+  if(g.counts.critical) parts.push(`${g.counts.critical} kritik iş`);
+  if(g.counts.suggested) parts.push(`${g.counts.suggested} önerilen iş`);
+  const countsLine=parts.length?parts.join(" · "):"Masa temiz";
+  const secondaryBits=[];
+  if(g.counts.delegatable) secondaryBits.push(`${g.counts.delegatable} iş delege edilebilir`);
+  else if(g.counts.routine) secondaryBits.push(`${g.counts.routine} rutin iş var`);
+  if(g.teamSummaryText) secondaryBits.push(g.teamSummaryText);
+  let h=`<div class="card alt" style="margin-bottom:8px">
+    <div class="row" style="justify-content:space-between">
+      <span class="b" style="font-family:'Fraunces',serif;font-size:16px">🎯 Bu Hafta</span>
+      <span class="tiny b" style="opacity:.7">${escapeHtml(g.modeDef.label)}</span></div>
+    <div class="tiny" style="margin-top:4px">${escapeHtml(countsLine)}</div>
+    ${secondaryBits.length?`<div class="tiny" style="margin-top:2px;opacity:.85">${secondaryBits.map(escapeHtml).join(" · ")}</div>`:""}
+    <div class="tiny" style="margin-top:6px"><b>AJANS ÖNERİSİ</b> · ${escapeHtml(g.recommendationText)}</div>
+  </div>`;
+  const shown=g.priorities.filter(p=>p.key!=="deadline"); // özel deadline afişi zaten ayrı gösteriliyor
+  if(!shown.length) h+=renderEmptyState({icon:"✅",title:"Acil iş yok",desc:"Masa temiz — haftayı oynatabilirsin."});
+  else h+=shown.map(p=>renderPriorityCard(p)).join("");
+  if(g.allPriorities.length>shown.length) h+=`<button class="section-action" onclick="openActionCenterSheet()">Tüm ${g.allPriorities.length} işi gör →</button>`;
+  return h;
+}
+function renderWeekReadinessRow(){
+  const r=getWeekReadiness();
+  const cfg={blocked:{icon:"⚡",label:"Karar Bekliyor",cls:"urgent"},attention:{icon:"⚠️",label:"Kritik İş Var",cls:"gold"},ready:{icon:"✅",label:"Haftaya Hazır",cls:""}}[r.state];
+  const sub=r.state==="blocked"?(r.reasons[0]||""):r.state==="attention"?`${r.count} kritik iş — yine de oynayabilirsin`:
+    (r.model.counts.delegatable?`${r.model.counts.delegatable} iş delege edilebilir`:r.routineCount?`${r.routineCount} rutin iş var`:(r.model.teamSummaryText||"Masa temiz"));
+  return `<div class="card ${cfg.cls} tappable" style="padding:9px 12px;margin-bottom:8px" onclick="openWeekReadinessSheet()">
+    <div class="row"><span style="font-size:20px">${cfg.icon}</span>
+    <div class="grow"><span class="b" style="font-size:13.5px">${cfg.label}</span><div class="tiny">${escapeHtml(sub)}</div></div>
+    <span class="tiny">→</span></div></div>`;
 }
 function renderHome(){
   const mp=myPlayers();
@@ -2802,19 +2897,10 @@ function renderHome(){
     <div class="hdesc">${tier.icon} ${tier.name} · Seviye ${tier.lv}/6</div>
     ${nextT?`<div class="sb" style="margin:8px 0 0;max-width:340px"><div class="lbl"><span>Sonraki: ${nextT.icon} ${nextT.name}</span><span>${score}/${nextT.min}</span></div>
     <div class="track"><div class="fill au" style="width:${clamp(score/nextT.min*100,0,100)}%"></div></div></div>`:`<div class="tiny" style="margin-top:6px">Zirvedesin 👑</div>`}</div>`;
-  h+=renderMetricGrid([
-    {label:"Kasa",value:fmtM(S.cash),tone:S.cash<0?"danger":null},
-    {label:"Portföy",value:fmtM(totalVal)},
-    {label:"Haftalık Net",value:(net>=0?"+":"")+fmtM(net),tone:net>=0?"success":"danger"},
-    rw!=null?{label:"Runway",value:rw+" hafta",tone:rw<10?"warning":null}:{label:"Komisyon",value:fmtM(S.totalCommission)},
-  ]);
-  /* bekleyen kararlar her şeyin önünde */
-  if(S.decisions.length){
-    h+=`<h2 class="sec">⚡ Bekleyen Kararlar <span class="cnt">${S.decisions.length}</span></h2>`;
-    S.decisions.forEach((d,i)=>{ h+=`<div class="card urgent tappable" onclick="openDecision(${i})">
-      <div class="row"><span style="font-size:24px">${d.icon}</span>
-      <div class="grow"><div class="b">${d.title}</div><div class="muted">Dokun ve kararını ver →</div></div></div></div>`;});
-  }
+  /* V11-A — BU HAFTA karar merkezi + haftaya hazır durumu, metriklerden önce */
+  const guided=buildGuidedWeekModel();
+  h+=renderGuidedWeekCard(guided);
+  h+=renderWeekReadinessRow();
   if(deadlineActive()){
     h+=`<div class="card urgent"><div class="row"><span style="font-size:26px">⏰</span>
       <div class="grow"><span class="b">DEADLINE DAY — pencere bu hafta kapanıyor!</span>
@@ -2822,41 +2908,13 @@ function renderHome(){
       <button class="btn sm gold" onclick="openDeadlineDay()">⏰ Panel</button></div></div>`;
   }
   h+=renderTutorialCard();
-  /* C — Şimdi Çöz: gerçek Aksiyon Merkezi'nden en yüksek öncelikli 3 iş */
-  const acts=buildActions();
-  const top3=acts.slice(0,3);
-  h+=renderSectionHeader("🎯 Şimdi Çöz", acts.length>3?{label:`Tüm ${acts.length} aksiyonu gör`,fn:"openActionCenterSheet()"}:null, {count:acts.length});
-  if(!top3.length) h+=renderEmptyState({icon:"✅",title:"Acil iş yok",desc:"Masa temiz — haftayı oynatabilirsin."});
-  else h+=top3.map(a=>`<div class="action-item ${a.cls}"><span>${a.t}${a.deleg?' <span class="tiny">· delege edilebilir</span>':''}</span><button class="btn sm ghost" onclick="${a.fn}">${a.btn}</button></div>`).join("");
-  /* D — telefon + dikkat */
-  const pu=phoneUnread();
-  const at0=S.managerAttention||{max:3,used:0};
-  h+=`<div class="grid2" style="margin:10px 0">
-    <div class="card tappable ${pu?'gold':''}" style="margin-bottom:0" onclick="openPhone()">
-      <div style="font-size:20px">📱</div><div class="b" style="font-size:13.5px">${pu?pu+" yeni mesaj":"Telefon sakin"}</div>
-      <div class="tiny">${pu?"Gelen kutusuna bak":"Yeni görüşme yok"}</div></div>
-    <div class="card tappable" style="margin-bottom:0" onclick="openWeeklyPlan()">
-      <div style="font-size:20px">🧠</div><div class="b" style="font-size:13.5px">Dikkat ${at0.used}/${at0.max}</div>
-      <div class="tiny">Haftalık planı aç</div><span class="slotdots" style="margin-top:4px">${Array.from({length:at0.max},(_,i)=>`<i class="${i<at0.used?'used':''}"></i>`).join("")}</span></div>
-  </div>`;
-  if(S.weeklyBriefing){ h+=`<div class="card tappable" style="padding:9px 12px" onclick="openWeeklyBriefing()"><div class="row"><span style="font-size:20px">📋</span><div class="grow"><span class="b" style="font-size:13px">Son Haftanın Özeti</span><div class="tiny">S${S.weeklyBriefing.s} H${S.weeklyBriefing.w} brifingi</div></div><span class="tiny">→</span></div></div>`; }
-  /* sezon hedefi (kompakt) */
-  if(!S.seasonObjectives){
-    h+=`<div class="card gold tappable" onclick="openGoalPicker()"><div class="row"><span style="font-size:22px">🎯</span>
-    <div class="grow"><span class="b">Sezon hedefini seç</span><div class="tiny">Ödüllü hedef paketleri seni bekliyor</div></div><span class="tiny">→</span></div></div>`;
-  } else {
-    const pack0=GOAL_PACKS.find(x=>x.id===S.seasonObjectives.pack);
-    if(pack0) h+=`<div class="card"><span class="b" style="font-size:13.5px">${pack0.icon} Sezon Hedefleri — ${pack0.label}</span>
-    ${pack0.goals.map(([gid,label])=>{const pr=goalProgress(gid);
-      return `<div class="sb" style="margin-top:6px"><div class="lbl"><span>${label}</span><span>%${pr}</span></div>
-      <div class="track"><div class="fill ${pr>=100?'g':'au'}" style="width:${pr}%"></div></div></div>`;}).join("")}</div>`;
-  }
-  if(S.tasks && !TASKS.every(t=>S.tasks.done[t.id])){
-    const done=TASKS.filter(t=>S.tasks.done[t.id]).length;
-    h+=`<div class="card"><div class="row" style="justify-content:space-between"><span class="b">🎓 Başlangıç Görevleri</span><span class="tiny">${done}/${TASKS.length}</span></div>
-    <div style="margin-top:6px">${TASKS.map(t=>`<div class="sumline"><span class="${S.tasks.done[t.id]?'muted':''}" style="${S.tasks.done[t.id]?'text-decoration:line-through':''}">${S.tasks.done[t.id]?"✅":"◻️"} ${t.t}</span></div>`).join("")}</div></div>`;
-  }
-  /* E — portföy nabzı */
+  h+=renderMetricGrid([
+    {label:"Kasa",value:fmtM(S.cash),tone:S.cash<0?"danger":null},
+    {label:"Portföy",value:fmtM(totalVal)},
+    {label:"Haftalık Net",value:(net>=0?"+":"")+fmtM(net),tone:net>=0?"success":"danger"},
+    rw!=null?{label:"Runway",value:rw+" hafta",tone:rw<10?"warning":null}:{label:"Komisyon",value:fmtM(S.totalCommission)},
+  ]);
+  /* portföy nabzı — metriklerin hemen ardından */
   if(mp.length){
     const best=[...mp].sort((a,b)=>b.value-a.value)[0];
     const formUp=[...mp].sort((a,b)=>b.form-a.form)[0];
@@ -2871,31 +2929,61 @@ function renderHome(){
     <div class="sumline"><span class="muted">En değerli</span><span class="b tappable" onclick="openPlayer('${best.id}')">${best.name} · ${fmtM(best.value)}</span></div>
     </div>`;
   }
-  /* F — tek yapılandırılabilir trend */
-  const MET={pv:["Portföy",v=>fmtM(v)],cash:["Kasa",v=>fmtM(v)],rep:["İtibar",v=>Math.round(v)],score:["Skor",v=>Math.round(v)]};
-  const vals=H.slice(-CHART.win).map(x=>x[CHART.m]);
-  h+=`<h2 class="sec">📈 Trend</h2><div class="chartbox">
-    <div class="seg" style="margin:0 0 8px">${Object.entries(MET).map(([k,[l]])=>`<button class="${CHART.m===k?'on':''}" onclick="setChart('${k}')">${l}</button>`).join("")}
-    ${[8,16,32].map(w=>`<button class="${CHART.win===w?'on':''}" onclick="setChart(null,${w})">${w}h</button>`).join("")}</div>
-    ${interactiveChart([{label:MET[CHART.m][0],color:CHART.m==="cash"?"#3E8E63":CHART.m==="rep"?"#D9AE54":"#4A7FB5",points:vals}],{fmt:MET[CHART.m][1],label:MET[CHART.m][0]+" trendi",h:120})}
-    <div class="cnote">${chartComment(vals,MET[CHART.m][0])}</div></div>`;
-  /* G — gelecek hafta: en yakın 3 öncelik */
-  const upcoming=[];
-  { const nxtW=BAL.transferWindows.find(([a])=>a>S.week);
-    if(inWindow(S.week)){ const w=BAL.transferWindows.find(([a,b])=>S.week>=a&&S.week<=b); if(w) upcoming.push(`🔓 Transfer penceresi H${w[1]}'e kadar açık`); }
-    else if(nxtW) upcoming.push(`🔒 Pencere H${nxtW[0]}'te açılıyor`);
-    const soonActs=acts.filter(a=>a.cls==="soon").slice(0,2); soonActs.forEach(a=>upcoming.push("🔵 "+a.t));
-    const expO=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=2)[0];
-    if(expO&&upcoming.length<3){ const p=S.world.players[expO.pid]; if(p) upcoming.push(`📩 ${p.name} teklifi H${expO.expires}'te doluyor`); }
-    if(S.week===BAL.weeksPerSeason) upcoming.unshift("🏁 Sezonun son haftası"); }
-  if(upcoming.length){ h+=`<h2 class="sec">📆 Gelecek Hafta</h2><div class="card">${upcoming.slice(0,3).map(u=>`<div class="sumline"><span>${u}</span></div>`).join("")}</div>`; }
-  /* kısa haber ucu (uzun akış yok) */
-  h+=`<h2 class="sec">📰 Gündem <button class="btn sm ghost" style="margin-left:auto" onclick="navigateTo('news')">Haber Merkezi →</button></h2>`;
-  const news=S.news.slice(0,2);
-  h+= news.length? news.map(n=>`<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}">
-    <div class="src">${n.kind==="me"?"AJANS GÜNDEMİ":"FUTBOL BASINI"} · S${n.season} H${n.week}</div>
-    <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
-    : renderEmptyState({icon:"📰",title:"Henüz haber yok",desc:"Haftayı oynat, gündem oluşsun."});
+  /* sezon hedefi (kompakt) */
+  if(!S.seasonObjectives){
+    h+=`<div class="card gold tappable" onclick="openGoalPicker()"><div class="row"><span style="font-size:22px">🎯</span>
+    <div class="grow"><span class="b">Sezon hedefini seç</span><div class="tiny">Ödüllü hedef paketleri seni bekliyor</div></div><span class="tiny">→</span></div></div>`;
+  } else {
+    const pack0=GOAL_PACKS.find(x=>x.id===S.seasonObjectives.pack);
+    if(pack0) h+=`<div class="card"><span class="b" style="font-size:13.5px">${pack0.icon} Sezon Hedefleri — ${pack0.label}</span>
+    ${pack0.goals.map(([gid,label])=>{const pr=goalProgress(gid);
+      return `<div class="sb" style="margin-top:6px"><div class="lbl"><span>${label}</span><span>%${pr}</span></div>
+      <div class="track"><div class="fill ${pr>=100?'g':'au'}" style="width:${pr}%"></div></div></div>`;}).join("")}</div>`;
+  }
+  /* telefon + dikkat */
+  const pu=phoneUnread();
+  const at0=S.managerAttention||{max:3,used:0};
+  h+=`<div class="grid2" style="margin:10px 0">
+    <div class="card tappable ${pu?'gold':''}" style="margin-bottom:0" onclick="openPhone()">
+      <div style="font-size:20px">📱</div><div class="b" style="font-size:13.5px">${pu?pu+" yeni mesaj":"Telefon sakin"}</div>
+      <div class="tiny">${pu?"Gelen kutusuna bak":"Yeni görüşme yok"}</div></div>
+    <div class="card tappable" style="margin-bottom:0" onclick="openWeeklyPlan()">
+      <div style="font-size:20px">🧠</div><div class="b" style="font-size:13.5px">Dikkat ${at0.used}/${at0.max}</div>
+      <div class="tiny">Haftalık planı aç</div><span class="slotdots" style="margin-top:4px">${Array.from({length:at0.max},(_,i)=>`<i class="${i<at0.used?'used':''}"></i>`).join("")}</span></div>
+  </div>`;
+  if(S.weeklyBriefing){ h+=`<div class="card tappable" style="padding:9px 12px" onclick="openWeeklyBriefing()"><div class="row"><span style="font-size:20px">📋</span><div class="grow"><span class="b" style="font-size:13px">Son Haftanın Özeti</span><div class="tiny">S${S.weeklyBriefing.s} H${S.weeklyBriefing.w} brifingi</div></div><span class="tiny">→</span></div></div>`; }
+  if(S.tasks && !TASKS.every(t=>S.tasks.done[t.id])){
+    const done=TASKS.filter(t=>S.tasks.done[t.id]).length;
+    h+=`<div class="card"><div class="row" style="justify-content:space-between"><span class="b">🎓 Başlangıç Görevleri</span><span class="tiny">${done}/${TASKS.length}</span></div>
+    <div style="margin-top:6px">${TASKS.map(t=>`<div class="sumline"><span class="${S.tasks.done[t.id]?'muted':''}" style="${S.tasks.done[t.id]?'text-decoration:line-through':''}">${S.tasks.done[t.id]?"✅":"◻️"} ${t.t}</span></div>`).join("")}</div></div>`;
+  }
+  /* daha az öncelikli detay — varsayılan kapalı, Home'un varsayılan yüksekliğini büyütmemek için */
+  h+=`<button class="section-action" onclick="toggleHomeMore()">${HOME_MORE_OPEN?"Detayları Gizle ▴":"Detayları Göster ▾"}</button>`;
+  if(HOME_MORE_OPEN){
+    const acts=guided.allPriorities;
+    const MET={pv:["Portföy",v=>fmtM(v)],cash:["Kasa",v=>fmtM(v)],rep:["İtibar",v=>Math.round(v)],score:["Skor",v=>Math.round(v)]};
+    const vals=H.slice(-CHART.win).map(x=>x[CHART.m]);
+    h+=`<h2 class="sec">📈 Trend</h2><div class="chartbox">
+      <div class="seg" style="margin:0 0 8px">${Object.entries(MET).map(([k,[l]])=>`<button class="${CHART.m===k?'on':''}" onclick="setChart('${k}')">${l}</button>`).join("")}
+      ${[8,16,32].map(w=>`<button class="${CHART.win===w?'on':''}" onclick="setChart(null,${w})">${w}h</button>`).join("")}</div>
+      ${interactiveChart([{label:MET[CHART.m][0],color:CHART.m==="cash"?"#3E8E63":CHART.m==="rep"?"#D9AE54":"#4A7FB5",points:vals}],{fmt:MET[CHART.m][1],label:MET[CHART.m][0]+" trendi",h:120})}
+      <div class="cnote">${chartComment(vals,MET[CHART.m][0])}</div></div>`;
+    const upcoming=[];
+    { const nxtW=BAL.transferWindows.find(([a])=>a>S.week);
+      if(inWindow(S.week)){ const w=BAL.transferWindows.find(([a,b])=>S.week>=a&&S.week<=b); if(w) upcoming.push(`🔓 Transfer penceresi H${w[1]}'e kadar açık`); }
+      else if(nxtW) upcoming.push(`🔒 Pencere H${nxtW[0]}'te açılıyor`);
+      const soonActs=acts.filter(a=>a.category==="soon").slice(0,2); soonActs.forEach(a=>upcoming.push("🔵 "+a.title));
+      const expO=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=2)[0];
+      if(expO&&upcoming.length<3){ const p=S.world.players[expO.pid]; if(p) upcoming.push(`📩 ${p.name} teklifi H${expO.expires}'te doluyor`); }
+      if(S.week===BAL.weeksPerSeason) upcoming.unshift("🏁 Sezonun son haftası"); }
+    if(upcoming.length){ h+=`<h2 class="sec">📆 Gelecek Hafta</h2><div class="card">${upcoming.slice(0,3).map(u=>`<div class="sumline"><span>${u}</span></div>`).join("")}</div>`; }
+    h+=`<h2 class="sec">📰 Gündem <button class="btn sm ghost" style="margin-left:auto" onclick="navigateTo('news')">Haber Merkezi →</button></h2>`;
+    const news=S.news.slice(0,2);
+    h+= news.length? news.map(n=>`<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}">
+      <div class="src">${n.kind==="me"?"AJANS GÜNDEMİ":"FUTBOL BASINI"} · S${n.season} H${n.week}</div>
+      <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
+      : renderEmptyState({icon:"📰",title:"Henüz haber yok",desc:"Haftayı oynat, gündem oluşsun."});
+  }
   $("scr-home").innerHTML=h;
 }
 /* tek kaynak kategorizer — hem filtre hem rozet aynı sınıflandırmayı kullanır */
@@ -4310,6 +4398,10 @@ function agSettings(){
     <div class="sumline"><span>🎚️ Zorluk <span class="tiny">(yeni kariyerde seçilir)</span></span>
     <span class="b">${({rahat:"Rahat",dengeli:"Dengeli",zorlu:"Zorlu"})[S.difficulty||"dengeli"]}</span></div>
   </div>
+  <h2 class="sec">🧭 Yönetim Modu</h2>
+  <div class="tiny" style="margin:-4px 2px 8px">Zorluk ekonomik baskıyı, yönetim modu rutin işin ne kadarının öne çıkacağını belirler.</div>
+  ${MANAGEMENT_MODES.map(m=>`<button class="opt ${managementMode()===m.id?'on':''}" onclick="setManagementMode('${m.id}')">
+    <div class="ot">${managementMode()===m.id?"✓ ":""}${escapeHtml(m.label)}</div><div class="oh">${escapeHtml(m.desc)}</div></button>`).join("")}
   <h2 class="sec">🤖 Delegasyon</h2>
   <div class="card">
     <div class="sumline"><span>Düşük teklifleri otomatik reddet <span class="tiny">(hukukçu gerek)</span></span>
@@ -4439,25 +4531,32 @@ function openSummary(sum){
 function openWeeklyPlan(){
   if(!S) return;
   const at=S.managerAttention||{max:3,used:0};
-  const acts=buildActions();
+  const g=buildGuidedWeekModel(); const r=getWeekReadiness();
+  const readyCfg={blocked:{icon:"⚡",label:"Karar Bekliyor"},attention:{icon:"⚠️",label:"Kritik İş Var"},ready:{icon:"✅",label:"Haftaya Hazır"}}[r.state];
   let h=`<div class="grab"></div>
   <div style="text-align:center"><div class="tiny">HAFTALIK YÖNETİM MASASI</div>
   <div class="b" style="font-family:'Fraunces',serif;font-size:19px">Sezon ${S.season} · Hafta ${S.week}</div></div>
+  <div class="card ${r.state==="blocked"?"urgent":r.state==="attention"?"gold":""}" style="margin-top:8px"><div class="row">
+  <span style="font-size:20px">${readyCfg.icon}</span><div class="grow"><span class="b" style="font-size:13.5px">${readyCfg.label}</span>
+  <div class="tiny">${r.state==="blocked"?escapeHtml(r.reasons[0]||""):r.state==="attention"?`${r.count} kritik iş — yine de oynayabilirsin`:
+    (g.counts.delegatable?`${g.counts.delegatable} iş delege edilebilir`:r.routineCount?`${r.routineCount} rutin iş var`:(g.teamSummaryText||"Masa temiz"))}</div></div></div></div>
   <div class="card alt" style="margin-top:8px"><div class="row" style="justify-content:space-between">
   <span class="b" style="font-size:13px">🧠 Yönetici Dikkati</span>
   <span class="slotdots">${Array.from({length:at.max},(_,i)=>`<i class="${i<at.used?'used':''}"></i>`).join("")}</span></div>
-  <div class="tiny" style="margin-top:3px">Özel görüşme, rol sözü gibi yüksek etkili işler dikkat harcar. Her hafta yenilenir. Rutin işler harcamaz.</div></div>
-  <h2 class="sec" style="font-size:15px">🎯 Haftalık Odak <span class="tiny">(en fazla 2)</span></h2>`;
+  <div class="tiny" style="margin-top:3px">Özel görüşme, rol sözü gibi yüksek etkili işler dikkat harcar. Her hafta yenilenir. Rutin işler harcamaz.</div></div>`;
+  if(g.teamSummaryText) h+=`<div class="tiny" style="margin:8px 2px">🤝 ${escapeHtml(g.teamSummaryText)}</div>`;
+  if(g.priorities.length){
+    h+=`<h2 class="sec" style="font-size:15px">📌 Önerilen Öncelikler</h2>`;
+    h+=g.priorities.map(p=>renderPriorityCard(p,{closeSheetFirst:true})).join("");
+  }
+  h+=`<h2 class="sec" style="font-size:15px">🎯 Haftalık Odak <span class="tiny">(en fazla 2)</span></h2>`;
   for(const f of FOCUS_TYPES){
     const on=focusOn(f.id);
     h+=`<button class="focus-chip ${on?'on':''}" onclick="toggleFocus('${f.id}')">
     <span style="font-size:17px">${f.icon}</span><span>${f.label}<div class="fd">${f.desc}</div></span>
     <span style="margin-left:auto">${on?"✓":""}</span></button>`;
   }
-  if(acts.length){
-    h+=`<h2 class="sec" style="font-size:15px">📌 Haftanın Konuları</h2>`;
-    h+=acts.slice(0,3).map(a=>`<div class="action-item ${a.cls}"><span>${a.t}</span><button class="btn sm ghost" onclick="closeSheet();${a.fn}">${a.btn}</button></div>`).join("");
-  }
+  h+=`<div class="tiny" style="margin:8px 2px">${escapeHtml(g.routineSummary)}</div>`;
   h+=`<button class="btn block primary" style="margin-top:10px" onclick="closeSheet();playWeek()">⚽ Odak Seçmeden Haftayı Oynat</button>
   <button class="btn block ghost" style="margin-top:8px" onclick="closeSheet()">Kapat</button>`;
   openSheet(h);
@@ -5022,6 +5121,12 @@ function recomputeDepartments(st){
 /* departman verim çarpanı: 0 (kilitli) .. ~1.4 (tam) */
 function deptBonus(id){ if(!S||!S.departments||!S.departments[id]||!S.departments[id].unlocked) return 0; return S.departments[id].efficiency/100; }
 function deptUnlocked(id){ return !!(S&&S.departments&&S.departments[id]&&S.departments[id].unlocked); }
+/* V11-A düzeltme — aynı hedef için ikinci bir aktif görev açılmasını önleyen tek kaynak.
+   Kanonik kaynak alanı sourceMessageId'dir — ölü bir sourceId alanı kullanılmaz. */
+function findActiveDeptTask(kind,pid,sourceMessageId){
+  return (S.departmentTasks||[]).find(t=>t&&t.status==="active"&&t.kind===kind&&
+    (pid==null||t.pid===pid)&&(sourceMessageId==null||t.sourceMessageId===sourceMessageId));
+}
 function deptWorkloadFor(id){
   // portföy + aktif görev bazlı iş yükü
   const mp=myPlayers().length; const tasks=(S.departmentTasks||[]).filter(t=>t.deptId===id&&t.status==="active").length;
@@ -5109,16 +5214,46 @@ function makeScoutReportForRegion(leagueId){
 /* departman görevi oluştur (delegasyon) */
 function createDeptTask(kind, deptId, opts){
   opts=opts||{};
-  const d=S.departments[deptId]; if(!d||!d.unlocked){ toast("Bu departman kilitli"); return; }
+  const d=S.departments[deptId]; if(!d||!d.unlocked){ toast("Bu departman kilitli"); return null; }
+  // V11-A düzeltme — hedef kimliği: sourceMessageId varsa BİRİNCİL kimliktir
+  // (bir telefon kaynağı asla iki aktif görev açamaz, pid ne olursa olsun).
+  // sourceMessageId yoksa pid kimliktir (yenileme/ikinci gözlem gibi). İkisi
+  // birden AND'lenmez — aksi halde farklı pid aynı mesajı ikinci kez açabilir.
+  let duplicate=null;
+  if(opts.sourceMessageId!=null) duplicate=findActiveDeptTask(kind,null,opts.sourceMessageId);
+  else if(opts.pid!=null) duplicate=findActiveDeptTask(kind,opts.pid,null);
+  if(duplicate){ toast("Bu iş zaten ekipte.","gold"); return null; }
   const dur=opts.dur||ri(2,4);
   const task={ id:"dt"+ri(1e4,9e4), kind, deptId, title:opts.title||kind, pid:opts.pid||null, leagueId:opts.leagueId||null,
+    sourceMessageId:opts.sourceMessageId||null,
     createdTick:nowTick(), dueTick:nowTick()+dur, baseSucc:opts.baseSucc??0.55, value:opts.value||6,
     status:"active", attentionSaved:opts.attentionSaved||1, cost:opts.cost||0 };
+  // güvenli opsiyonel meta alanları (ör. telefon devri) — yalnızca sağlandıysa eklenir
+  if(opts.cid!=null) task.cid=opts.cid;
+  if(opts.rid!=null) task.rid=opts.rid;
+  if(opts.sponsorDealId!=null) task.sponsorDealId=opts.sponsorDealId;
+  if(opts.topic!=null) task.topic=opts.topic;
+  if(opts.authorityLevel!=null) task.authorityLevel=opts.authorityLevel;
   S.departmentTasks=S.departmentTasks||[]; S.departmentTasks.push(task);
   d.activeTasks=(S.departmentTasks||[]).filter(t=>t.deptId===deptId&&t.status==="active").length;
-  if(task.cost) ledger("Departman görev bütçesi", -task.cost);
-  toast(`Görev ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine verildi`,"green");
-  recomputeDepartments(S); save(); renderAll();
+  if(task.cost) ledger(opts.ledgerLabel||"Departman görev bütçesi", -task.cost);
+  toast(opts.toastLabel||`Görev ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine verildi`,"green");
+  recomputeDepartments(S);
+  if(!opts.silent){ save(); renderAll(); }
+  return task;
+}
+/* V11-A düzeltme — yalnız ID taşıyan güvenli sarmalayıcı; oyuncu adı gibi
+   değişken metinler onclick JS'ine gömülmez, isim burada dahili çözülür. */
+function delegateGuidedAction(kind,targetId){
+  if(kind==="renewal"){
+    const p=targetId&&S.world.players[targetId]; if(!p) return;
+    createDeptTask("renewal","legal",{title:`${p.name} temsil yenile`,pid:targetId,dur:3,baseSucc:0.55,attentionSaved:1});
+  } else if(kind==="second-look"){
+    const p=targetId&&S.world.players[targetId]; if(!p) return;
+    createDeptTask("second-look","scouting",{title:`${p.name} — ikinci gözlem`,pid:targetId,dur:2,baseSucc:0.6,attentionSaved:1});
+  } else if(kind==="low_offers_auto"){
+    toggleDeleg("autoReject");
+  }
 }
 function unlockDepartment(id){
   const def=DEPT_MAP[id]; const d=S.departments[id]; if(!def||!d||d.unlocked) return;
@@ -6106,8 +6241,18 @@ function getEligibleDelegates(message){
   }
   return out;
 }
+/* V11-A düzeltme — telefon mesajı yaşam döngüsü kapısı: yalnızca gerçekten
+   açık/beklemede olan mesajlar delege edilebilir. Çözülmüş/reddedilmiş/
+   süresi dolmuş veya zaten devredilmiş bir mesaj tekrar delege edilemez —
+   bir takip gerekiyorsa bu YENİ bir sourceMessageId ile yeni bir mesaj olur. */
+function canDelegatePhoneMessage(m){
+  if(!m) return false;
+  const status=m.status||(m.done?"resolved":"unread");
+  return ["unread","awaiting_response","in_conversation"].includes(status);
+}
 function openPhoneDelegation(id){
   const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
+  if(!canDelegatePhoneMessage(m)){ toast("Bu görüşme artık delege edilemez.","gold"); openPhoneMsg(id); return; }
   const delegates=getEligibleDelegates(m);
   let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">GÖREVLENDİRME</div>
     <div class="b" style="font-family:'Fraunces',serif;font-size:16px">${escapeHtml(m.subject)}</div></div>`;
@@ -6122,19 +6267,27 @@ function openPhoneDelegation(id){
 function assignPhoneConversation(messageId, deptId){
   const m=(S.phoneInbox||[]).find(x=>x.id===messageId); if(!m) return;
   if(!deptUnlocked(deptId)){ toast("Bu departman kilitli"); return; }
+  // V11-A düzeltme — yaşam döngüsü kapısı: çözülmüş/reddedilmiş/süresi dolmuş/
+  // zaten devredilmiş bir mesaj bayat sheet veya doğrudan çağrıyla tekrar delege edilemez.
+  if(!canDelegatePhoneMessage(m)){ toast("Bu görüşme artık delege edilemez.","gold"); return; }
+  // bayat sheet/çift tık güvenliği: mesaj zaten aktif bir göreve bağlıysa
+  // (ya kendi alanından ya da görev listesinden) yeniden delege etme.
+  const alreadyByField=m.delegatedTaskId&&(S.departmentTasks||[]).find(t=>t.id===m.delegatedTaskId&&t.status==="active");
+  const alreadyBySource=findActiveDeptTask("phoneDelegate",null,m.id);
+  if(alreadyByField||alreadyBySource){ toast("Bu iş zaten ekipte.","gold"); return; }
   const info=getEligibleDelegates(m).find(x=>x.id===deptId); if(!info) return;
-  const d=S.departments[deptId];
-  const task={id:"dt"+ri(1e4,9e4),kind:"phoneDelegate",deptId,title:`📱 ${m.subject}`,
-    pid:m.pid||null,cid:m.cid||null,rid:m.rid||null,sponsorDealId:m.sponsorDealId||null,
-    sourceMessageId:m.id,topic:inferPhoneTopic(m),
-    createdTick:nowTick(),dueTick:nowTick()+info.estWeeks,baseSucc:info.successChance,value:6,
-    status:"active",attentionSaved:1,cost:info.cost,authorityLevel:"standart"};
-  S.departmentTasks=S.departmentTasks||[]; S.departmentTasks.push(task);
-  d.activeTasks=(S.departmentTasks||[]).filter(t=>t.deptId===deptId&&t.status==="active").length;
-  if(task.cost) ledger("Delegasyon bütçesi — "+DEPT_MAP[deptId].name,-task.cost);
+  const task=createDeptTask("phoneDelegate",deptId,{
+    title:`📱 ${m.subject}`, pid:m.pid||null, sourceMessageId:m.id,
+    cid:m.cid||null, rid:m.rid||null, sponsorDealId:m.sponsorDealId||null,
+    topic:inferPhoneTopic(m), authorityLevel:"standart",
+    dur:info.estWeeks, baseSucc:info.successChance, value:6, attentionSaved:1, cost:info.cost,
+    toastLabel:`Görüşme ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine devredildi`,
+    ledgerLabel:`Delegasyon bütçesi — ${DEPT_MAP[deptId].name}`,
+    silent:true,
+  });
+  if(!task) return; // reddedildi (kilitli/çift) — mesaj durumu değişmez, tekrar ücret alınmaz
   m.delegatedTaskId=task.id; m.stage="delegated"; setPhoneStatus(m,"delegated");
-  toast(`Görüşme ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine devredildi`,"green");
-  recomputeDepartments(S); save(); closeSheet(); openPhoneMsg(m.id);
+  save(); closeSheet(); openPhoneMsg(m.id);
 }
 function resolveDelegatedConversation(task, ok){
   const m=(S.phoneInbox||[]).find(x=>x.id===task.sourceMessageId);
@@ -7697,75 +7850,110 @@ function goBack(){
 function buildActionCandidates(){
   const C=[]; const push=(o)=>C.push(o);
   const t=nowTick();
-  // bekleyen kararlar (geri döndürülemez)
+  // bekleyen kararlar (geri döndürülemez) — motorun tek gerçek "blocking" kapısı
   if(S.decisions.length) push({key:"decisions",cat:"crit",title:`${S.decisions.length} bekleyen karar`,btn:"Karar Ver",fn:`openDecision(0)`,
-    score:90+S.decisions.length*4,deadline:1,irr:20});
+    score:90+S.decisions.length*4,deadline:1,irr:20,
+    blocking:true,reason:"Karar verilmeden hafta ilerlemez.",impact:"Hafta engelleniyor",deadlineWeeks:0});
   // teklif deadline'ları (grupla)
   const expiring=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=1);
   if(expiring.length===1){ const p=S.world.players[expiring[0].pid];
-    push({key:"offer_"+expiring[0].id,cat:"crit",title:`Teklif süresi doluyor: ${p?p.name:"?"}`,btn:"Masaya Git",fn:`openEntity('negotiation','${expiring[0].id}')`,score:80,deadline:20,fin:12,irr:8}); }
-  else if(expiring.length>1) push({key:"offers_exp",cat:"crit",title:`${expiring.length} teklifin süresi bu hafta doluyor`,btn:"Transfer",fn:`navigateTo('transfer')`,score:82,deadline:22,fin:14});
+    push({key:"offer_"+expiring[0].id,cat:"crit",title:`Teklif süresi doluyor: ${p?p.name:"?"}`,btn:"Masaya Git",fn:`openEntity('negotiation','${expiring[0].id}')`,score:80,deadline:20,fin:12,irr:8,
+      reason:"Bu teklif yanıtsız kalırsa masadan kalkar.",impact:"Transfer geliri riskte",deadlineWeeks:Math.max(0,expiring[0].expires-S.week)}); }
+  else if(expiring.length>1) push({key:"offers_exp",cat:"crit",title:`${expiring.length} teklifin süresi bu hafta doluyor`,btn:"Transfer",fn:`navigateTo('transfer')`,score:82,deadline:22,fin:14,
+    reason:"Birden çok teklif bu hafta sona eriyor.",impact:"Transfer geliri riskte",deadlineWeeks:0});
   // kasa
-  if(S.cash<0) push({key:"cash",cat:"crit",title:"Kasa ekside — gider kıs / satış yap",btn:"Finans",fn:`openEntity('finance','agency')`,score:75+clamp(-S.cash/20000,0,20),fin:25});
+  if(S.cash<0) push({key:"cash",cat:"crit",title:"Kasa ekside — gider kıs / satış yap",btn:"Finans",fn:`openEntity('finance','agency')`,score:75+clamp(-S.cash/20000,0,20),fin:25,
+    reason:"Kasa negatif — giderler gelirden fazla.",impact:"Finansal risk"});
   // mutsuz oyuncular (grupla)
   const unhappy=myPlayers().filter(p=>p.morale<38);
-  if(unhappy.length===1) push({key:"morale_"+unhappy[0].id,cat:"sugg",title:`${unhappy[0].name} mutsuz`,btn:"Görüş",fn:`openEntity('player','${unhappy[0].id}')`,score:55,loyalty:15,player:8});
-  else if(unhappy.length>1) push({key:"morale_grp",cat:"sugg",title:`${unhappy.length} oyuncun mutsuz`,btn:"Portföy",fn:`navigateTo('players')`,score:58,loyalty:18});
-  // menajerlik sözleşmesi bitenler (grupla)
-  const repExp=myPlayers().filter(p=>p.agentWeeksLeft>0&&p.agentWeeksLeft<15);
-  if(repExp.length===1) push({key:"rep_"+repExp[0].id,cat:"crit",title:`${repExp[0].name} temsil sözleşmesi bitiyor`,btn:"Yenile",fn:`openEntity('player','${repExp[0].id}')`,score:70,contract:20,loyalty:10});
-  else if(repExp.length>1) push({key:"rep_grp",cat:"crit",title:`${repExp.length} temsil sözleşmesi bitmek üzere`,btn:"Portföy",fn:`navigateTo('players')`,score:72,contract:22,deleg:true});
+  if(unhappy.length===1) push({key:"morale_"+unhappy[0].id,cat:"sugg",title:`${unhappy[0].name} mutsuz`,btn:"Görüş",fn:`openEntity('player','${unhappy[0].id}')`,score:55,loyalty:15,player:8,
+    reason:"Moral düşük — görüşme sadakati koruyabilir.",impact:"Sadakat riski",deleg:false});
+  else if(unhappy.length>1) push({key:"morale_grp",cat:"sugg",title:`${unhappy.length} oyuncun mutsuz`,btn:"Portföy",fn:`navigateTo('players')`,score:58,loyalty:18,
+    reason:"Birden çok oyuncunun morali düşük.",impact:"Sadakat riski"});
+  // menajerlik sözleşmesi bitenler (grupla) — aktif yenileme görevi olanlar hariç (V11-A düzeltme)
+  const repExpAll=myPlayers().filter(p=>p.agentWeeksLeft>0&&p.agentWeeksLeft<15);
+  const repExp=repExpAll.filter(p=>!findActiveDeptTask("renewal",p.id));
+  if(repExp.length===1) push({key:"rep_"+repExp[0].id,cat:"crit",title:`${repExp[0].name} temsil sözleşmesi bitiyor`,btn:"Yenile",fn:`openEntity('player','${repExp[0].id}')`,score:70,contract:20,loyalty:10,
+    reason:"Temsil sözleşmesi yakında bitiyor.",impact:"Müşteri kaybı riski",deadlineWeeks:repExp[0].agentWeeksLeft,deleg:true,delegPid:repExp[0].id});
+  else if(repExp.length>1){ const mostUrgent=[...repExp].sort((a,b)=>a.agentWeeksLeft-b.agentWeeksLeft)[0];
+    push({key:"rep_grp",cat:"crit",title:`${repExp.length} temsil sözleşmesi bitmek üzere`,btn:"Portföy",fn:`navigateTo('players')`,score:72,contract:22,deleg:true,delegPid:mostUrgent.id,
+    reason:"Birden çok temsil sözleşmesi yakında bitiyor.",impact:"Müşteri kaybı riski"}); }
   // rakip tehdidi
   const rivalThreat=myPlayers().filter(p=>p.rivalId&&p.loyalty<50);
-  if(rivalThreat.length) push({key:"rival_grp",cat:"sugg",title:`${rivalThreat.length} oyuncuna rakip ajans göz koydu`,btn:"Portföy",fn:`navigateTo('players')`,score:52,rival:16,loyalty:8});
+  if(rivalThreat.length) push({key:"rival_grp",cat:"sugg",title:`${rivalThreat.length} oyuncuna rakip ajans göz koydu`,btn:"Portföy",fn:`navigateTo('players')`,score:52,rival:16,loyalty:8,
+    reason:"Rakip ajanslar sadakati düşük oyuncularına yaklaşıyor.",impact:"Rakip ajans riski"});
   // kulüp sözleşmesi azalanlar (grupla)
   const cexp=myPlayers().filter(p=>p.clubId&&contractWeeksLeft(p)<26);
-  if(cexp.length) push({key:"club_contract_grp",cat:"soon",title:`${cexp.length} oyuncunun kulüp sözleşmesi 26 haftadan az`,btn:"Portföy",fn:`navigateTo('players')`,score:34,contract:12,deleg:true});
-  // açılmamış scout raporları (grupla)
+  if(cexp.length) push({key:"club_contract_grp",cat:"soon",title:`${cexp.length} oyuncunun kulüp sözleşmesi 26 haftadan az`,btn:"Portföy",fn:`navigateTo('players')`,score:34,contract:12,deleg:true,routine:true,
+    reason:"Kulüp sözleşmeleri 26 haftadan az kaldı.",impact:"Yaklaşan sözleşme riski"});
+  // açılmamış scout raporları (grupla) — sayaç tüm okunmamışları gösterir; delege hedefi
+  // henüz aktif ikinci-gözlem görevi OLMAYAN bir hedefe döner (V11-A düzeltme)
   const un=S.reports.filter(r=>!r.opened).length;
-  if(un) push({key:"reports",cat:"sugg",title:`${un} açılmamış scout raporu`,btn:"Keşif",fn:`navigateTo('scout')`,score:40,player:6,deleg:un>2});
+  const unconfirmedNoTask=S.reports.filter(r=>!r.confirmed&&r.pid&&!findActiveDeptTask("second-look",r.pid));
+  const nextReportTarget=unconfirmedNoTask[0];
+  if(un) push({key:"reports",cat:"sugg",title:`${un} açılmamış scout rapor`,btn:"Keşif",fn:`navigateTo('scout')`,score:40,player:6,deleg:!!nextReportTarget,routine:true,delegPid:(nextReportTarget&&nextReportTarget.pid),
+    reason:"Okunmamış scout raporların birikti.",impact:"Fırsat kaçırma riski"});
   // boşta scout
-  if(S.scouts.some(sc=>!sc.assign)) push({key:"idle_scout",cat:"sugg",title:"Boşta scout var — bölge ata",btn:"Keşif",fn:`navigateTo('scout')`,score:38});
+  if(S.scouts.some(sc=>!sc.assign)) push({key:"idle_scout",cat:"sugg",title:"Boşta scout var — bölge ata",btn:"Keşif",fn:`navigateTo('scout')`,score:38,
+    reason:"Bir scoutun ataması yok.",impact:"Keşif ağı verimsiz"});
   // düşük değerli teklifler (delege)
   const lowOffers=S.offers.filter(o=>{ const p=S.world.players[o.pid]; return p&&o.fee<(p.value||1)*0.7; });
-  if(lowOffers.length) push({key:"low_offers",cat:"sugg",title:`${lowOffers.length} düşük değerli teklif otomatik işlenebilir`,btn:"Transfer",fn:`navigateTo('transfer')`,score:30,deleg:true});
+  if(lowOffers.length) push({key:"low_offers",cat:"sugg",title:`${lowOffers.length} düşük değerli teklif otomatik işlenebilir`,btn:"Transfer",fn:`navigateTo('transfer')`,score:30,deleg:true,routine:true,
+    reason:"Bu teklifler piyasa değerinin belirgin altında.",impact:"Rutin işlem"});
   // pencere yaklaşıyor
   const nxt=BAL.transferWindows.find(([a])=>a>S.week);
-  if(nxt&&nxt[0]-S.week<=3&&!inWindow(S.week)) push({key:"window_soon",cat:"soon",title:`Transfer penceresi ${nxt[0]-S.week} hafta sonra`,btn:"Hazırlan",fn:`navigateTo('transfer')`,score:26,deadline:8});
+  if(nxt&&nxt[0]-S.week<=3&&!inWindow(S.week)) push({key:"window_soon",cat:"soon",title:`Transfer penceresi ${nxt[0]-S.week} hafta sonra`,btn:"Hazırlan",fn:`navigateTo('transfer')`,score:26,deadline:8,
+    reason:"Transfer penceresi yaklaşıyor.",impact:"Hazırlık zamanı",deadlineWeeks:nxt[0]-S.week});
   // çalışma izni / kayıt sorunları
   try{ const permitIssues=S.offers.filter(o=>{ try{ const el=offerEligibility(o); return (el.permit.verdict==="itiraz"&&!o._permitAppealed)||(el.reg&&!el.reg.ok); }catch(e){ return false; } });
-    if(permitIssues.length) push({key:"permits",cat:"crit",title:`${permitIssues.length} transferde izin/kayıt sorunu`,btn:"İncele",fn:`openEntity('negotiation','${permitIssues[0].id}')`,score:78,deadline:15,irr:5}); }catch(e){}
+    if(permitIssues.length) push({key:"permits",cat:"crit",title:`${permitIssues.length} transferde izin/kayıt sorunu`,btn:"İncele",fn:`openEntity('negotiation','${permitIssues[0].id}')`,score:78,deadline:15,irr:5,
+      reason:"Çalışma izni veya kayıt sorunu tespit edildi.",impact:"Regülasyon riski"}); }catch(e){}
   // kupa finali
   try{ const comp=ensureCompetitions(S); for(const c of [...Object.values(comp.domestic),...comp.continental]){
     if(!c.completed&&c.alive.length===2&&c.roundWeeks[c.currentRound]===S.week&&c.alive.some(id=>myPlayersAtClub(id).length)){
-      push({key:"final_"+c.id,cat:"crit",title:`🏆 ${c.name} FİNALİ — oyuncun sahnede`,btn:"Gör",fn:`openCompetition('${c.id}')`,score:85,deadline:20}); break; } } }catch(e){}
+      push({key:"final_"+c.id,cat:"crit",title:`🏆 ${c.name} FİNALİ — oyuncun sahnede`,btn:"Gör",fn:`openCompetition('${c.id}')`,score:85,deadline:20,
+        reason:"Oyuncun bu hafta final oynuyor.",impact:"Prestij fırsatı"}); break; } } }catch(e){}
   // deadline day
-  if(typeof deadlineActive==="function"&&deadlineActive()) push({key:"deadline",cat:"crit",title:"⏰ DEADLINE DAY — pencere kapanıyor",btn:"Panel",fn:`openDeadlineDay()`,score:95,deadline:30});
+  if(typeof deadlineActive==="function"&&deadlineActive()) push({key:"deadline",cat:"crit",title:"⏰ DEADLINE DAY — pencere kapanıyor",btn:"Panel",fn:`openDeadlineDay()`,score:95,deadline:30,
+    reason:"Transfer penceresi bu hafta kapanıyor.",impact:"Son dakika fırsatları"});
   // telefon: acil/süresi dolan mesajlar
   try{ const urgentPhone=(S.phoneInbox||[]).filter(m=>!m.done&&(m.status==="unread"||m.status==="awaiting_response")&&m.urgency==="yüksek"&&m.expiresAtTick!=null&&m.expiresAtTick-nowTick()<=1);
-    if(urgentPhone.length) push({key:"phone_urgent",cat:"crit",title:`${urgentPhone.length} acil telefon mesajının süresi doluyor`,btn:"Telefon",fn:`openPhone()`,score:77,deadline:18}); }catch(e){}
+    if(urgentPhone.length) push({key:"phone_urgent",cat:"crit",title:`${urgentPhone.length} acil telefon mesajının süresi doluyor`,btn:"Telefon",fn:`openPhone()`,score:77,deadline:18,
+      reason:"Acil telefon mesajının süresi bu hafta doluyor.",impact:"İlişki riski"}); }catch(e){}
   // telefon: delegasyon/takip sonuçlanan mesajlar
   try{ const phoneFollow=(S.phoneInbox||[]).filter(m=>!m.done&&m.stage==="followup_result");
-    if(phoneFollow.length) push({key:"phone_followup",cat:"sugg",title:`${phoneFollow.length} telefon takibi sonuçlandı`,btn:"Telefon",fn:`openPhone()`,score:44,player:6}); }catch(e){}
+    if(phoneFollow.length) push({key:"phone_followup",cat:"sugg",title:`${phoneFollow.length} telefon takibi sonuçlandı`,btn:"Telefon",fn:`openPhone()`,score:44,player:6,
+      reason:"Devredilen bir görüşmenin sonucu bekliyor.",impact:"Bilgi güncel değil"}); }catch(e){}
   return C;
 }
 function scoreAction(a){
   return (a.score||0) + (a.deadline||0) + (a.fin||0) + (a.player||0) + (a.loyalty||0) + (a.contract||0) + (a.rival||0) + (a.irr||0);
 }
+/* ============================================================
+   V11-A düzeltme — "filtrelendi" ile "işlendi" ARTIK EŞ ANLAMLI DEĞİL.
+   Departman/tier gücü tek başına hiçbir işi otomatik yürütmez; bir iş
+   yalnızca gerçek bir aktif departman görevi ya da gerçek bir mevcut
+   otomatik işlem onu zaten karşılamışsa "handled" sayılır.
+   ============================================================ */
+function getExistingHandlingState(a){
+  const none={handled:false,handlingType:null,department:null,taskId:null,label:null};
+  if(!a||!a.key) return none;
+  if(a.key.indexOf("rep_")===0||a.key==="rep_grp"){
+    const pid=a.delegPid; if(pid==null) return none;
+    const t=findActiveDeptTask("renewal",pid); if(!t) return none;
+    return {handled:true,handlingType:"active_task",department:"legal",taskId:t.id,label:"Hukuk ekibi temsil yeniliyor"};
+  }
+  if(a.key==="reports"){
+    const pid=a.delegPid; if(pid==null) return none;
+    const t=findActiveDeptTask("second-look",pid); if(!t) return none;
+    return {handled:true,handlingType:"active_task",department:"scouting",taskId:t.id,label:"Scout ekibi ikinci gözlem yapıyor"};
+  }
+  // low_offers / club_contract_grp: bu geçişte hiçbir gerçek toplu otomasyon
+  // veya görev türü mevcut değil — asla "handled" sayılmaz, her zaman görünür kalır.
+  return none;
+}
 function applyDelegationToActions(actions){
-  // ajans büyüdükçe rutin/düşük riskli işleri delege et (action center'dan düşür)
-  const tier=calculateAgencyTier().lv;
-  const d=S.delegation||{};
-  const relOk=deptUnlocked&&deptUnlocked("relations")&&deptBonus("relations")>0.4;
-  const legalOk=deptUnlocked&&deptUnlocked("legal")&&deptBonus("legal")>0.4;
-  return actions.filter(a=>{
-    if(!a.deleg) return true;
-    // delege koşulu: ilgili departman güçlü VEYA ajans tier yüksek
-    if(a.key==="low_offers" && (d.autoReject|| tier>=4)) return false;
-    if(a.key==="reports" && relOk) return false;
-    if((a.key==="club_contract_grp"||a.key==="rep_grp") && legalOk && tier>=4) return false;
-    return true;
-  });
+  return actions.filter(a=>!getExistingHandlingState(a).handled);
 }
 function buildScoredActions(){
   let cand=buildActionCandidates();
@@ -7780,6 +7968,153 @@ function buildScoredActions(){
 }
 /* geriye dönük uyum: buildActions artık puanlı motoru kullanır */
 function buildActions(){ try{ return buildScoredActions(); }catch(e){ console.error("buildActions",e); return []; } }
+
+/* ============================================================
+   V11-A — TEK PAYLAŞILAN "BU HAFTA" TÜRETİLMİŞ MODELİ
+   Mevcut buildActionCandidates/applyDelegationToActions/scoreAction
+   motorunu tekrar kullanır; ikinci bir aksiyon motoru DEĞİLDİR.
+   Kaydedilmez — her ihtiyaç anında yeniden türetilir.
+   ============================================================ */
+/* ============================================================
+   V11-A düzeltme — MEVCUT departman/personel altyapısına gerçek köprü.
+   a.deleg yalnızca bir "yetenek ipucu"dur; burada departmanın kilitli/
+   personelsiz/aşırı yüklü olup olmadığı gerçekten kontrol edilir.
+   Yalnızca zaten var olan createDeptTask/departman görev türlerini kullanır.
+   ============================================================ */
+function _deptDelegAvailability(deptId){
+  if(!deptUnlocked(deptId)) return {ok:false,reason:"Departman henüz açık değil."};
+  if(!deptStaff(S,deptId).length) return {ok:false,reason:"Bu departmanda personel yok."};
+  const d=S.departments[deptId];
+  if(d&&d.workload>90) return {ok:false,reason:"Departman bu hafta aşırı yüklü."};
+  return {ok:true,reason:null};
+}
+function getExistingDelegationAction(a){
+  const none={eligible:false,label:null,fn:null,reasonUnavailable:"Bu iş için şu an devredilebilir bir ekip yok.",assignedDepartment:null};
+  if(!a||!a.key) return none;
+  if(a.key.indexOf("rep_")===0||a.key==="rep_grp"){
+    const av=_deptDelegAvailability("legal"); if(!av.ok) return {...none,reasonUnavailable:av.reason};
+    const pid=a.delegPid; const p=pid&&S.world.players[pid];
+    if(!p) return {...none,reasonUnavailable:"Devredilecek belirli bir oyuncu yok."};
+    if(findActiveDeptTask("renewal",pid)) return {...none,reasonUnavailable:"Bu iş zaten ekipte."};
+    return {eligible:true,label:"Hukuk Ekibine Gönder",
+      fn:`delegateGuidedAction('renewal','${escapeHtml(pid)}')`,
+      reasonUnavailable:null,assignedDepartment:"legal"};
+  }
+  if(a.key==="reports"){
+    const av=_deptDelegAvailability("scouting"); if(!av.ok) return {...none,reasonUnavailable:av.reason};
+    const pid=a.delegPid;
+    if(!pid) return {...none,reasonUnavailable:"Delege edilecek belirli bir rapor yok."};
+    if(findActiveDeptTask("second-look",pid)) return {...none,reasonUnavailable:"Bu iş zaten ekipte."};
+    return {eligible:true,label:"İkinci Gözleme Gönder",
+      fn:`delegateGuidedAction('second-look','${escapeHtml(pid)}')`,
+      reasonUnavailable:null,assignedDepartment:"scouting"};
+  }
+  if(a.key==="low_offers"){
+    if(!S.staff||!S.staff.lawyer) return {...none,reasonUnavailable:"Hukuk danışmanı gerekli."};
+    if(S.delegation&&S.delegation.autoReject) return {...none,reasonUnavailable:"Zaten devrede."};
+    // yalnız GELECEK teklif üretimini etkiler — mevcut düşük teklifler bu satırdan bağımsız görünür kalır
+    return {eligible:true,label:"Gelecek Düşük Tekliflerde Otomatik Reddi Aç",fn:`delegateGuidedAction('low_offers_auto',null)`,reasonUnavailable:null,assignedDepartment:"legal"};
+  }
+  return none;
+}
+function buildGuidedWeekModel(){
+  const mode=managementMode(); const modeDef=managementModeDef();
+  let raw=[]; try{ raw=buildActionCandidates(); }catch(e){ console.error("buildActionCandidates",e); }
+  let active=raw; try{ active=applyDelegationToActions(raw); }catch(e){}
+  const cand=active.slice();
+  cand.forEach(a=>a._score=scoreAction(a));
+  cand.sort((x,y)=>y._score-x._score);
+  const RISK_OF={crit:"yüksek",sugg:"orta",soon:"düşük"};
+  const priorities=cand.map(a=>{
+    const cat=a.cat||"sugg";
+    const delegAction=getExistingDelegationAction(a);
+    return {
+      key:a.key, category:cat, title:a.title,
+      reason:a.reason||a.title,
+      impact:a.impact||(cat==="crit"?"Kritik etkisi var":cat==="sugg"?"Orta vadede önemli":"Yakında gündeme gelecek"),
+      deadlineText:(a.deadlineWeeks!=null)?(a.deadlineWeeks<=0?"bu hafta":`${a.deadlineWeeks} hafta`):null,
+      risk:RISK_OF[cat]||"orta",
+      blocking:!!a.blocking,
+      routine:!!a.routine, // İŞİN DOĞASI — delegatable'dan bağımsız, kritik bir iş asla rutin sayılmaz
+      delegatable:delegAction.eligible, // GERÇEK uygunluk — a.deleg yalnızca ipucuydu
+      delegationUnavailableReason:delegAction.eligible?null:(a.deleg?delegAction.reasonUnavailable:null),
+      recommendation:a.btn,
+      actionLabel:a.btn, actionFn:a.fn,
+      secondaryActionLabel:delegAction.eligible?delegAction.label:null,
+      secondaryActionFn:delegAction.eligible?delegAction.fn:null,
+    };
+  });
+  /* V11-A düzeltme — takım özetleri GERÇEK aktif departman görevlerinden türetilir;
+     "filtrelendi" bilgisiyle değil. Kritik bir yenileme asla "rutin" diye adlandırılmaz. */
+  const activeRenewalTasks=(S.departmentTasks||[]).filter(t=>t&&t.status==="active"&&t.kind==="renewal");
+  const activeSecondLookTasks=(S.departmentTasks||[]).filter(t=>t&&t.status==="active"&&t.kind==="second-look");
+  const teamHandling=[];
+  if(activeRenewalTasks.length) teamHandling.push({label:`Hukuk ekibi ${activeRenewalTasks.length} temsil yenilemesini yürütüyor.`,department:"legal",count:activeRenewalTasks.length,kind:"renewal"});
+  if(activeSecondLookTasks.length) teamHandling.push({label:`Scout ekibi ${activeSecondLookTasks.length} ikinci gözlem yapıyor.`,department:"scouting",count:activeSecondLookTasks.length,kind:"second-look"});
+  const genuineAutomationCount=0; // bu sürümde hiçbir toplu/otomatik işlem yok — dürüst yansıtma, uydurma yok
+  if(genuineAutomationCount>0) teamHandling.push({label:`${genuineAutomationCount} rutin işlem mevcut ayarlarla yönetiliyor.`,department:null,count:genuineAutomationCount,kind:"automation"});
+  const teamSummaryText=teamHandling.length?teamHandling.map(t=>t.label).join(" "):null;
+  const counts={
+    blocking:priorities.filter(p=>p.blocking).length,
+    critical:priorities.filter(p=>p.category==="crit"&&!p.blocking).length,
+    suggested:priorities.filter(p=>p.category==="sugg").length,
+    approaching:priorities.filter(p=>p.category==="soon").length,
+    routine:priorities.filter(p=>p.routine).length, // hâlâ görünür listedeki işlerin doğası
+    delegatable:priorities.filter(p=>p.delegatable).length, // şu an gerçekten devredilebilir
+    delegatedActive:activeRenewalTasks.length+activeSecondLookTasks.length, // GERÇEKTEN aktif departman görevleri
+    automated:genuineAutomationCount, // gerçek toplu otomasyon (bu sürümde her zaman 0)
+  };
+  // ekranda gösterilecek üst sınır — mod bazlı
+  let visible;
+  if(mode==="executive"){
+    const block=priorities.filter(p=>p.blocking);
+    const strategic=priorities.filter(p=>!p.blocking&&p.category==="crit");
+    visible=[...block,...strategic].slice(0,block.length+2);
+  } else {
+    visible=priorities.slice(0,modeDef.cap);
+  }
+  const ready=counts.blocking===0;
+  const blockingReasons=priorities.filter(p=>p.blocking).map(p=>p.title);
+  const routineSummary=counts.routine>0?`${counts.routine} rutin iş var`:"Rutin iş yok";
+  let recommendationText="Masa temiz — haftayı gönül rahatlığıyla oynatabilirsin.";
+  if(priorities.length){
+    if(priorities[0].blocking) recommendationText=`Önce ${priorities[0].title} çöz.`;
+    else if(priorities[1]) recommendationText=`Önce ${priorities[0].title}. Ardından ${priorities[1].title}.`;
+    else recommendationText=`Önce ${priorities[0].title}.`;
+  }
+  return {mode,modeDef,priorities:visible,allPriorities:priorities,counts,ready,blockingReasons,routineSummary,teamHandling,teamSummaryText,recommendationText};
+}
+/* ---------- haftaya hazır mı (tek kaynak; Home/playbar/haftalık plan hepsi bunu kullanır) ---------- */
+function getWeekReadiness(){
+  const g=buildGuidedWeekModel();
+  if(g.counts.blocking>0||(S.decisions&&S.decisions.length)) return {state:"blocked",reasons:g.blockingReasons.length?g.blockingReasons:[`${S.decisions.length} karar bekliyor`],model:g};
+  if(g.counts.critical>0) return {state:"attention",count:g.counts.critical,model:g};
+  return {state:"ready",routineCount:g.counts.routine,model:g};
+}
+function openWeekReadinessSheet(){
+  if(!S) return;
+  // V11-A düzeltme — tamamlanma anında hemen kaydet ve altta yatan Home rehber
+  // kartını sheet açılmadan ÖNCE yeniden çiz; ileride başka bir kaydetmeye güvenme.
+  let justCompleted=false;
+  try{ justCompleted=emitGameEvent("GUIDED_WEEK_VIEWED",{})===true; }catch(e){}
+  if(justCompleted){ try{ requestSave("tutorial",{immediate:true}); }catch(e){} try{ renderHome(); }catch(e){} }
+  const r=getWeekReadiness(); const g=r.model;
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">HAFTAYA HAZIR MI?</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:18px">${r.state==="blocked"?"Karar Bekliyor":r.state==="attention"?"Kritik İşler Var":"Haftaya Hazır"}</div></div>`;
+  if(g.teamSummaryText) h+=`<div class="tiny" style="margin:6px 2px">🤝 ${escapeHtml(g.teamSummaryText)}</div>`;
+  if(r.state==="blocked"){
+    h+=`<div class="card urgent">${r.reasons.map(x=>`<div class="sumline"><span>${escapeHtml(x)}</span></div>`).join("")}</div>`;
+    h+=`<button class="btn block gold" onclick="closeSheet();openDecision(0)">Karar Ver</button>`;
+  } else {
+    const crit=g.priorities.filter(p=>p.category==="crit");
+    if(crit.length){ h+=`<div class="tiny b" style="margin:8px 2px 4px">🔴 Kritik işler</div>`;
+      h+=crit.map(p=>renderPriorityCard(p,{closeSheetFirst:true})).join(""); }
+    else h+=`<div class="tiny" style="margin:8px 2px">Kritik uyarı yok — ${escapeHtml(g.counts.delegatable?`${g.counts.delegatable} iş delege edilebilir.`:r.routineCount?`${r.routineCount} rutin iş var.`:"masa temiz.")}</div>`;
+    h+=`<button class="btn block primary" style="margin-top:10px" onclick="closeSheet();playWeek()">⚽ Yine de Haftayı Oynat</button>`;
+  }
+  h+=`<button class="btn block ghost" style="margin-top:8px" onclick="closeSheet()">Kapat</button>`;
+  openSheet(h);
+}
 
 /* ============================================================
    V8 PHASE B — DÜNYA FIRSAT MOTORU
@@ -7991,6 +8326,7 @@ function deliverNotificationEvent(notif,dedupMeta){
    V8 PHASE B2 — TUTORIAL EVENT BUS + 8 ADIM
    ============================================================ */
 const TUTORIAL_STEPS=[
+ {id:"guided_week",availableFromWeek:1,title:"Haftaya Hazır'ı aç",description:"Ana sayfadaki 'Haftaya Hazır' satırına dokun — hangi işlerin kritik, hangilerinin rutin olduğunu gösterir. Önce kırmızı işleri çöz; sarı işler öneridir; rutin işleri ekibine bırakabilirsin.",completionEvent:"GUIDED_WEEK_VIEWED",route:`openWeekReadinessSheet()`,reward:"Haftalık öncelik netliği"},
  {id:"open_player",availableFromWeek:1,title:"Bir oyuncu profili aç",description:"Portföyünden bir oyuncuya dokun; değer, form ve sözleşmesini incele.",completionEvent:"PLAYER_PROFILE_OPENED",route:`navigateTo('players')`,reward:"Oyuncu yönetiminin temeli"},
  {id:"focus",availableFromWeek:1,title:"Haftalık odak seç",description:"Haftalık plandan bir odak seç — küçük ama kalıcı bonus.",completionEvent:"WEEKLY_FOCUS_SELECTED",route:`openWeeklyPlan()`,reward:"Odak bonusu"},
  {id:"meet",availableFromWeek:2,title:"Oyuncuyla görüş",description:"Bir oyuncunla görüşme yap; moral ve sadakati yönet.",completionEvent:"PLAYER_MEETING_COMPLETED",route:`navigateTo('players')`,reward:"Sadakat +"},
@@ -8000,17 +8336,18 @@ const TUTORIAL_STEPS=[
  {id:"club_meet",availableFromWeek:6,title:"Kulüple görüş",description:"Bir kulüple ilişki kur veya oyuncu öner.",completionEvent:"CLUB_MEETING_COMPLETED",route:`navigateTo('world')`,reward:"Kulüp ilişkisi"},
  {id:"market",availableFromWeek:7,title:"Oyuncuyu pazarla veya teklif incele",description:"Bir oyuncunu pazarla ya da gelen bir teklifi incele.",completionEvent:"PLAYER_MARKETED",route:`navigateTo('transfer')`,reward:"Transfer motoru"},
 ];
-function emitGameEvent(type,payload){ try{ handleTutorialEvent(type,payload); }catch(e){} }
+function emitGameEvent(type,payload){ try{ return handleTutorialEvent(type,payload)===true; }catch(e){ return false; } }
 function handleTutorialEvent(type,payload){
-  const tf=S.tutorialFlow; if(!tf||!tf.active||tf.skipped) return;
+  const tf=S.tutorialFlow; if(!tf||!tf.active||tf.skipped) return false;
   tf.completedSteps=tf.completedSteps||[];
   const step=TUTORIAL_STEPS.find(s=>s.completionEvent===type&&!tf.completedSteps.includes(s.id));
-  if(!step) return;
-  if(S.week<(step.availableFromWeek||1)) return;
+  if(!step) return false;
+  if(S.week<(step.availableFromWeek||1)) return false;
   tf.completedSteps.push(step.id);
   toast(`✅ Rehber adımı tamam: ${step.title}`,"green");
   notify("ajans",`Rehber: ${step.title} tamamlandı`,"home");
   if(tf.completedSteps.length>=TUTORIAL_STEPS.length){ tf.active=false; tf.done=true; toast("🎓 Başlangıç rehberi tamamlandı!","gold"); }
+  return true;
 }
 function currentTutorialStep(){
   const tf=S.tutorialFlow; if(!tf||!tf.active||tf.skipped) return null;
@@ -8109,22 +8446,43 @@ function renderWeeklyBriefing(){
     x+=shown.map(i=>`<div class="sumline ${i.route?'tappable':''}" ${i.route?`onclick="${i.route}"`:""}><span>${escapeHtml(i.text)}</span>${i.route?'<span class="tiny">→</span>':""}</div>`).join("");
     if(!expanded) x+=`<button class="section-action" onclick="wbExpand('${k}')">Tümünü gör (${arr.length}) →</button>`;
     return x; };
-  h+=block("🌟 Önemli Gelişmeler",B.important);
-  h+=block("👤 Oyuncular",B.players);
-  h+=block("💼 Transfer",B.transfer);
-  h+=block("🔭 Scout",B.scout);
-  h+=block("🏛️ Ajans",B.agency);
-  h+=block("🌍 Dünya",B.world);
-  h+=block("🌍 Pazar & Trendler",B.market);
-  h+=block("🏆 Turnuvalar",B.tournaments);
-  h+=block("⚖️ Regülasyon",B.regulation);
-  h+=block("🎓 Akademi",B.academyNews);
-  h+=block("👟 Sponsor",B.sponsor);
-  h+=block("📱 Telefon",B.phone);
-  if(B.next&&B.next.length){ h+=`<h2 class="sec">🎯 Gelecek Haftanın ${Math.min(3,B.next.length)} Önceliği</h2>`;
+  /* V11-A düzeltme — birincil dört bölüm: mevcut B.* verisinden türetilir, yeni hesap üretilmez.
+     Öğelerin ton bilgisi ayrı bir alan olarak üretilmediği için (mevcut B.* şekli yalnızca
+     {text,route}), zaten üretilmiş metindeki simgeyi bir sınıflandırıcı olarak kullanıyoruz —
+     bu bir geriye-dönük yedek değil, şu an mevcut TEK sinyal. Aynı öğe iki kovaya birden düşmez. */
+  function itemTone(i){
+    if(/⭐|📈|🟢|💎|🆕|🔓|🏆|✅/.test(i.text)) return "good";
+    if(/📉|😔|⚠️|🔴|🤕|👋|🦈/.test(i.text)) return "bad";
+    return "neutral";
+  }
+  // Bu Hafta Ne Değişti? kendi bölümünde gösteriliyor — aynı öğe İyi/Riskte havuzunda TEKRARLANMASIN
+  const pool=[...(B.players||[]),...(B.transfer||[]),...(B.scout||[]),...(B.agency||[]),...(B.world||[])];
+  const good=pool.filter(i=>itemTone(i)==="good");
+  const risky=pool.filter(i=>itemTone(i)==="bad");
+  h+=block("🌟 Bu Hafta Ne Değişti?",B.important);
+  h+=block("✅ Ne İyi Gitti?",good);
+  h+=block("⚠️ Ne Riskte?",risky);
+  if(B.next&&B.next.length){ h+=`<h2 class="sec">🎯 Gelecek Hafta Ne Yapmalıyım?</h2>`;
     h+=B.next.slice(0,3).map(i=>`<div class="action-item sugg"><span>${escapeHtml(i.text)}</span><button class="btn sm ghost" onclick="${i.route}">Git</button></div>`).join(""); }
+  /* ikincil tam döküm — varsayılan KAPALI, tek ortak açma/kapama; aynı veri, yalnızca detay katmanı */
+  h+=`<button class="section-action" onclick="toggleWbDetail()">${WB_DETAIL_OPEN?"Ayrıntılı Haftalık Dökümü Gizle ▴":"Ayrıntılı Haftalık Döküm ▾"}</button>`;
+  if(WB_DETAIL_OPEN){
+    h+=block("👤 Oyuncular",B.players);
+    h+=block("💼 Transfer",B.transfer);
+    h+=block("🔭 Scout",B.scout);
+    h+=block("🏛️ Ajans",B.agency);
+    h+=block("🌍 Dünya",B.world);
+    h+=block("🌍 Pazar & Trendler",B.market);
+    h+=block("🏆 Turnuvalar",B.tournaments);
+    h+=block("⚖️ Regülasyon",B.regulation);
+    h+=block("🎓 Akademi",B.academyNews);
+    h+=block("👟 Sponsor",B.sponsor);
+    h+=block("📱 Telefon",B.phone);
+  }
   $("scr-weeklyBriefing").innerHTML=h;
 }
+let WB_DETAIL_OPEN=false;
+function toggleWbDetail(){ WB_DETAIL_OPEN=!WB_DETAIL_OPEN; renderWeeklyBriefing(); }
 function openWeeklyBriefing(){ navigateTo("weeklyBriefing"); }
 
 /* ============================================================
