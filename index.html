@@ -975,6 +975,10 @@ function newGame(agentName, agencyName){
   S.uiState.chartTooltipMode="auto";
   S.settings.edgeSwipeMenu=true;
   S.settings.managementMode="balanced";
+  S.settings.negotiationView="simple";
+  S.delegationPolicies=defaultDelegationPolicies();
+  applyManagementModeDefaults("balanced",{full:true,silent:true});
+  S.teamOperations=[];
   // başlangıç: seçilen ülkenin alt liginden 2 genç müşteri + 1 scout
   const startLeagues = world.leagues.filter(l=>l.countryId===startCountry).sort((a,b)=>b.tier-a.tier);
   const startLeague = startLeagues.find(l=>l.tier>=2) || startLeagues[0] || world.leagues[0];
@@ -1164,13 +1168,12 @@ function simOffers(sum){
       if(S.offers.some(o=>o.pid===p.id&&o.cid===cid)) continue;
       const c=S.world.clubs[cid];
       const needM=((c.needs?.[p.pos]??50)/100)*0.4+0.8;
-      const _lowball=p.value*(0.8+(rnd()<0.15?0.15:0));
       let fee=Math.round(p.value*(1.0+rnd()*0.6)*needM/1000)*1000;
       try{ fee=Math.round(fee*trendFeeMult(p,c)/1000)*1000; }catch(e){}
       if(contractWeeksLeft(p)<40) fee=Math.round(fee*0.7/1000)*1000;
       if(fee>c.budget*1.4) continue;
-      if(S.delegation&&S.delegation.autoReject&&S.staff.lawyer&&fee<_lowball){
-        addNews("","Hukuk ekibi düşük teklifi eledi",`${c.name} → ${p.name} (${fmtM(fee)}) teklifi otomatik reddedildi.`); continue; }
+      // V11-C — otomatik red artık TEK YOL üzerinden yürür: simTransferPolicies→offerAutoRejectEligible→rejectOfferDomain.
+      // Teklif burada her zaman oluşturulur; politika uygunsa aynı hafta içinde canonical yoldan reddedilir.
       const L=S.world.leagues.find(l=>l.id===c.leagueId);
       const wage=clamp(Math.round((p.wage*1.4+L.salary[1]*0.3)*((typeof trendWageMult==="function")?trendWageMult(p,c):1)/100)*100, L.salary[0], L.salary[1]);
       const comm=Math.round(fee*p.agentCommission);
@@ -1833,8 +1836,214 @@ function managementModeDef(){ return MANAGEMENT_MODES.find(x=>x.id===managementM
 function setManagementMode(id){
   if(!MANAGEMENT_MODES.some(x=>x.id===id)) return;
   S.settings=S.settings||{}; S.settings.managementMode=id;
+  applyManagementModeDefaults(id,{full:false,silent:true});
   save(); renderAll();
   toast(`Yönetim modu: ${MANAGEMENT_MODES.find(x=>x.id===id).label}`,"gold");
+}
+/* ============================================================
+   V11-C — DELEGASYON POLİTİKASI DURUMU (S.delegationPolicies)
+   Mevcut createDeptTask/findActiveDeptTask/canDelegatePhoneMessage/
+   doReject altyapısını kullanan politika KATMANI. İkinci bir görev
+   motoru veya kayıt sistemi DEĞİLDİR — yalnız "ne zaman otomatik
+   davranılabilir" sorusuna cevap verir.
+   ============================================================ */
+const DELEGATION_POLICY_VERSION=1;
+function defaultDelegationPolicies(){
+  return {
+    version:DELEGATION_POLICY_VERSION, customized:false, customizedKeys:[],
+    transfer:{ autoRejectEnabled:false, rejectBelowValuePct:75, alwaysShowAboveValuePct:115,
+      delegateLoanReview:false, alwaysShowExpiring:true },
+    scouting:{ autoSecondLook:false, secondLookBelowConfidence:55, alertAboveEstimatedPA:82,
+      watchlistBelowEstimatedPA:72 },
+    phone:{ delegateLowMedia:false, delegateStandardClub:false, alwaysShowPlayer:true,
+      alwaysShowFamily:true, neverDelegateRivalThreat:true, neverDelegateHighUrgency:true },
+    contracts:{ prepareRepresentationBelowWeeks:12, prepareClubContractBelowWeeks:20,
+      draftHighLoyaltyRenewal:false, autoClubContractReview:true },
+    sponsor:{ delegateBelowValue:0, alwaysShowExclusive:true, legalReviewMoralityClause:true },
+  };
+}
+/* mod başına YALNIZ farklı olan alanlar — geri kalan varsayılan kalır */
+const MANAGEMENT_MODE_POLICY_TEMPLATES={
+  controlled:{ transfer:{autoRejectEnabled:false,delegateLoanReview:false}, scouting:{autoSecondLook:false},
+    phone:{delegateLowMedia:false,delegateStandardClub:false}, contracts:{draftHighLoyaltyRenewal:false,autoClubContractReview:false},
+    sponsor:{delegateBelowValue:0,legalReviewMoralityClause:false} },
+  balanced:{ transfer:{autoRejectEnabled:true,rejectBelowValuePct:75,delegateLoanReview:false},
+    scouting:{autoSecondLook:true,secondLookBelowConfidence:50},
+    phone:{delegateLowMedia:true,delegateStandardClub:false}, contracts:{draftHighLoyaltyRenewal:false,autoClubContractReview:true},
+    sponsor:{delegateBelowValue:0,legalReviewMoralityClause:true} },
+  executive:{ transfer:{autoRejectEnabled:true,rejectBelowValuePct:82,delegateLoanReview:true},
+    scouting:{autoSecondLook:true,secondLookBelowConfidence:60},
+    phone:{delegateLowMedia:true,delegateStandardClub:true}, contracts:{draftHighLoyaltyRenewal:true,autoClubContractReview:true},
+    // V11-C — sponsor teklifleri mediaPop*110+0..2000 formülünden gelir (tipik ~€5.000–13.000);
+    // önceki 250000 bu ekonomiye göre 20 kat büyüktü ve pratikte HER teklifi "düşük değerli" sayardı.
+    sponsor:{delegateBelowValue:7500,legalReviewMoralityClause:true} },
+};
+function clampNum(v,min,max,def){ v=Number(v); if(!isFinite(v)) return def; return clamp(v,min,max); }
+/* V11-C — katı boolean onarımı: yalnız GERÇEK boolean kabul edilir. "false"/"0"/1/null gibi
+   bozuk değerler sessizce true'ya dönüşmez, her zaman verilen güvenli varsayılana düşer. */
+function repairBool(value,defaultValue){ return typeof value==="boolean"?value:defaultValue; }
+/* eksik/bozuk S.delegationPolicies alanlarını tek tek onarır — schemaRevision'dan bağımsız, yıkıcı değil */
+function repairDelegationPolicies(st){
+  if(!st) return st;
+  const def=defaultDelegationPolicies();
+  // V11-C — katı onarım: yalnız GERÇEK boolean true eski otomasyonu taşır; "true"/"1"/1 gibi
+  // bozuk/yanıltıcı değerler otomasyonu SESSİZCE açmaz.
+  const oldHadAutoReject=repairBool(st.delegation&&st.delegation.autoReject,false);
+  const oldHadAutoSponsor=repairBool(st.delegation&&st.delegation.autoSponsor,false);
+  const isFreshPolicy=!st.delegationPolicies;
+  const p=st.delegationPolicies=Object.assign({},def,st.delegationPolicies||{});
+  if(typeof p.version!=="number") p.version=DELEGATION_POLICY_VERSION;
+  p.customized=!!p.customized;
+  p.customizedKeys=Array.isArray(p.customizedKeys)?p.customizedKeys.filter(k=>typeof k==="string"):[];
+  p.transfer=Object.assign({},def.transfer,p.transfer||{});
+  p.transfer.autoRejectEnabled=repairBool(p.transfer.autoRejectEnabled,def.transfer.autoRejectEnabled);
+  p.transfer.rejectBelowValuePct=clampNum(p.transfer.rejectBelowValuePct,10,100,def.transfer.rejectBelowValuePct);
+  p.transfer.alwaysShowAboveValuePct=clampNum(p.transfer.alwaysShowAboveValuePct,100,300,def.transfer.alwaysShowAboveValuePct);
+  p.transfer.delegateLoanReview=repairBool(p.transfer.delegateLoanReview,def.transfer.delegateLoanReview);
+  p.transfer.alwaysShowExpiring=repairBool(p.transfer.alwaysShowExpiring,def.transfer.alwaysShowExpiring);
+  p.scouting=Object.assign({},def.scouting,p.scouting||{});
+  p.scouting.autoSecondLook=repairBool(p.scouting.autoSecondLook,def.scouting.autoSecondLook);
+  p.scouting.secondLookBelowConfidence=clampNum(p.scouting.secondLookBelowConfidence,10,90,def.scouting.secondLookBelowConfidence);
+  p.scouting.alertAboveEstimatedPA=clampNum(p.scouting.alertAboveEstimatedPA,50,99,def.scouting.alertAboveEstimatedPA);
+  p.scouting.watchlistBelowEstimatedPA=clampNum(p.scouting.watchlistBelowEstimatedPA,40,95,def.scouting.watchlistBelowEstimatedPA);
+  p.phone=Object.assign({},def.phone,p.phone||{});
+  for(const k of ["delegateLowMedia","delegateStandardClub"]) p.phone[k]=repairBool(p.phone[k],def.phone[k]);
+  p.phone.alwaysShowPlayer=repairBool(p.phone.alwaysShowPlayer,def.phone.alwaysShowPlayer);
+  p.phone.alwaysShowFamily=repairBool(p.phone.alwaysShowFamily,def.phone.alwaysShowFamily);
+  p.phone.neverDelegateRivalThreat=repairBool(p.phone.neverDelegateRivalThreat,def.phone.neverDelegateRivalThreat);
+  p.phone.neverDelegateHighUrgency=repairBool(p.phone.neverDelegateHighUrgency,def.phone.neverDelegateHighUrgency);
+  p.contracts=Object.assign({},def.contracts,p.contracts||{});
+  p.contracts.prepareRepresentationBelowWeeks=clampNum(p.contracts.prepareRepresentationBelowWeeks,4,30,def.contracts.prepareRepresentationBelowWeeks);
+  p.contracts.prepareClubContractBelowWeeks=clampNum(p.contracts.prepareClubContractBelowWeeks,8,40,def.contracts.prepareClubContractBelowWeeks);
+  p.contracts.draftHighLoyaltyRenewal=repairBool(p.contracts.draftHighLoyaltyRenewal,def.contracts.draftHighLoyaltyRenewal);
+  p.contracts.autoClubContractReview=repairBool(p.contracts.autoClubContractReview,def.contracts.autoClubContractReview);
+  p.sponsor=Object.assign({},def.sponsor,p.sponsor||{});
+  // V11-C — gerçek sponsor ekonomisine göre üst sınır (~50.000) — eskiden 5.000.000 idi, hiçbir gerçekçi
+  // teklifi hariç bırakmayan (dolayısıyla anlamsız) bir tavandı.
+  p.sponsor.delegateBelowValue=clampNum(p.sponsor.delegateBelowValue,0,50000,def.sponsor.delegateBelowValue);
+  p.sponsor.alwaysShowExclusive=repairBool(p.sponsor.alwaysShowExclusive,def.sponsor.alwaysShowExclusive);
+  p.sponsor.legalReviewMoralityClause=repairBool(p.sponsor.legalReviewMoralityClause,def.sponsor.legalReviewMoralityClause);
+  // eski basit anahtarlar (S.delegation.autoReject/autoSponsor) sessizce kaybolmasın —
+  // yalnız İLK kez politika nesnesi oluşturuluyorsa (eski save) eşdeğerine taşınır.
+  if(isFreshPolicy){
+    if(oldHadAutoReject) p.transfer.autoRejectEnabled=true;
+    // V11-C — gerçek ölçek: eski autoSponsor tercihi mütevazı bir eleme eşiğine taşınır, dev bir eşiğe değil.
+    if(oldHadAutoSponsor) p.sponsor.delegateBelowValue=Math.max(p.sponsor.delegateBelowValue,3000);
+  }
+  // V11-C — günlük en yeni-önce (unshift) tutulur; onarım da en yeni 60'ı korumalı (slice(-60) en ESKİ 60'ı tutardı — hatalıydı).
+  st.teamOperations=Array.isArray(st.teamOperations)?st.teamOperations.slice(0,60):[];
+  st.settings=st.settings||{};
+  if(st.settings.negotiationView!=="simple"&&st.settings.negotiationView!=="advanced") st.settings.negotiationView="simple";
+  // V11-C — eski sponsor pipeline kayıtlarına eksik alan sızıntısı olmasın (bkz. simSponsorPolicies/simSponsors).
+  // Her ikisi de NÖTR/güvenli tarafa düşer: bilinmeyen eski veri otomasyonu ASLA retroaktif olarak
+  // açmamalı. moralityClause:false demek "hukuka otomatik gönderilmez" — madde icat edilmez.
+  if(Array.isArray(st.sponsorPipeline)) for(const sp of st.sponsorPipeline){
+    if(typeof sp.moralityClause!=="boolean") sp.moralityClause=false;
+    if(typeof sp.exclusivity!=="boolean") sp.exclusivity=false;
+  }
+  return st;
+}
+/* politika yolu (ör. "transfer.autoRejectEnabled") oku/yaz — el ile değiştirilen alanları customizedKeys'e işler */
+function policyPathGet(path){
+  const parts=path.split("."); let o=S.delegationPolicies; for(const k of parts){ if(!o) return undefined; o=o[k]; } return o;
+}
+function policyPathSet(path,val){
+  S.delegationPolicies=S.delegationPolicies||defaultDelegationPolicies();
+  const parts=path.split("."); let o=S.delegationPolicies;
+  for(let i=0;i<parts.length-1;i++){ o[parts[i]]=o[parts[i]]||{}; o=o[parts[i]]; }
+  o[parts[parts.length-1]]=val;
+  const ck=S.delegationPolicies.customizedKeys=S.delegationPolicies.customizedKeys||[];
+  if(!ck.includes(path)) ck.push(path);
+  S.delegationPolicies.customized=true;
+  save(); renderAll();
+}
+/* ilgili moda uygun şablonu customized OLMAYAN alanlara uygular; full=true tüm alanları
+   (customization dahil) sıfırlayıp customizedKeys'i temizler — yalnız açık onay sonrası çağrılır. */
+function applyManagementModeDefaults(mode,opts){
+  opts=opts||{};
+  const tmpl=MANAGEMENT_MODE_POLICY_TEMPLATES[mode]; if(!tmpl) return;
+  S.delegationPolicies=S.delegationPolicies||defaultDelegationPolicies();
+  const pol=S.delegationPolicies;
+  const ck=new Set(pol.customizedKeys||[]);
+  for(const domain in tmpl){
+    pol[domain]=pol[domain]||{};
+    for(const key in tmpl[domain]){
+      const path=domain+"."+key;
+      if(!opts.full&&ck.has(path)) continue; // el ile özelleştirilmiş — sessizce ezilmez
+      pol[domain][key]=tmpl[domain][key];
+    }
+  }
+  if(opts.full){ pol.customizedKeys=[]; pol.customized=false; }
+  if(!opts.silent){ save(); renderAll(); toast("Mod varsayılanları uygulandı","gold"); }
+}
+function previewManagementModeDefaults(mode){
+  const tmpl=MANAGEMENT_MODE_POLICY_TEMPLATES[mode]||{};
+  const pol=S.delegationPolicies||defaultDelegationPolicies();
+  const ck=new Set(pol.customizedKeys||[]);
+  const changes=[];
+  for(const domain in tmpl) for(const key in tmpl[domain]){
+    const path=domain+"."+key; const cur=(pol[domain]||{})[key]; const next=tmpl[domain][key];
+    if(cur!==next) changes.push({path,cur,next,customized:ck.has(path)});
+  }
+  return changes;
+}
+function confirmApplyModeDefaults(){
+  const mode=managementMode();
+  const changes=previewManagementModeDefaults(mode);
+  const willChange=changes.filter(c=>!c.customized);
+  const willSkip=changes.filter(c=>c.customized);
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">ONAY</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:16px">${managementModeDef().label} Moduna Uygun Varsayılanları Uygula</div></div>`;
+  h+=`<div class="card tiny">Zorluk, mevcut görevler, mesajlar ve teklifler değişmez — yalnız hangi işlerin otomatik/gözden geçirilebilir olduğu güncellenir.</div>`;
+  if(willChange.length) h+=`<div class="card"><div class="tiny b">Güncellenecek (${willChange.length})</div>`+
+    willChange.map(c=>`<div class="sumline"><span class="muted">${escapeHtml(c.path)}</span><b>${escapeHtml(String(c.next))}</b></div>`).join("")+`</div>`;
+  if(willSkip.length) h+=`<div class="card alt"><div class="tiny b">Özelleştirdiğin için korunacak (${willSkip.length})</div>`+
+    willSkip.map(c=>`<div class="sumline"><span class="muted">${escapeHtml(c.path)}</span><b>${escapeHtml(String(c.cur))}</b></div>`).join("")+`</div>`;
+  if(!changes.length) h+=`<div class="empty">Zaten bu modun varsayılanlarındasın.</div>`;
+  h+=`<button class="btn block gold" style="margin-top:8px" onclick="applyManagementModeDefaults('${mode}',{full:false});closeSheet()">Uygula</button>`;
+  if(willSkip.length) h+=`<button class="btn block ghost ${'' }" style="margin-top:8px" onclick="applyManagementModeDefaults('${mode}',{full:true});closeSheet()">Özelleştirmeler dahil tümünü sıfırla</button>`;
+  h+=`<button class="btn block ghost" style="margin-top:8px" onclick="closeSheet()">Vazgeç</button>`;
+  openSheet(h);
+}
+function policyAdjust(path,delta,min,max){ policyPathSet(path,clampNum(policyPathGet(path)+delta,min,max,policyPathGet(path))); }
+function policyToggleRow(label,path,hint){
+  const on=!!policyPathGet(path);
+  return `<div class="sumline"><span>${label}${hint?` <span class="tiny">(${hint})</span>`:""}</span>
+    <button class="btn sm ${on?'primary':'ghost'}" onclick="policyPathSet('${path}',${!on})">${on?"Açık":"Kapalı"}</button></div>`;
+}
+function renderDelegationPolicyPanel(){
+  const pol=S.delegationPolicies||defaultDelegationPolicies();
+  let h=`<h2 class="sec">🎯 Akıllı Delegasyon Politikaları</h2>
+  <div class="tiny" style="margin:-4px 2px 8px">Rutin işleri politikaya göre ekip yürütür; kritik/geri döndürülemez kararlar her zaman sende kalır.</div>
+  <div class="card">
+    <button class="btn block gold" onclick="confirmApplyModeDefaults()">🧭 Bu Moda Uygun Varsayılanları Uygula</button>
+  </div>
+  <div class="card"><div class="tiny b">💼 Transfer</div>
+    ${policyToggleRow("Düşük teklifleri politikaya göre reddet","transfer.autoRejectEnabled","hukukçu gerek")}
+    ${negoRow("Reddedilecek eşik (%değer altı)",pol.transfer.rejectBelowValuePct+"%","policyAdjust('transfer.rejectBelowValuePct',-5,10,100)","policyAdjust('transfer.rejectBelowValuePct',5,10,100)")}
+    ${negoRow("Her zaman göster (%değer üstü)",pol.transfer.alwaysShowAboveValuePct+"%","policyAdjust('transfer.alwaysShowAboveValuePct',-5,100,300)","policyAdjust('transfer.alwaysShowAboveValuePct',5,100,300)")}
+    ${policyToggleRow("Kiralık incelemesini devret","transfer.delegateLoanReview")}
+  </div>
+  <div class="card"><div class="tiny b">🔭 Scouting</div>
+    ${policyToggleRow("Düşük güvenli raporlarda otomatik ikinci gözlem","scouting.autoSecondLook")}
+    ${negoRow("Eşik (güven altı)",pol.scouting.secondLookBelowConfidence+"%","policyAdjust('scouting.secondLookBelowConfidence',-5,10,90)","policyAdjust('scouting.secondLookBelowConfidence',5,10,90)")}
+    ${negoRow("Yüksek potansiyel uyarısı (PA üstü)",pol.scouting.alertAboveEstimatedPA,"policyAdjust('scouting.alertAboveEstimatedPA',-1,50,99)","policyAdjust('scouting.alertAboveEstimatedPA',1,50,99)")}
+  </div>
+  <div class="card"><div class="tiny b">📱 Telefon</div>
+    ${policyToggleRow("Düşük öncelikli medya taleplerini devret","phone.delegateLowMedia")}
+    ${policyToggleRow("Standart kulüp taleplerini devret","phone.delegateStandardClub")}
+    <div class="tiny" style="margin-top:4px">Oyuncu, aile, rakip tehdidi ve yüksek aciliyet her zaman elle yönetilir.</div>
+  </div>
+  <div class="card"><div class="tiny b">📝 Sözleşme & Sponsor</div>
+    ${policyToggleRow("Yüksek sadakatte yenileme taslağı hazırla","contracts.draftHighLoyaltyRenewal")}
+    ${negoRow("Temsil hazırlığı (hafta altı)",pol.contracts.prepareRepresentationBelowWeeks,"policyAdjust('contracts.prepareRepresentationBelowWeeks',-1,4,30)","policyAdjust('contracts.prepareRepresentationBelowWeeks',1,4,30)")}
+    ${policyToggleRow("Kulüp sözleşmesi yaklaşınca ön inceleme başlat","contracts.autoClubContractReview","yalnız inceleme — imza/uzatma asla otomatik değil")}
+    ${policyToggleRow("Moralite maddesi varsa hukuka gönder","sponsor.legalReviewMoralityClause")}
+    <div class="sumline"><span>Küçük sponsor tekliflerini pazarlamacıya bırak <span class="tiny">(asla otomatik imza yok — yalnız eleme)</span></span>
+    <button class="btn sm ${pol.sponsor.delegateBelowValue>0?'primary':'ghost'}" onclick="policyPathSet('sponsor.delegateBelowValue',${pol.sponsor.delegateBelowValue>0?0:5000})">${pol.sponsor.delegateBelowValue>0?"Açık":"Kapalı"}</button></div>
+    ${pol.sponsor.delegateBelowValue>0?negoRow("Eşik (bu değerin altı)",fmtM(pol.sponsor.delegateBelowValue),"policyAdjust('sponsor.delegateBelowValue',-1000,0,50000)","policyAdjust('sponsor.delegateBelowValue',1000,0,50000)"):""}
+  </div>`;
+  return h;
 }
 function repairSaveState(st){
   if(!st) return st;
@@ -1858,6 +2067,8 @@ function repairSaveState(st){
     st.routeState=st.routeState||{screen:"home"}; st.tutorialFlow=st.tutorialFlow||{active:false,done:true};
     st.actionCenterState=st.actionCenterState||{}; st.nationalCompetitions=st.nationalCompetitions||[];
     st.registrationCases=st.registrationCases||[]; st.workPermitCases=st.workPermitCases||[]; }
+  // V11-C — delegasyon politikası + ekip işlemleri günlüğü: idempotent, yıkıcı değil
+  repairDelegationPolicies(st);
   // NaN temizliği
   for(const k of ["cash","rep","status","mediaPower","sponsorNetwork"]) if(typeof st[k]!=="number"||!isFinite(st[k])) st[k]=0;
   for(const rv of st.rivalAgencies){ if(typeof rv.cash!=="number"||!isFinite(rv.cash)) rv.cash=0;
@@ -2088,27 +2299,22 @@ function simSponsors(sum){
     if(cands.length){ const p=pick(cands);
       const brand=pick(["VoltKick","AeroSport","Nordik Wear","Şimşek Enerji","UrbanFit","GoalPro","MaviKart Finans"]);
       const val=Math.round((p.mediaPop*110+ri(0,2000))/10)*10;
-      S.sponsorPipeline.push({id:"sp"+ri(1e4,9e4),brand,pid:p.id,stage:"lead",val,wait:ri(1,2),left:0,tries:0});
+      S.sponsorPipeline.push({id:"sp"+ri(1e4,9e4),brand,pid:p.id,stage:"lead",val,wait:ri(1,2),left:0,tries:0,
+        moralityClause:rnd()<0.55,exclusivity:rnd()<0.25});
       addNews("me",`Sponsor ilgisi: ${brand} 👟`,`${p.name} için ${brand} nabız yokluyor. Yakında masaya oturabilirsiniz.`,"");
     }
   }
   for(const sp of S.sponsorPipeline){
     if(sp.stage==="lead"){ sp.wait--;
       if(sp.wait<=0){
+        // V11-C — sponsor anlaşması hiçbir politika altında otomatik imzalanmaz; her zaman masaya gelir.
         const p=S.world.players[sp.pid];
-        if(S.delegation&&S.delegation.autoSponsor&&S.staff.marketer){
-          const cut=Math.round(sp.val*0.22*(rnd()<0.12?0.8:1));
-          S.sponsorDeals.push({brand:sp.brand,pid:sp.pid,cut,weeksLeft:40});
-          addNews("me",`${sp.brand} anlaşması pazarlamacına emanet ✍️`,`Standart şartlarla imzalandı: aylık ${fmtM(cut)} ajans payı.`,"good");
-          sp.stage="lost";
-        } else {
-          sp.stage="offer"; sp.left=4;
-          notify("sponsor",`${sp.brand} teklifle masada — ${p?p.name:"?"}`,"agency","sponsor");
-          addNews("me",`${sp.brand} resmi teklifle geldi 📨`,`${p?p.name:"?"} için masada aylık ${fmtM(sp.val)} bandında anlaşma var. Sponsor merkezinde pazarlığa otur.`,"good");
-        }
+        sp.stage="offer"; sp.left=4;
+        notify("sponsor",`${sp.brand} teklifle masada — ${p?p.name:"?"}`,"agency","sponsor");
+        addNews("me",`${sp.brand} resmi teklifle geldi 📨`,`${p?p.name:"?"} için masada aylık ${fmtM(sp.val)} bandında anlaşma var. Sponsor merkezinde pazarlığa otur.`,"good");
       } }
     else if(sp.stage==="offer"){ sp.left--;
-      if(sp.left<=0){ sp.stage="lost"; addNews("me",`${sp.brand} fırsatı kaçtı`,`Masaya oturulmayınca marka başka yüz buldu.`,"bad"); } }
+      if(sp.left<=0){ sp.stage="lost"; cancelActiveSponsorTasks(sp.id,"Teklif süresi doldu"); addNews("me",`${sp.brand} fırsatı kaçtı`,`Masaya oturulmayınca marka başka yüz buldu.`,"bad"); } }
   }
   S.sponsorPipeline=S.sponsorPipeline.filter(sp=>sp.stage!=="lost");
 }
@@ -2174,6 +2380,8 @@ function advanceWeek(sum){
   try{ simRivalAgencies(sum); }catch(e){ console.error("simRivalAgencies",e); }
   try{ simPhone(sum); }catch(e){ console.error("simPhone",e); }
   try{ simPhoneFollowUps(sum); }catch(e){ console.error("simPhoneFollowUps",e); }
+  // V11-C — akıllı delegasyon politikaları (bu haftanın tekliflerine/raporlarına/mesajlarına uygulanır)
+  try{ simDelegationPolicies(sum); }catch(e){ console.error("simDelegationPolicies",e); }
   try{ simAdaptations(sum); }catch(e){ console.error("simAdaptations",e); }
   try{ computeDeadlineDay(); }catch(e){}
   try{ simV9Weekly(sum); }catch(e){ console.error("v9",e); }
@@ -3583,6 +3791,9 @@ function sendSponsorOffer(spid){
     const cut=Math.round(pay*SP_SHARE[sp.ask.share]/100);
     S.sponsorDeals.push({brand:sp.brand,pid:sp.pid,cut,weeksLeft:SP_DUR[sp.ask.dur]});
     S.sponsorPipeline=S.sponsorPipeline.filter(x=>x.id!==spid);
+    // V11-C — bu teklif için bekleyen sponsor-review/sponsor-filter varsa iptal et: az sonra
+    // tamamlandığında artık var olmayan bir teklifi "elendi" diye raporlayıp ağ bonusu vermesin.
+    cancelActiveSponsorTasks(spid,"Teklif manuel olarak imzalandı");
     p.mediaPop=clamp(p.mediaPop+5,1,99);
     bumpRep("media",3);
     addNews("me",`${p.name}, ${sp.brand}'ın yüzü oldu 👟`,`${SP_DUR[sp.ask.dur]} haftalık anlaşma. Ajans payı aylık ${fmtM(cut)}.`,"good");
@@ -3590,6 +3801,7 @@ function sendSponsorOffer(spid){
     save(); closeSheet(); renderAll();
   } else if(sp.tries>=2){
     S.sponsorPipeline=S.sponsorPipeline.filter(x=>x.id!==spid);
+    cancelActiveSponsorTasks(spid,"Teklif masadan kalktı");
     addNews("me",`${sp.brand} masadan kalktı`,`Şartlar markaya ağır geldi. Belki daha popüler bir dönemde...`,"bad");
     toast("Sponsor vazgeçti 😬"); save(); closeSheet(); renderAll();
   } else {
@@ -4092,7 +4304,14 @@ function doAccept(oid){ const o=S.offers.find(x=>x.id===oid); if(!o)return;
 function doCounter(oid){ const o=S.offers.find(x=>x.id===oid); if(!o)return;
   const res=counterOffer(o); save();
   if(res==="gone"){ closeSheet(); renderAll(); } else openOffer(oid); renderChrome(); }
-function doReject(oid){ S.offers=S.offers.filter(x=>x.id!==oid); if(S.negotiationSessions) delete S.negotiationSessions[oid];
+/* V11-C — tekliflerin gerçekten reddedildiği TEK yer; el ile red (doReject),
+   politika bazlı otomatik red (simTransferPolicies) ve toplu red (bulk) hepsi
+   bunu kullanır — aynı domain etkisi, ikinci bir red yolu yaratılmaz. */
+function rejectOfferDomain(o){
+  S.offers=S.offers.filter(x=>x.id!==o.id); if(S.negotiationSessions) delete S.negotiationSessions[o.id];
+}
+function doReject(oid){ const o=S.offers.find(x=>x.id===oid); if(!o) return;
+  rejectOfferDomain(o);
   toast("Teklif reddedildi"); save(); closeSheet();
   if(TAB==="entity"&&UI.route&&UI.route.entityId===oid) navigateTo("transfer","masa"); else renderAll(); }
 
@@ -4253,7 +4472,64 @@ function agCenter(){
     <span class="tiny">${opn?"görüşmeye açık":TIERS[cat.tier-1].name+" gerekli"}</span></div>`;
   }
   h+=`</div>`;
+  h+=renderTeamOperationsPanel();
   h+=`<div id="ag-relations">${agRelations()}</div><div class="divider"></div><div id="ag-rivals">${agRivalsV6()}</div>`;
+  return h;
+}
+/* ============================================================
+   V11-C GATE 3 — EKİP İŞLEMLERİ (Team Operations) — Agency → Genel
+   S.teamOperations (bounded ≤60) üzerinde salt-okunur özet + filtre.
+   ============================================================ */
+let TEAMOPS_FILTER="all";
+function setTeamOpsFilter(f){ TEAMOPS_FILTER=f; const el=$("teamops-list"); if(el) el.innerHTML=renderTeamOpsList(); }
+const TEAMOPS_STATUS_LABEL={prepared:"Hazırlanıyor",delegated:"Devam ediyor",completed:"Tamamlandı",failed:"Başarısız",blocked:"Engellendi",skipped:"Atlandı",cancelled:"İptal edildi"};
+const TEAMOPS_STATUS_CLASS={prepared:"",delegated:"gold",completed:"ok",failed:"sad",blocked:"sad",skipped:"",cancelled:"sad"};
+/* V11-C — bir işi SONLANDIRAN durumlar. Günlük tarihsel olduğu için orijinal "delegated" kaydı
+   silinmez/değiştirilmez; bunun yerine relatedOpId ile ona bağlanan yeni bir sonuç kaydı eklenir. */
+const TEAMOPS_TERMINAL_STATUS=new Set(["completed","failed","skipped","cancelled"]);
+function renderTeamOpsList(){
+  const all=(S.teamOperations||[]).slice();
+  // Sonuçlanmış işlerin ORİJİNAL kayıt id'leri — "Devam Eden" bunları artık aktif saymamalı.
+  const resolvedOperationIds=new Set(all.filter(o=>o.relatedOpId&&TEAMOPS_TERMINAL_STATUS.has(o.status)).map(o=>o.relatedOpId));
+  let ops=all;
+  if(TEAMOPS_FILTER==="ongoing") ops=ops.filter(o=>(o.status==="delegated"||o.status==="prepared")&&!resolvedOperationIds.has(o.id));
+  else if(TEAMOPS_FILTER==="done") ops=ops.filter(o=>o.status==="completed");
+  else if(TEAMOPS_FILTER==="issues") ops=ops.filter(o=>o.status==="failed"||o.status==="blocked"||o.status==="skipped"||o.status==="cancelled");
+  if(!ops.length) return `<div class="empty">Bu filtrede ekip işlemi yok.</div>`;
+  return ops.slice(0,20).map(o=>{
+    const dept=o.departmentId?DEPT_MAP[o.departmentId]:null;
+    return `<div class="card" style="padding:8px 12px"><div class="row" style="justify-content:space-between">
+      <span class="b" style="font-size:13px">${dept?dept.icon+" ":""}${escapeHtml(o.action||"")}</span>
+      <span class="badge ${TEAMOPS_STATUS_CLASS[o.status]||''}">${TEAMOPS_STATUS_LABEL[o.status]||"Bilinmiyor"}</span></div>
+      ${o.reason?`<div class="tiny">${escapeHtml(o.reason)}</div>`:""}
+      <div class="tiny">S${o.season} H${o.week}${o.cost?` · ${fmtM(-o.cost)}`:""}${o.result?` · ${escapeHtml(o.result)}`:""}</div></div>`;
+  }).join("");
+}
+function renderTeamOperationsPanel(){
+  const pol=S.delegationPolicies||defaultDelegationPolicies();
+  const activeAuto=[pol.transfer.autoRejectEnabled&&"Düşük teklif reddi",pol.scouting.autoSecondLook&&"İkinci gözlem",
+    (pol.phone.delegateLowMedia||pol.phone.delegateStandardClub)&&"Telefon devri",pol.contracts.draftHighLoyaltyRenewal&&"Yenileme taslağı",
+    pol.sponsor.legalReviewMoralityClause&&"Sponsor incelemesi"].filter(Boolean);
+  const blockedRecent=(S.teamOperations||[]).filter(o=>o.status==="blocked").slice(0,3);
+  const activeTasks=(S.departmentTasks||[]).filter(t=>t.status==="active");
+  let h=`<h2 class="sec">🧭 Yönetim & Politika Özeti</h2>
+  <div class="card">
+    <div class="sumline"><span class="muted">Mod</span><b>${managementModeDef().label}</b></div>
+    <div class="sumline"><span class="muted">Aktif otomasyonlar</span><b>${activeAuto.length?escapeHtml(activeAuto.join(", ")):"Yok"}</b></div>
+    <div class="sumline"><span class="muted">Devredilmiş aktif görev</span><b>${activeTasks.length}</b></div>
+    <button class="btn sm ghost" style="margin-top:6px" onclick="navigateTo('settings')">⚙️ Politika Ayarları</button>
+  </div>`;
+  if(blockedRecent.length) h+=`<div class="card alt"><div class="tiny b">⚠️ Engellenen otomasyonlar</div>${blockedRecent.map(o=>`<div class="tiny">${escapeHtml(o.action)}: ${escapeHtml(o.reason||"")}</div>`).join("")}</div>`;
+  const overloaded=Object.entries(S.departments||{}).filter(([id,d])=>d.unlocked&&d.workload>85);
+  if(overloaded.length) h+=`<div class="card urgent"><div class="tiny b">🔥 İş yükü uyarısı</div>${overloaded.map(([id,d])=>`<div class="tiny">${DEPT_MAP[id].icon} ${DEPT_MAP[id].name}: %${d.workload}</div>`).join("")}</div>`;
+  h+=renderSectionHeader("👥 Ekip İşlemleri",null,{count:(S.teamOperations||[]).length});
+  h+=`<div class="filterrow" role="group" aria-label="ekip işlem filtreleri">
+    <button class="fchip ${TEAMOPS_FILTER==='all'?'on':''}" onclick="setTeamOpsFilter('all')">Tümü</button>
+    <button class="fchip ${TEAMOPS_FILTER==='ongoing'?'on':''}" onclick="setTeamOpsFilter('ongoing')">Devam Eden</button>
+    <button class="fchip ${TEAMOPS_FILTER==='done'?'on':''}" onclick="setTeamOpsFilter('done')">Tamamlanan</button>
+    <button class="fchip ${TEAMOPS_FILTER==='issues'?'on':''}" onclick="setTeamOpsFilter('issues')">Sorunlar</button>
+  </div>
+  <div id="teamops-list">${renderTeamOpsList()}</div>`;
   return h;
 }
 function agSponsors(){
@@ -4402,14 +4678,7 @@ function agSettings(){
   <div class="tiny" style="margin:-4px 2px 8px">Zorluk ekonomik baskıyı, yönetim modu rutin işin ne kadarının öne çıkacağını belirler.</div>
   ${MANAGEMENT_MODES.map(m=>`<button class="opt ${managementMode()===m.id?'on':''}" onclick="setManagementMode('${m.id}')">
     <div class="ot">${managementMode()===m.id?"✓ ":""}${escapeHtml(m.label)}</div><div class="oh">${escapeHtml(m.desc)}</div></button>`).join("")}
-  <h2 class="sec">🤖 Delegasyon</h2>
-  <div class="card">
-    <div class="sumline"><span>Düşük teklifleri otomatik reddet <span class="tiny">(hukukçu gerek)</span></span>
-    <button class="btn sm ${S.delegation&&S.delegation.autoReject?'primary':'ghost'}" ${S.staff.lawyer?"":"disabled"} onclick="toggleDeleg('autoReject')">${S.delegation&&S.delegation.autoReject?"Açık":"Kapalı"}</button></div>
-    <div class="sumline"><span>Küçük sponsorları pazarlamacıya bırak <span class="tiny">(pazarlamacı gerek)</span></span>
-    <button class="btn sm ${S.delegation&&S.delegation.autoSponsor?'primary':'ghost'}" ${S.staff.marketer?"":"disabled"} onclick="toggleDeleg('autoSponsor')">${S.delegation&&S.delegation.autoSponsor?"Açık":"Kapalı"}</button></div>
-    <div class="tiny" style="margin-top:4px">Personel hata yapabilir — delegasyon kusursuz değildir.</div>
-  </div>
+  ${renderDelegationPolicyPanel()}
   <h2 class="sec">💾 Kayıt Yönetimi</h2>
   <div class="card">
     <button class="btn block blue" onclick="exportSave()">⬇️ Save İndir (JSON)</button>
@@ -4777,7 +5046,13 @@ function agRelations(){
   }
   return h;
 }
-function toggleDeleg(k){ S.delegation=S.delegation||{}; S.delegation[k]=!S.delegation[k]; save(); renderAll(); }
+/* V11-C — S.delegation artık yürütmeyi TETİKLEMEZ, yalnız geriye dönük görüntü aynasıdır;
+   gerçek kaynak her zaman S.delegationPolicies'tir. */
+function toggleDeleg(k){
+  S.delegation=S.delegation||{}; S.delegation[k]=!S.delegation[k];
+  if(k==="autoReject") policyPathSet("transfer.autoRejectEnabled",S.delegation.autoReject);
+  else{ save(); renderAll(); }
+}
 const APPROACHES=[
  {id:"genc",icon:"🔭",label:"Genç Yetenek Uzmanı",desc:"Gençlerle görüşme şansı artar, başlangıç scoutun daha kaliteli."},
  {id:"pazarlik",icon:"🤝",label:"Agresif Pazarlıkçı",desc:"Kulüp pazarlıklarında elin daha güçlü."},
@@ -5180,11 +5455,44 @@ function processDepartmentTasks(sum){
   }
   S.departmentTasks=(S.departmentTasks||[]).filter(x=> x.status==="active" || (t-x.dueTick)<6);
 }
+/* V11-C — sponsor-review/sponsor-filter görevleri tamamlanmadan HEMEN önce kaynağı yeniden
+   doğrular: proposal hâlâ var mı, hâlâ lead/offer aşamasında mı, oyuncu hâlâ var mı? Manuel imza,
+   pazarlıktan vazgeçme veya doğal süre dolumu proposal'ı ÇOKTAN kaldırmış olabilir — böyle bir
+   durumda görev "tamamlandı" gibi raporlanamaz, ağ bonusu/haber üretilemez, ilgisiz bir sponsor
+   anlaşması asla değiştirilemez. */
+function sponsorTaskSourceStillValid(spid){
+  const sp=(S.sponsorPipeline||[]).find(x=>x.id===spid);
+  return !!(sp&&(sp.stage==="lead"||sp.stage==="offer")&&sp.pid&&S.world.players[sp.pid]);
+}
+/* Aktif spid'li sponsor-review/sponsor-filter görevlerini iptal eder (tarih SİLİNMEZ — durum
+   "cancelled" olur ve şeffaf bir Ekip İşlemleri kaydı düşer). Manuel imza/vazgeçme ve doğal süre
+   dolumunda proaktif olarak çağrılır; applyDeptTaskResult'taki reaktif kontrol ise son bir güvenlik ağıdır. */
+function cancelActiveSponsorTasks(spid,reason){
+  const tasks=(S.departmentTasks||[]).filter(t=>t&&t.status==="active"&&(t.kind==="sponsor-review"||t.kind==="sponsor-filter")&&t.spid===spid);
+  for(const t of tasks){
+    t.status="cancelled";
+    if(t._logId){ const le=(S.teamOperations||[]).find(x=>x.id===t._logId);
+      logTeamOperation({domain:le?le.domain:"sponsor",action:`${t.title} — iptal edildi`,
+        reason:reason||"Kaynak teklif çözüldü",policyPath:le?le.policyPath:null,departmentId:t.deptId,
+        sourceType:le?le.sourceType:"sponsorPipeline",sourceId:le?le.sourceId:spid,pid:t.pid||null,
+        status:"cancelled",result:reason||"Kaynak teklif artık aktif değil",cost:0,taskId:t.id,relatedOpId:le?le.id:null});
+    }
+  }
+}
 function applyDeptTaskResult(task, ok){
   const label=task.title;
-  if(task.kind==="phoneDelegate"){ resolveDelegatedConversation(task,ok); return; }
-  if(task.kind==="second-look"){
-    const rep=S.reports.find(r=>r.pid===task.pid);
+  // V11-C — alan (domain) bir 'outcome' üretirse ({status,result}), aşağıdaki genel tamamlanma
+  // kaydı ham ok yerine BUNU kullanır — böylece geçersiz/eski bir kaynak asla "Başarıyla
+  // tamamlandı" olarak raporlanmaz. Üretmezse mevcut ok tabanlı varsayılan davranış aynen sürer.
+  let outcome=null;
+  // V11-C — telefon görevi artık ortak tamamlanma yolundan ERKEN ÇIKMAZ: sonuçları
+  // resolveDelegatedConversation uygular, ama tarihli completed/failed Ekip İşlemleri kaydı
+  // diğer tüm alanlarla aynı ortak kodda üretilir.
+  if(task.kind==="phoneDelegate"){ outcome=resolveDelegatedConversation(task,ok)||null; }
+  else if(task.kind==="second-look"){
+    // V11-C — kimlik önce sabit rapor ID'sinden çözülür (bir oyuncunun 2 raporu varsa yanlış olanı güncellemeyi önler);
+    // reportId taşımayan eski (uçuştaki) görevler için pid'e geri düşülür.
+    const rep=task.reportId?S.reports.find(r=>r.id===task.reportId):S.reports.find(r=>r.pid===task.pid);
     if(ok&&rep){ rep.reliability=clamp((rep.reliability||55)+ri(12,22),10,99); rep.confirmed=true;
       addNews("me",`İkinci gözlem tamam: ${label}`,`Scout ekibi raporu doğruladı, güven aralığı daraldı.`,"good"); }
     else addNews("me",`İkinci gözlem sonuçsuz`,`${label} için ek rapor beklenen netliği vermedi.`,"");
@@ -5194,11 +5502,62 @@ function applyDeptTaskResult(task, ok){
       addNews("me",`Temsil yenilendi: ${p.name}`,`Hukuk ekibi temsil sözleşmesini uzattı.`,"good"); }
     else if(p) addNews("me",`Yenileme gecikti: ${p.name}`,`Temsil görüşmesi bu tur sonuç vermedi.`,"");
   } else if(task.kind==="sponsor-filter"){
-    if(ok){ S.sponsorNetwork=clamp((S.sponsorNetwork||0)+2,0,100); addNews("me","Sponsor teklifleri elendi","Pazarlama ekibi zayıf teklifleri ayıkladı, ağ güçlendi."); }
+    // V11-C — yalnız BAŞARILI elemede pipeline'dan çıkar; asla imza/kabul üretmez.
+    // Önce kaynağı yeniden doğrula: proposal manuel imzalanmış/vazgeçilmiş/süresi dolmuş olabilir.
+    if(!sponsorTaskSourceStillValid(task.spid)){
+      outcome={status:"skipped",result:"Kaynak teklif artık aktif olmadığı için görev kapatıldı."};
+    } else if(ok){
+      const sp=S.sponsorPipeline.find(x=>x.id===task.spid);
+      sp.stage="lost"; S.sponsorNetwork=clamp((S.sponsorNetwork||0)+2,0,100); addNews("me","Sponsor teklifleri elendi","Pazarlama ekibi zayıf teklifleri ayıkladı, ağ güçlendi.");
+    }
   } else if(task.kind==="scout-region"){
     if(ok){ const rep=makeScoutReportForRegion(task.leagueId); if(rep){ addNews("me",`Bölge taraması: yeni hedef`,`${DEPT_MAP.scouting.name} ekibi ${rep._name} adını rapora ekledi.`,"good"); } }
+  } else if(task.kind==="loan-review"){
+    // V11-C — yalnız İNCELEME/ÖNERİ üretir; kiralığı ASLA geri çağırmaz, rol sözü vermez, şartları değiştirmez.
+    const p=S.world.players[task.pid];
+    if(p&&p.loan){ const note=ok?((p.coachTrust||50)>=55?"Kalması önerilir — hoca güveni sağlam.":"Süre riski var — geri çağırmayı düşün."):"Net bir öneri çıkmadı.";
+      p.loan.staffReviewed=true; p.loan.staffRecommendation=note;
+      addNews("me",`Kiralık incelemesi: ${p.name}`,`Departman önerisi: ${note} (karar sende — otomatik işlem yapılmadı)`,""); }
+  } else if(task.kind==="club-contract-review"){
+    // V11-C — yalnız gözden geçirme; kulüp sözleşmesini ASLA otomatik imzalamaz/uzatmaz.
+    // Kalıcı bir boolean yerine sözleşme İMZASI (clubId+bitiş sezonu/haftası) kullanılır: başarılı
+    // inceleme BU imza için tekrarlanmaz; başarısız inceleme sınırlı bir bekleme sonrası tekrar
+    // denenebilir; yeni/uzatılmış bir sözleşme farklı bir imza üretip yeniden incelenebilir hale gelir.
+    const p=S.world.players[task.pid];
+    if(p){ const weeksLeft=(typeof contractWeeksLeft==="function")?contractWeeksLeft(p):99;
+      const note=ok?(weeksLeft<14?"Acil — kulüple uzatma görüşmesi öner.":"Takipte kalsın, henüz acele yok."):"İnceleme netleşmedi, tekrar gündeme al.";
+      if(ok){ p._clubContractReviewedSig=clubContractSignature(p); p._clubContractReviewCooldownUntil=null; }
+      else { p._clubContractReviewCooldownUntil=nowTick()+ri(3,5); }
+      p._clubContractReviewNote=note;
+      addNews("me",`Kulüp sözleşmesi incelendi: ${p.name}`,`Departman notu: ${note} Karar ve imza her zaman sende.`,""); }
+  } else if(task.kind==="sponsor-review"){
+    // V11-C — yalnız hukuki/ahlaki madde incelemesi; sponsor anlaşmasını ASLA otomatik kabul etmez.
+    // Önce kaynağı yeniden doğrula: proposal manuel imzalanmış/vazgeçilmiş/süresi dolmuş olabilir.
+    if(!sponsorTaskSourceStillValid(task.spid)){
+      outcome={status:"skipped",result:"Kaynak teklif artık aktif olmadığı için görev kapatıldı."};
+    } else {
+      const sp=S.sponsorPipeline.find(x=>x.id===task.spid);
+      sp.legalReviewed=true; sp.legalNote=ok?"Hukuk ekibi maddeleri uygun buldu — şartları sen onaylamalısın.":"Hukuk ekibi riskli madde işaretledi — dikkatli incele.";
+      addNews("me",`Sponsor incelemesi: ${sp.brand}`,sp.legalNote,"");
+    }
   }
-  notify("ajans",`${ok?"✅":"⚠️"} Görev: ${task.title}`,"agency","departman");
+  // V11-C — orijinal "delegated" kaydı OLDUĞU GİBİ kalır (o haftanın gerçek geçmişi budur ve
+  // geriye dönük olarak "tamamlandı"ya çevrilmez). Tamamlanma/başarısızlık/atlanma, GERÇEK haftasıyla
+  // damgalı YENİ bir Ekip İşlemleri kaydı olarak eklenir — bu yüzden hafta 2'de devredilen bir iş
+  // hafta 4'te bittiğinde hafta-4 brifinginde görünür, hafta-2 geçmişi sahte biçimde değişmez.
+  // outcome doluysa (ör. kaynak artık geçersiz) ham ok yerine BUNU kullanır.
+  if(task._logId){
+    const le=(S.teamOperations||[]).find(x=>x.id===task._logId);
+    const status=outcome?outcome.status:(ok?"completed":"failed");
+    const result=outcome?outcome.result:(ok?"Başarıyla tamamlandı":"Başarısız oldu");
+    const statusLabel={completed:"tamamlandı",skipped:"atlandı",cancelled:"iptal edildi",failed:"başarısız oldu"}[status]||"sonuçlandı";
+    logTeamOperation({domain:le?le.domain:(task.kind||"agency"),action:`${label} — ${statusLabel}`,
+      reason:le?le.reason:null,policyPath:le?le.policyPath:null,departmentId:task.deptId,
+      sourceType:le?le.sourceType:null,sourceId:le?le.sourceId:null,pid:task.pid||null,
+      status,result,cost:0,
+      taskId:task.id,relatedOpId:le?le.id:null});
+  }
+  notify("ajans",`${outcome&&outcome.status==="skipped"?"➖":ok?"✅":"⚠️"} Görev: ${task.title}`,"agency","departman");
 }
 function makeScoutReportForRegion(leagueId){
   const L=S.world.leagues.find(l=>l.id===leagueId)|| S.world.leagues[1];
@@ -5211,33 +5570,356 @@ function makeScoutReportForRegion(leagueId){
   S.reports.unshift(rep); S.reports=S.reports.slice(0,30);
   return rep;
 }
+/* ============================================================
+   V11-C — AKILLI DELEGASYON: GÜVENLİK SINIFLANDIRMASI + POLİTİKA MOTORU
+   Mevcut createDeptTask/findActiveDeptTask/assignPhoneConversation/doReject
+   yollarını kullanır. İKİNCİ bir görev/aksiyon motoru DEĞİLDİR — yalnızca
+   "bu iş şimdi otomatik yürütülebilir mi?" sorusuna cevap verip var olan
+   yolu tetikler.
+   ============================================================ */
+const AUTOMATION_SAFETY={SAFE_ROUTINE:"safe_routine",REVIEW_REQUIRED:"review_required",NEVER_AUTOMATIC:"never_automatic"};
+/* dokümantasyon amaçlı — bu liste hiçbir otomasyon fonksiyonu tarafından ÇAĞRILMAZ;
+   bunlar zaten yalnızca acceptOffer/signTransfer/doAccept/representation-fesih/
+   departman-yükseltme/sponsor-kabul gibi İNSAN tetikli fonksiyonlarla yapılabilir. */
+const NEVER_AUTOMATIC_OPERATIONS=["acceptOffer","signTransfer","doAccept","representationTermination",
+  "commissionReduction","bankLoan","officeUpgrade","departmentUpgrade","staffDismissal",
+  "sponsorExclusivityAccept","moralityObligationAccept","crisisResolution","playerRolePromise","marketGateBypass"];
+/* bounded (≤60) ekip işlemleri günlüğü — fonksiyon/HTML/büyük kopya nesne SAKLANMAZ */
+function logTeamOperation(entry,task){
+  S.teamOperations=S.teamOperations||[];
+  const e=Object.assign({id:"top"+ri(1e5,9e5),week:S.week,season:S.season,tick:nowTick()},entry);
+  S.teamOperations.unshift(e);
+  if(S.teamOperations.length>60) S.teamOperations=S.teamOperations.slice(0,60);
+  // görev daha sonra sonuçlandığında (applyDeptTaskResult) bu günlük satırı completed/failed'e güncellensin
+  if(task) task._logId=e.id;
+  return e;
+}
+/* V11-C — aynı hafta içinde aynı (policyPath+sourceId+reason) engelleme satırı tekrar tekrar yazılmasın */
+function alreadyLoggedBlocked(policyPath,sourceId,reason){
+  return (S.teamOperations||[]).some(o=>o.season===S.season&&o.week===S.week&&o.status==="blocked"&&
+    o.policyPath===policyPath&&o.sourceId===sourceId&&o.reason===reason);
+}
+/* ---------- 2A: TRANSFER — düşük teklif otomatik reddi ---------- */
+/* V11-C — iş/aday uygunluğu (değer/süre/pazarlık kuralları) ile YÜRÜTME uygunluğu (departman
+   kilit/personel/iş yükü) ayrıştırılmıştır. opts.ignoreAvailability=true ile yalnız İŞ kurallarına
+   göre "bu teklif otomatik reddedilecek türden mi" sorusu, departman o an kullanılamaz olsa BİLE
+   yanıtlanabilir — bu, "kilitli Hukuk departmanı VAR ama zaten hiçbir teklif buna uygun değildi"
+   durumunda yanlış/gereksiz bir engelleme kaydı düşülmesini önlemek için kullanılır. */
+/* V11-C — YÜRÜTME yetkisi tek yerde: kişisel hukuk danışmanı VE Hukuk departmanının
+   açık/personelli/makul iş yüklü olması. Bunların hiçbiri "bu teklif reddedilecek türden mi"
+   sorusunun parçası değildir — o yüzden iş kurallarından ayrı tutulur. */
+function transferAutoRejectAvailability(){
+  if(!S||!S.staff||!S.staff.lawyer) return {ok:false,reason:"Hukuk danışmanı gerekli"};
+  return _deptDelegAvailability("legal");
+}
+function offerAutoRejectEligible(o,opts){
+  opts=opts||{};
+  const pol=(S.delegationPolicies&&S.delegationPolicies.transfer)||{};
+  if(!pol.autoRejectEnabled) return {eligible:false,reason:"Politika kapalı"};
+  if(!opts.ignoreAvailability){
+    const av=transferAutoRejectAvailability(); if(!av.ok) return {eligible:false,reason:av.reason,availabilityBlocked:true};
+  }
+  if(o.season!==S.season) return {eligible:false,reason:"Geçmiş sezon teklifi"};
+  const p=S.world.players[o.pid]; if(!p) return {eligible:false,reason:"Oyuncu bulunamadı"};
+  if(pol.alwaysShowExpiring&&o.expires-S.week<=1) return {eligible:false,reason:"Süresi dolmak üzere — görünür kalmalı"};
+  if(S.negotiationSessions&&S.negotiationSessions[o.id]) return {eligible:false,reason:"Aktif pazarlık var"};
+  if(typeof repValid==="function"&&!repValid(o.pid)) return {eligible:false,reason:"Temsil yetkisi geçersiz"};
+  const pct=Math.round(o.fee/Math.max(1,p.value)*100);
+  if(pct>=pol.alwaysShowAboveValuePct) return {eligible:false,reason:"Değer üstü — her zaman gösterilir",pct};
+  if(pct>=pol.rejectBelowValuePct) return {eligible:false,reason:"Eşik üstünde",pct};
+  return {eligible:true,reason:null,pct};
+}
+function simTransferPolicies(sum){
+  if(managementMode()==="controlled") return; // V11-C — kontrollü modda otomatik görev SIFIR (mutlak kural; özelleştirme bile bunu aşamaz)
+  const pol=(S.delegationPolicies&&S.delegationPolicies.transfer)||{};
+  if(pol.autoRejectEnabled){
+    const av=transferAutoRejectAvailability();
+    if(av.ok){
+      const CAP=6; let done=0;
+      for(const o of S.offers.slice()){
+        if(done>=CAP) break;
+        const ev=offerAutoRejectEligible(o); if(!ev.eligible) continue;
+        const p=S.world.players[o.pid]; const c=S.world.clubs[o.cid];
+        rejectOfferDomain(o); done++;
+        logTeamOperation({domain:"transfer",action:"Otomatik teklif reddi",reason:`Piyasa değerinin %${ev.pct}'i (eşik %${pol.rejectBelowValuePct})`,
+          policyPath:"transfer.rejectBelowValuePct",departmentId:"legal",sourceType:"offer",sourceId:o.id,pid:o.pid,
+          status:"completed",result:`${p?p.name:"?"} → ${c?c.name:"?"} reddedildi`,cost:0});
+        addNews("","Hukuk ekibi düşük teklifi eledi",`${c?c.name:"?"} → ${p?p.name:"?"} (${fmtM(o.fee)}, değerin %${ev.pct}'i) politika gereği reddedildi.`,"");
+      }
+      if(sum) sum.autoRejectedOffers=(sum.autoRejectedOffers||0)+done;
+      if(done>0&&!S.settings.fastMode) toast(`Hukuk ekibi ${done} düşük teklifi politika gereği reddetti`,"gold");
+    } else {
+      // V11-C — yalnız GERÇEKTEN iş kurallarına uyan (güçlü/korumalı/süresi dolan/pazarlıktaki
+      // teklifler HARİÇ) bir teklif varsa ve engel yalnız departman kullanılabilirliğiyse günlüğe düşer.
+      const candidate=S.offers.find(o=>offerAutoRejectEligible(o,{ignoreAvailability:true}).eligible);
+      if(candidate && !alreadyLoggedBlocked("transfer.rejectBelowValuePct",candidate.id,av.reason)){
+        logTeamOperation({domain:"transfer",action:"Otomatik teklif reddi başlatılamadı",reason:av.reason,policyPath:"transfer.rejectBelowValuePct",
+          departmentId:"legal",sourceType:"offer",sourceId:candidate.id,pid:candidate.pid,status:"blocked",result:null,cost:0});
+      }
+    }
+  }
+  simLoanReviewPolicy(sum);
+}
+/* kiralık incelemesi: YALNIZ öneri üretir — geri çağırma/rol sözü/şart değişikliği YAPMAZ */
+function simLoanReviewPolicy(sum){
+  const pol=(S.delegationPolicies&&S.delegationPolicies.transfer)||{};
+  if(!pol.delegateLoanReview) return;
+  const av=_deptDelegAvailability("legal"); if(!av.ok) return;
+  const targets=myPlayers().filter(p=>p.loan&&!p.loan.staffReviewed&&!findActiveDeptTask("loan-review",p.id));
+  const CAP=2; let done=0;
+  for(const p of targets){
+    if(done>=CAP) break;
+    const t=createDeptTask("loan-review","legal",{title:`${p.name} kiralık incelemesi`,pid:p.id,dur:2,baseSucc:0.7,attentionSaved:1,silent:true,suppressToast:true});
+    if(!t) continue; done++;
+    logTeamOperation({domain:"contracts",action:"Kiralık incelemesi başlatıldı",reason:"Politika: kiralık incelemesi devredildi",
+      policyPath:"transfer.delegateLoanReview",departmentId:"legal",sourceType:"player",sourceId:p.id,pid:p.id,status:"delegated",result:null,cost:0},t);
+  }
+}
+/* ---------- 2B: SCOUTING — düşük güvenli rapor ikinci gözlem + yüksek potansiyel uyarısı ---------- */
+function reportConfidence(r){ return r.conf!=null?r.conf:(r.reliability!=null?r.reliability:50); }
+function reportEstimatedPA(r){ return Math.round(((r.lo||0)+(r.hi||0))/2); }
+function secondLookAutoEligible(r){
+  const pol=(S.delegationPolicies&&S.delegationPolicies.scouting)||{};
+  if(!pol.autoSecondLook) return {eligible:false,reason:"Politika kapalı"};
+  if(!r.pid) return {eligible:false,reason:"Oyuncu yok"};
+  if(r.confirmed) return {eligible:false,reason:"Zaten doğrulanmış"};
+  if(reportConfidence(r)>=pol.secondLookBelowConfidence) return {eligible:false,reason:"Güven zaten yeterli"};
+  if(findActiveDeptTask("second-look",r.pid)) return {eligible:false,reason:"Zaten ekipte"};
+  if(!S.world.players[r.pid]) return {eligible:false,reason:"Oyuncu bulunamadı"};
+  return {eligible:true,reason:null};
+}
+/* üst sınır departman kapasitesinden türetilir — sınırsız döngü YOK. controlled: 0, balanced: düşük, executive: yüksek ama sınırlı */
+function scoutingSecondLookCap(){
+  const mode=managementMode();
+  if(mode==="controlled") return 0;
+  const d=S.departments.scouting; if(!d||!d.unlocked) return 0;
+  const base=mode==="executive"?4:2;
+  return d.workload>85?Math.max(0,base-1):base;
+}
+function simScoutingPolicies(sum){
+  const pol=(S.delegationPolicies&&S.delegationPolicies.scouting)||{};
+  if(pol.autoSecondLook){
+    const av=_deptDelegAvailability("scouting"); const cap=scoutingSecondLookCap();
+    if(av.ok&&cap>0){
+      let done=0;
+      for(const r of S.reports.slice()){
+        if(done>=cap) break;
+        const ev=secondLookAutoEligible(r); if(!ev.eligible) continue;
+        const p=S.world.players[r.pid];
+        const t=createDeptTask("second-look","scouting",{title:`${p.name} — ikinci gözlem`,pid:r.pid,reportId:r.id,dur:2,baseSucc:0.6,attentionSaved:1,silent:true,suppressToast:true});
+        if(!t) continue; done++;
+        logTeamOperation({domain:"scouting",action:"Otomatik ikinci gözlem",reason:`Güven %${reportConfidence(r)} (eşik %${pol.secondLookBelowConfidence})`,
+          policyPath:"scouting.secondLookBelowConfidence",departmentId:"scouting",sourceType:"report",sourceId:r.id,pid:r.pid,status:"delegated",result:null,cost:0},t);
+      }
+      if(done>0&&!S.settings.fastMode) toast(`Scout ekibi ${done} düşük güvenli rapor için ikinci gözlem başlattı`,"gold");
+    } else if(!av.ok && S.reports.some(r=>secondLookAutoEligible(r).eligible)
+        && !alreadyLoggedBlocked("scouting.autoSecondLook",null,av.reason)){
+      logTeamOperation({domain:"scouting",action:"Otomatik ikinci gözlem başlatılamadı",reason:av.reason,policyPath:"scouting.autoSecondLook",
+        departmentId:"scouting",sourceType:null,sourceId:null,pid:null,status:"blocked",result:null,cost:0});
+    }
+  }
+  // yüksek potansiyel uyarısı — yalnız oyuncunun BİLİNEN tahmini (lo–hi) üzerinden; gizli gerçek PA asla kullanılmaz/gösterilmez
+  for(const r of S.reports){
+    if(!r.pid||r._alerted) continue;
+    if(reportEstimatedPA(r)>=pol.alertAboveEstimatedPA){
+      r._alerted=true; const p=S.world.players[r.pid];
+      addNews("me",`Yüksek potansiyel: ${p?p.name:"?"}`,`Tahmini potansiyel ${r.lo}-${r.hi} bandında (güven %${reportConfidence(r)}) — dikkatini hak ediyor.`,"good");
+    }
+  }
+  // V11-C — watchlistBelowEstimatedPA: yalnız SESSİZ bir öncelik etiketi. Görev/log/haber üretmez,
+  // raporu silmez, oyuncuyla otomatik temas kurmaz — yalnız gösterimde gruplama için bir işaret bırakır.
+  // Kalıcı bir bekçi (ör. "_watchlistTagged") KULLANILMAZ: eşik sonradan değişirse mevcut raporlar
+  // da yeniden sınıflandırılabilsin diye her politika değerlendirmesinde TÜREV olarak yeniden hesaplanır.
+  for(const r of S.reports){
+    if(!r.pid) continue;
+    r._watchlistPriority=reportEstimatedPA(r)<pol.watchlistBelowEstimatedPA?"low":"normal";
+  }
+}
+/* ---------- 2C: TELEFON — düşük öncelikli konuların otomatik devri ---------- */
+const PHONE_ALWAYS_MANUAL_TOPICS=new Set(["rival_contact","threat","morality_warning","contract_conflict"]);
+function phonePolicyEligible(m){
+  const pol=(S.delegationPolicies&&S.delegationPolicies.phone)||{};
+  if(!canDelegatePhoneMessage(m)) return {eligible:false,reason:"Mesaj artık delege edilemez"};
+  if(pol.alwaysShowPlayer&&m.fromType==="oyuncu") return {eligible:false,reason:"Oyuncu mesajı her zaman elle yönetilir"};
+  if(pol.alwaysShowFamily&&m.fromType==="aile") return {eligible:false,reason:"Aile mesajı her zaman elle yönetilir"};
+  if(pol.neverDelegateRivalThreat&&m.fromType==="rakip") return {eligible:false,reason:"Rakip tehdidi her zaman elle yönetilir"};
+  if(pol.neverDelegateHighUrgency&&m.urgency==="yüksek") return {eligible:false,reason:"Yüksek aciliyet her zaman elle yönetilir"};
+  const topic=inferPhoneTopic(m);
+  if(PHONE_ALWAYS_MANUAL_TOPICS.has(topic)) return {eligible:false,reason:"Konu her zaman elle yönetilir"};
+  const isMediaTopic=m.fromType==="gazeteci"||["transfer_rumour","player_form","agency_strategy","controversy"].includes(topic);
+  const isClubTopic=m.fromType==="kulup"&&["transfer_interest","loan_interest","contract_renewal"].includes(topic);
+  // V11-C — hangi politikanın uygun kıldığını GERÇEKTEN bildir; çağıran bunu tahmin etmesin.
+  if(isMediaTopic&&pol.delegateLowMedia) return {eligible:true,reason:null,policyPath:"phone.delegateLowMedia"};
+  if(isClubTopic&&pol.delegateStandardClub) return {eligible:true,reason:null,policyPath:"phone.delegateStandardClub"};
+  return {eligible:false,reason:"Politika bu konuyu kapsamıyor"};
+}
+function phonePolicyCap(){ const mode=managementMode(); return mode==="controlled"?0:mode==="executive"?5:3; }
+function simPhonePolicies(sum){
+  const pol=(S.delegationPolicies&&S.delegationPolicies.phone)||{};
+  if(!pol.delegateLowMedia&&!pol.delegateStandardClub) return;
+  const cap=phonePolicyCap(); if(cap<=0) return;
+  let done=0;
+  for(const m of (S.phoneInbox||[]).slice()){
+    if(done>=cap) break;
+    const ev=phonePolicyEligible(m); if(!ev.eligible) continue;
+    // V11-C — HER mesajın kendi eşleşen yolunu logla (medya/klüp); tek bir global yol varsayılmaz —
+    // ikisi de açıkken standart kulüp mesajları yanlışlıkla delegateLowMedia altında görünmesin.
+    const policyPath=ev.policyPath;
+    const best=getEligibleDelegates(m)[0]; if(!best) continue;
+    // V11-C — ödenebilirlik önden kontrol edilir: yetersiz kasa sessizce atlanmaz, TEK (dedupe'lu) engelleme kaydı düşer.
+    if(S.cash<best.cost){
+      if(!alreadyLoggedBlocked(policyPath,m.id,"Yetersiz kasa"))
+        logTeamOperation({domain:"phone",action:"Otomatik görüşme devri başlatılamadı",reason:"Yetersiz kasa",
+          policyPath,departmentId:best.id,sourceType:"phoneMessage",sourceId:m.id,pid:m.pid||null,status:"blocked",result:null,cost:0});
+      continue;
+    }
+    const task=assignPhoneConversation(m.id,best.id,{silent:true,suppressToast:true}); // TAM yeniden doğrulama dahil — aynı domain yolu
+    if(!task) continue; done++;
+    logTeamOperation({domain:"phone",action:"Otomatik görüşme devri",reason:"Politika: düşük öncelikli konu devredildi",
+      policyPath,departmentId:best.id,
+      sourceType:"phoneMessage",sourceId:m.id,pid:m.pid||null,status:"delegated",result:null,cost:best.cost},task);
+  }
+  if(done>0&&!S.settings.fastMode) toast(`Ekip ${done} rutin görüşmeyi devraldı`,"gold");
+}
+/* ---------- 2D: SÖZLEŞME HAZIRLIĞI — yalnız hazırlık/taslak, imza/fesih YOK ---------- */
+/* V11-C — sözleşme "imzası": yalnız kulüp+bitiş sezonu/haftası değişince değişir (haftalık geri
+   sayımla DEĞİL) — aynı sözleşme için tekrar tekrar incelemeyi önlerken yeni/uzatılmış bir
+   sözleşmeyi otomatik olarak yeniden incelenebilir kılar. */
+function clubContractSignature(p){ return `${p.clubId}:${p.contractEndSeason}:${p.contractEndWeek}`; }
+function simContractPrepPolicies(sum){
+  if(managementMode()==="controlled") return; // V11-C — kontrollü modda otomatik görev SIFIR (mutlak kural; özelleştirme bile bunu aşamaz)
+  const pol=(S.delegationPolicies&&S.delegationPolicies.contracts)||{};
+  const avL=_deptDelegAvailability("legal");
+  let done=0,done2=0;
+  if(avL.ok&&pol.draftHighLoyaltyRenewal){
+    const CAP=3;
+    const targets=myPlayers().filter(p=>p.agentWeeksLeft>0&&p.agentWeeksLeft<=pol.prepareRepresentationBelowWeeks&&p.loyalty>=70&&!findActiveDeptTask("renewal",p.id));
+    for(const p of targets){
+      if(done>=CAP) break;
+      const t=createDeptTask("renewal","legal",{title:`${p.name} temsil yenile`,pid:p.id,dur:3,baseSucc:0.6,attentionSaved:1,silent:true,suppressToast:true});
+      if(!t) continue; done++;
+      logTeamOperation({domain:"contracts",action:"Yenileme taslağı hazırlandı",reason:`Yüksek sadakat (${Math.round(p.loyalty)}) · ${p.agentWeeksLeft} hafta kaldı`,
+        policyPath:"contracts.draftHighLoyaltyRenewal",departmentId:"legal",sourceType:"player",sourceId:p.id,pid:p.id,status:"delegated",result:null,cost:0},t);
+    }
+  }
+  if(avL.ok&&pol.autoClubContractReview){
+    const CAP2=3;
+    const targets2=myPlayers().filter(p=>p.clubId&&contractWeeksLeft(p)<=pol.prepareClubContractBelowWeeks
+      &&p._clubContractReviewedSig!==clubContractSignature(p)
+      &&(!p._clubContractReviewCooldownUntil||nowTick()>=p._clubContractReviewCooldownUntil)
+      &&!findActiveDeptTask("club-contract-review",p.id));
+    for(const p of targets2){
+      if(done2>=CAP2) break;
+      const t=createDeptTask("club-contract-review","legal",{title:`${p.name} kulüp sözleşmesi incelemesi`,pid:p.id,dur:2,baseSucc:0.75,attentionSaved:1,silent:true,suppressToast:true});
+      if(!t) continue; done2++;
+      logTeamOperation({domain:"contracts",action:"Kulüp sözleşmesi incelemesi başlatıldı",reason:`${contractWeeksLeft(p)} hafta kaldı (eşik ${pol.prepareClubContractBelowWeeks})`,
+        policyPath:"contracts.prepareClubContractBelowWeeks",departmentId:"legal",sourceType:"player",sourceId:p.id,pid:p.id,status:"delegated",result:null,cost:0},t);
+    }
+  }
+  if(done+done2>0&&!S.settings.fastMode) toast(`Hukuk ekibi ${done+done2} sözleşme işini hazırladı`,"gold");
+}
+/* V11-C — sponsor görevleri için kimlik: PID DEĞİL, sabit pipeline ID'si (spid). Aynı oyuncunun
+   iki farklı sponsor teklifi olabilir; bunlar birbirinden bağımsız görevler olmalı, pid'e göre
+   çakışmamalı. Aynı teklif + aynı görev türü ise gerçekten tekrar açılmamalı. */
+function findActiveSponsorTask(kind,spId){
+  return (S.departmentTasks||[]).find(t=>t&&t.status==="active"&&t.kind===kind&&t.spid===spId);
+}
+/* ---------- 2E: SPONSOR — yalnız hukuki/ahlaki madde incelemesi, kabul/imza YOK ----------
+   Öncelik sırası (her iki döngü de bunu uygular):
+   1) geçersiz/kayıp/imzalanmış teklif  -> hiçbir görev yok
+   2) münhasır teklif                  -> HER ZAMAN elle (alwaysShowExclusive'dan BAĞIMSIZ mutlak kural)
+   3) moralite maddesi VAR + incelenmemiş -> yalnız hukuki inceleme (filtre değil)
+   4) hukuki inceleme aktif             -> filtre yok (aynı teklife aynı anda iki görev çakışmaz)
+   5) madde yok VEYA inceleme bitti     -> artık düşük değerliyse filtre düşünülebilir           */
+function simSponsorPolicies(sum){
+  if(managementMode()==="controlled") return; // V11-C — kontrollü modda otomatik görev SIFIR (mutlak kural; özelleştirme bile bunu aşamaz)
+  const pol=(S.delegationPolicies&&S.delegationPolicies.sponsor)||{};
+  let done=0;
+  const isLive=sp=>sp.pid&&S.world.players[sp.pid]&&(sp.stage==="lead"||sp.stage==="offer");
+  const avL=_deptDelegAvailability("legal");
+  if(avL.ok&&pol.legalReviewMoralityClause){
+    const CAP=2; let doneL=0;
+    for(const sp of (S.sponsorPipeline||[]).slice()){
+      if(doneL>=CAP) break;
+      if(!isLive(sp)) continue; // geçersiz/kayıp/imzalanmış -> asla yeni görev
+      if(sp.exclusivity) continue; // münhasır HER ZAMAN elle — mutlak kural
+      if(sp.legalReviewed) continue;
+      if(!sp.moralityClause) continue; // madde YOKSA hukuka gitmez
+      if(findActiveSponsorTask("sponsor-review",sp.id)) continue;
+      const t=createDeptTask("sponsor-review","legal",{title:`${sp.brand} sponsor incelemesi`,pid:sp.pid||null,spid:sp.id,dur:2,baseSucc:0.8,attentionSaved:1,silent:true,suppressToast:true});
+      if(!t) continue; doneL++; done++;
+      logTeamOperation({domain:"sponsor",action:"Sponsor maddesi incelemesi başlatıldı",reason:"Politika: moralite maddesi hukuka gönderildi",
+        policyPath:"sponsor.legalReviewMoralityClause",departmentId:"legal",sourceType:"sponsorPipeline",sourceId:sp.id,pid:sp.pid||null,status:"delegated",result:null,cost:0},t);
+    }
+  }
+  // V11-C — delegateBelowValue: yalnız KÜÇÜK değerli teklifleri eler; asla imzalamaz/kabul etmez.
+  const avS=_deptDelegAvailability("sponsor");
+  if(avS.ok&&pol.delegateBelowValue>0){
+    const CAP2=2; let doneS=0;
+    for(const sp of (S.sponsorPipeline||[]).slice()){
+      if(doneS>=CAP2) break;
+      if(!isLive(sp)) continue;
+      if(sp.exclusivity) continue; // münhasır HER ZAMAN elle — mutlak kural
+      if(sp.val>=pol.delegateBelowValue) continue;
+      if(sp.moralityClause&&!sp.legalReviewed) continue; // önce hukuki inceleme bitmeli — aynı teklife asla ikisi birden
+      if(findActiveSponsorTask("sponsor-filter",sp.id)) continue;
+      const t=createDeptTask("sponsor-filter","sponsor",{title:`${sp.brand} teklifini değerlendir`,pid:sp.pid||null,spid:sp.id,dur:1,baseSucc:0.85,attentionSaved:1,silent:true,suppressToast:true});
+      if(!t) continue; doneS++; done++;
+      logTeamOperation({domain:"sponsor",action:"Düşük değerli sponsor teklifi elendi",reason:`Değer eşik altında (< ${fmtM(pol.delegateBelowValue)})`,
+        policyPath:"sponsor.delegateBelowValue",departmentId:"sponsor",sourceType:"sponsorPipeline",sourceId:sp.id,pid:sp.pid||null,status:"delegated",result:null,cost:0},t);
+    }
+  }
+  if(done>0&&!S.settings.fastMode) toast(`Ekip ${done} sponsor işini işledi`,"gold");
+}
+function simDelegationPolicies(sum){
+  try{ simTransferPolicies(sum); }catch(e){ console.error("simTransferPolicies",e); }
+  try{ simScoutingPolicies(sum); }catch(e){ console.error("simScoutingPolicies",e); }
+  try{ simPhonePolicies(sum); }catch(e){ console.error("simPhonePolicies",e); }
+  try{ simContractPrepPolicies(sum); }catch(e){ console.error("simContractPrepPolicies",e); }
+  try{ simSponsorPolicies(sum); }catch(e){ console.error("simSponsorPolicies",e); }
+}
 /* departman görevi oluştur (delegasyon) */
 function createDeptTask(kind, deptId, opts){
   opts=opts||{};
   const d=S.departments[deptId]; if(!d||!d.unlocked){ toast("Bu departman kilitli"); return null; }
+  // V11-C — paylaşılan personel/iş yükü kapısı: hem otomatik hem manuel yollar bu TEK motordan geçer.
+  // Manuel UI zaten kendi nedenini ayrı gösterir (getExistingDelegationAction/_deptDelegAvailability);
+  // burası son bir güvenlik ağıdır ve "(yönetici atanmamış)" gibi bir yer tutucuyu asla geçerli personel saymaz.
+  if(!deptStaff(S,deptId).length){ if(!opts.silent) toast("Bu departmanda personel yok"); return null; }
+  if(d.workload>90){ if(!opts.silent) toast("Departman bu hafta aşırı yüklü"); return null; }
   // V11-A düzeltme — hedef kimliği: sourceMessageId varsa BİRİNCİL kimliktir
   // (bir telefon kaynağı asla iki aktif görev açamaz, pid ne olursa olsun).
-  // sourceMessageId yoksa pid kimliktir (yenileme/ikinci gözlem gibi). İkisi
-  // birden AND'lenmez — aksi halde farklı pid aynı mesajı ikinci kez açabilir.
+  // V11-C — spid (sponsor pipeline ID) sourceMessageId'den sonra, pid'den ÖNCE gelir: aynı oyuncunun
+  // farklı sponsor tekliflerinin birbirini yanlışlıkla "aynı iş" sayması burada önlenir. pid yalnızca
+  // spid YOKSA kimlik olarak kullanılır (yenileme/ikinci gözlem gibi tekliften bağımsız görevlerde).
   let duplicate=null;
   if(opts.sourceMessageId!=null) duplicate=findActiveDeptTask(kind,null,opts.sourceMessageId);
+  else if(opts.spid!=null) duplicate=(S.departmentTasks||[]).find(t=>t&&t.status==="active"&&t.kind===kind&&t.spid===opts.spid);
   else if(opts.pid!=null) duplicate=findActiveDeptTask(kind,opts.pid,null);
-  if(duplicate){ toast("Bu iş zaten ekipte.","gold"); return null; }
+  if(duplicate){ if(!opts.silent) toast("Bu iş zaten ekipte.","gold"); return null; }
+  // V11-C — TEK ödenebilirlik kapısı: bu, tüm beş domain'in (transfer/scout/telefon/kontrat/sponsor)
+  // paylaştığı TEK görev motoru olduğu için burada kontrol etmek hepsini birden korur.
+  const cost0=opts.cost||0;
+  if(cost0>0&&S.cash<cost0){ if(!opts.silent) toast("Yetersiz kasa","gold"); return null; }
   const dur=opts.dur||ri(2,4);
   const task={ id:"dt"+ri(1e4,9e4), kind, deptId, title:opts.title||kind, pid:opts.pid||null, leagueId:opts.leagueId||null,
     sourceMessageId:opts.sourceMessageId||null,
     createdTick:nowTick(), dueTick:nowTick()+dur, baseSucc:opts.baseSucc??0.55, value:opts.value||6,
-    status:"active", attentionSaved:opts.attentionSaved||1, cost:opts.cost||0 };
+    status:"active", attentionSaved:opts.attentionSaved||1, cost:cost0 };
   // güvenli opsiyonel meta alanları (ör. telefon devri) — yalnızca sağlandıysa eklenir
   if(opts.cid!=null) task.cid=opts.cid;
   if(opts.rid!=null) task.rid=opts.rid;
   if(opts.sponsorDealId!=null) task.sponsorDealId=opts.sponsorDealId;
   if(opts.topic!=null) task.topic=opts.topic;
   if(opts.authorityLevel!=null) task.authorityLevel=opts.authorityLevel;
+  if(opts.reportId!=null) task.reportId=opts.reportId;
+  if(opts.spid!=null) task.spid=opts.spid;
   S.departmentTasks=S.departmentTasks||[]; S.departmentTasks.push(task);
   d.activeTasks=(S.departmentTasks||[]).filter(t=>t.deptId===deptId&&t.status==="active").length;
   if(task.cost) ledger(opts.ledgerLabel||"Departman görev bütçesi", -task.cost);
-  toast(opts.toastLabel||`Görev ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine verildi`,"green");
+  // V11-C — suppressToast, silent'ten AYRI bir bayraktır: silent yalnız save/render'ı susturur,
+  // suppressToast tek tek görev toast'unu susturur (politika toplu işlemleri TEK özet toast atar).
+  if(!opts.suppressToast) toast(opts.toastLabel||`Görev ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine verildi`,"green");
   recomputeDepartments(S);
   if(!opts.silent){ save(); renderAll(); }
   return task;
@@ -6231,7 +6913,10 @@ function getEligibleDelegates(message){
   const out=[];
   for(const deptId of deptIds){
     if(!deptUnlocked(deptId)) continue;
-    const d=S.departments[deptId]; const staff=deptStaff(S,deptId); const mgr=staff.find(s=>s.id===d.managerId)||staff[0];
+    const d=S.departments[deptId]; const staff=deptStaff(S,deptId);
+    if(!staff.length) continue; // V11-C — personelsiz departman devir listesinde asla görünmez
+    if(d.workload>90) continue; // V11-C — aşırı yüklü departman yeni iş alamaz
+    const mgr=staff.find(s=>s.id===d.managerId)||staff[0];
     const eff=d.efficiency||0;
     out.push({id:deptId,departmentName:DEPT_MAP[deptId].name,delegateName:mgr?mgr.name:"(yönetici atanmamış)",
       estWeeks:eff>=70?1:eff>=40?2:3,successBand:eff>=60?"Güçlü":eff>=35?"Makul":"Riskli",
@@ -6264,18 +6949,19 @@ function openPhoneDelegation(id){
   h+=`<button class="btn block ghost" style="margin-top:8px" onclick="openPhoneMsg('${id}')">← Geri</button>`;
   openSheet(h);
 }
-function assignPhoneConversation(messageId, deptId){
-  const m=(S.phoneInbox||[]).find(x=>x.id===messageId); if(!m) return;
-  if(!deptUnlocked(deptId)){ toast("Bu departman kilitli"); return; }
+function assignPhoneConversation(messageId, deptId, opts){
+  opts=opts||{};
+  const m=(S.phoneInbox||[]).find(x=>x.id===messageId); if(!m) return null;
+  if(!deptUnlocked(deptId)){ if(!opts.silent) toast("Bu departman kilitli"); return null; }
   // V11-A düzeltme — yaşam döngüsü kapısı: çözülmüş/reddedilmiş/süresi dolmuş/
   // zaten devredilmiş bir mesaj bayat sheet veya doğrudan çağrıyla tekrar delege edilemez.
-  if(!canDelegatePhoneMessage(m)){ toast("Bu görüşme artık delege edilemez.","gold"); return; }
+  if(!canDelegatePhoneMessage(m)){ if(!opts.silent) toast("Bu görüşme artık delege edilemez.","gold"); return null; }
   // bayat sheet/çift tık güvenliği: mesaj zaten aktif bir göreve bağlıysa
   // (ya kendi alanından ya da görev listesinden) yeniden delege etme.
   const alreadyByField=m.delegatedTaskId&&(S.departmentTasks||[]).find(t=>t.id===m.delegatedTaskId&&t.status==="active");
   const alreadyBySource=findActiveDeptTask("phoneDelegate",null,m.id);
-  if(alreadyByField||alreadyBySource){ toast("Bu iş zaten ekipte.","gold"); return; }
-  const info=getEligibleDelegates(m).find(x=>x.id===deptId); if(!info) return;
+  if(alreadyByField||alreadyBySource){ if(!opts.silent) toast("Bu iş zaten ekipte.","gold"); return null; }
+  const info=getEligibleDelegates(m).find(x=>x.id===deptId); if(!info) return null;
   const task=createDeptTask("phoneDelegate",deptId,{
     title:`📱 ${m.subject}`, pid:m.pid||null, sourceMessageId:m.id,
     cid:m.cid||null, rid:m.rid||null, sponsorDealId:m.sponsorDealId||null,
@@ -6283,11 +6969,12 @@ function assignPhoneConversation(messageId, deptId){
     dur:info.estWeeks, baseSucc:info.successChance, value:6, attentionSaved:1, cost:info.cost,
     toastLabel:`Görüşme ${DEPT_MAP[deptId].icon} ${DEPT_MAP[deptId].name} ekibine devredildi`,
     ledgerLabel:`Delegasyon bütçesi — ${DEPT_MAP[deptId].name}`,
-    silent:true,
+    silent:true, suppressToast:!!opts.suppressToast,
   });
-  if(!task) return; // reddedildi (kilitli/çift) — mesaj durumu değişmez, tekrar ücret alınmaz
+  if(!task) return null; // reddedildi (kilitli/çift) — mesaj durumu değişmez, tekrar ücret alınmaz
   m.delegatedTaskId=task.id; m.stage="delegated"; setPhoneStatus(m,"delegated");
-  save(); closeSheet(); openPhoneMsg(m.id);
+  if(!opts.silent){ save(); closeSheet(); openPhoneMsg(m.id); }
+  return task;
 }
 function resolveDelegatedConversation(task, ok){
   const m=(S.phoneInbox||[]).find(x=>x.id===task.sourceMessageId);
@@ -6369,7 +7056,10 @@ function resolveDelegatedConversation(task, ok){
       topic:m.topic,urgency:"düşük",subject:`Sonuç: ${m.subject}`,body:resultText,parentMessageId:m.id,stage:"followup_result"});
     pushPhoneWeeklyEvent(`🧑‍💼 Delegasyon sonucu — ${m.subject}: ${resultText}`, p?`openEntity('player','${p.id}')`:c?`openEntity('club','${c.id}')`:null);
   }
-  notify("ajans",`${ok?"✅":"⚠️"} Telefon delegasyonu: ${m?m.subject:task.title}`,"agency","departman");
+  // V11-C — bildirim burada ÜRETİLMEZ: applyDeptTaskResult ortak tamamlanma yolunda tek bir
+  // bildirim atar (aksi halde telefon görevleri iki bildirim üretirdi). Sonuç yapısal döner ki
+  // ortak Ekip İşlemleri tamamlanma kaydı gerçek sonucu ve metnini kullanabilsin.
+  return {status:ok?"completed":"failed", result:resultText};
 }
 /* ============================================================
    HATIRLATMA (gerçek gelecek tick)
@@ -8011,7 +8701,7 @@ function getExistingDelegationAction(a){
   }
   if(a.key==="low_offers"){
     if(!S.staff||!S.staff.lawyer) return {...none,reasonUnavailable:"Hukuk danışmanı gerekli."};
-    if(S.delegation&&S.delegation.autoReject) return {...none,reasonUnavailable:"Zaten devrede."};
+    if(policyPathGet("transfer.autoRejectEnabled")) return {...none,reasonUnavailable:"Zaten devrede."};
     // yalnız GELECEK teklif üretimini etkiler — mevcut düşük teklifler bu satırdan bağımsız görünür kalır
     return {eligible:true,label:"Gelecek Düşük Tekliflerde Otomatik Reddi Aç",fn:`delegateGuidedAction('low_offers_auto',null)`,reasonUnavailable:null,assignedDepartment:"legal"};
   }
@@ -8384,7 +9074,7 @@ function createWeeklySnapshot(){
 function _sec(arr){ return arr.filter(Boolean); }
 function buildWeeklyBriefing(before,after,sum){
   sum=sum||{};
-  const B={s:after.s,w:after.w,important:[],players:[],transfer:[],scout:[],agency:[],world:[],next:[]};
+  const B={s:after.s,w:after.w,important:[],players:[],transfer:[],scout:[],agency:[],world:[],next:[],teamOps:[]};
   // önemli gelişmeler: haftanın yıldızı/düşüşü
   const perfs=(sum.performances||[]).slice().sort((a,b)=>(b.rating||0)-(a.rating||0));
   if(perfs.length){ const top=perfs[0]; B.important.push({text:`⭐ Haftanın yıldızı: ${top.p?top.p.name:"?"} — rating ${top.rating}`,route:top.p?`openEntity('player','${top.p.id}')`:null});
@@ -8418,6 +9108,10 @@ function buildWeeklyBriefing(before,after,sum){
   if(recentProm) B.world.push({text:`🔀 Sezon sonu: ${recentProm} kulüp yükseldi/düştü`,route:`navigateTo('world')`});
   // gelecek hafta: en yüksek puanlı 3 aksiyon
   try{ buildScoredActions().slice(0,3).forEach(a=>B.next.push({text:a.t,route:a.fn})); }catch(e){}
+  // V11-C — ekipler ne yaptı: bu haftaki S.teamOperations özeti (delegated/completed/failed/blocked)
+  const weekOps=(S.teamOperations||[]).filter(o=>o.season===after.s&&o.week===after.w);
+  const opIcon={delegated:"🔄",completed:"✅",failed:"⚠️",blocked:"🚫",prepared:"🕓",skipped:"➖",cancelled:"⛔"};
+  B.teamOps=weekOps.slice(0,8).map(o=>({text:`${opIcon[o.status]||"•"} ${o.action}${o.result?" — "+o.result:o.reason?" — "+o.reason:""}`,route:`gotoAgency('operasyon')`}));
   return B;
 }
 let WB_EXPANDED={};
@@ -8462,6 +9156,7 @@ function renderWeeklyBriefing(){
   h+=block("🌟 Bu Hafta Ne Değişti?",B.important);
   h+=block("✅ Ne İyi Gitti?",good);
   h+=block("⚠️ Ne Riskte?",risky);
+  h+=block("👥 Ekipler Ne Yaptı?",B.teamOps);
   if(B.next&&B.next.length){ h+=`<h2 class="sec">🎯 Gelecek Hafta Ne Yapmalıyım?</h2>`;
     h+=B.next.slice(0,3).map(i=>`<div class="action-item sugg"><span>${escapeHtml(i.text)}</span><button class="btn sm ghost" onclick="${i.route}">Git</button></div>`).join(""); }
   /* ikincil tam döküm — varsayılan KAPALI, tek ortak açma/kapama; aynı veri, yalnızca detay katmanı */
