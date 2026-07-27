@@ -218,6 +218,35 @@ body[data-mode="dark"] .btn.primary{background:var(--brand-500);box-shadow:0 4px
 .playbtn:disabled{filter:grayscale(.5);opacity:.6}
 body.sheet-open .playbar{display:none}
 .playbar.pb-hidden{display:none}
+/* V11-D: toplu seçim modunda "Haftayı Oynat" gizlenir — çubuklar çakışmaz */
+body.bulk-mode .playbar{display:none}
+
+/* ---------- V11-D toplu seçim ---------- */
+/* Çubuk liste AKIŞINDAN SONRA render edilir; sticky-bottom bu sayede gerçekten çalışır:
+   liste kaydırılırken çubuk viewport'un altına yapışır, sona gelindiğinde yerine oturur. */
+.bulkbar{position:sticky;bottom:calc(64px + env(safe-area-inset-bottom));z-index:44;
+  background:var(--card);border:1px solid var(--div);border-radius:var(--radius-md);
+  padding:8px 10px;margin:8px 0;box-shadow:var(--shadow-lg)}
+/* telefon SHEET'i kendi kaydırma kabıdır: çubuk sayfa tabbar'ına göre değil, sheet'in altına yapışır */
+.bulkbar.in-sheet{bottom:0;margin:8px 0 0}
+/* seçim modunda son satır sticky çubuğun altında kalmasın */
+body.bulk-mode .screen{padding-bottom:190px}
+/* V11-D: dokunma hedefi — .btn.sm 40px'e düşüyordu; .btn.sm'i yenmek için daha yüksek özgüllük */
+.btn.sm.bulkctl,.bulkctl{min-height:44px}
+.bulkcheck{flex:0 0 auto;width:44px;height:44px;min-width:44px;border-radius:12px;
+  border:2px solid var(--div);background:var(--bg);cursor:pointer;
+  font-size:16px;font-weight:800;line-height:1;color:var(--ink3);
+  display:flex;align-items:center;justify-content:center}
+.bulkcheck.on{border-color:var(--brand-700);background:var(--brand-700);color:#fff}
+/* seçili satır rengin YANINDA kenarlıkla da işaretlenir (renk körlüğü güvenliği) */
+.bulkrow{display:flex;align-items:center;gap:8px}
+.bulkrow.sel{outline:2px solid var(--brand-700);outline-offset:2px;border-radius:var(--radius-md)}
+.bulkrow>.grow{min-width:0}
+@media(min-width:1100px){
+  /* masaüstünde ana içerik sütunu içinde kalır, sağ panelin üstüne binmez */
+  .bulkbar{bottom:16px}
+  body.bulk-mode .screen{padding-bottom:170px}
+}
 
 /* ---------- alt tab bar ---------- */
 .tabbar{position:fixed;bottom:0;left:0;right:0;z-index:50;display:flex;justify-content:center;
@@ -927,6 +956,7 @@ function buildWorld(seed){
 let S = null; // global save state
 
 function newGame(agentName, agencyName){
+  try{ bulkResetAll(); }catch(e){} // V11-D — yeni oyun toplu seçim moduyla başlamaz
   const seed = Date.now()>>>0;
   const preset = (typeof window!=="undefined" && window._worldPreset) || "standard";
   const startCountry = (typeof window!=="undefined" && window._startCountry) || "tr";
@@ -1642,7 +1672,12 @@ function taskDone(id){
   if(!S||!S.tasks) return;
   if(!S.tasks.done[id] && TASKS.some(x=>x.id===id)){
     S.tasks.done[id]=true;
-    if(TASKS.every(x=>S.tasks.done[x.id])) toast("Tüm başlangıç görevleri tamam! 🏆","gold");
+    // V11-D düzeltme — toplu işlem sırasında öğe yürütücüsünden ikinci bir toast çıkamaz;
+    // bilgi kaybolmaz, tek özet toast'a eklenmek üzere toplanır (tutorial durumu aynen yazılır).
+    if(TASKS.every(x=>S.tasks.done[x.id])){
+      if(UI&&UI.bulkSuppressToast){ (UI.bulkNotices=UI.bulkNotices||[]).push("Başlangıç görevleri tamamlandı 🏆"); }
+      else toast("Tüm başlangıç görevleri tamam! 🏆","gold");
+    }
   }
 }
 function findLoanClub(p){
@@ -1695,11 +1730,28 @@ function renewAgentContract(pid){
   }
   save(); closeSheet(); renderAll();
 }
+/* V11-D — izleme listesi üyeliğinin TEK kanonik mutasyonu. Hem manuel toggleWatch hem toplu
+   işlemler bunu kullanır; ikinci bir "listeye ekle/çıkar" yolu YOKTUR.
+   opts.silent → save/render çağırmaz (toplu işlem sonunda tek sefer yapılır)
+   Dönüş: {changed, added, removed} */
+function setWatchlistMembership(pid, shouldInclude, opts){
+  opts=opts||{};
+  // savunmacı normalizasyon: bozuk/yinelenmiş eski listeler sessizce tekilleştirilir
+  S.watchlist=Array.isArray(S.watchlist)?[...new Set(S.watchlist.filter(x=>typeof x==="string"))]:[];
+  const has=S.watchlist.includes(pid);
+  let added=false, removed=false;
+  if(shouldInclude&&!has){ S.watchlist.push(pid); added=true; }
+  else if(!shouldInclude&&has){ S.watchlist=S.watchlist.filter(x=>x!==pid); removed=true; }
+  // PLAYER_WATCHLISTED yalnız GERÇEKTEN yeni eklenende — zaten listedeyse olay tekrarlanmaz
+  if(added&&typeof emitGameEvent==="function") emitGameEvent("PLAYER_WATCHLISTED",{pid});
+  if((added||removed)&&!opts.silent){ save(); renderAll(); }
+  return {changed:added||removed, added, removed};
+}
 function toggleWatch(pid){
-  S.watchlist=S.watchlist||[];
-  const i=S.watchlist.indexOf(pid);
-  if(i>=0){ S.watchlist.splice(i,1); toast("İzleme listesinden çıkarıldı"); }
-  else { S.watchlist.push(pid); toast("İzleme listesine eklendi 👁️","green"); if(typeof emitGameEvent==="function") emitGameEvent("PLAYER_WATCHLISTED",{pid}); }
+  const shouldInclude=!(S.watchlist||[]).includes(pid);
+  const res=setWatchlistMembership(pid,shouldInclude,{silent:true});
+  if(res.added) toast("İzleme listesine eklendi 👁️","green");
+  else if(res.removed) toast("İzleme listesinden çıkarıldı");
   save(); renderAll();
 }
 
@@ -1778,17 +1830,30 @@ function simCrisis(sum){
     {t:"Kendim çözerim",h:"Varlık sat veya gider kıs — tamamen sana kalmış",risk:"high",fx(){}},
    ]});
 }
-function requestSecondLook(rid){
-  const r=S.reports.find(x=>x.id===rid); if(!r) return;
-  if(r.second){ toast("Bu oyuncu zaten ikinci kez izlendi"); return; }
-  if(S.cash<2000){ toast("Yetersiz bakiye 💸"); return; }
-  const p=S.world.players[r.pid]; if(!p) return;
-  ledger("İkinci gözlem — "+p.name, -2000);
+/* V11-D — ikinci gözlemin TEK kanonik maliyeti ve TEK kanonik mutasyonu.
+   Manuel (requestSecondLook) ve toplu işlem aynı fonksiyondan geçer; ikinci bir mutasyon yolu yok. */
+const SECOND_LOOK_COST=2000;
+/* Dönüş: {ok, reason} — ok=false ise HİÇBİR yan etki (ücret dahil) uygulanmamıştır.
+   opts.silent → toast/save/sheet yok (toplu işlem sonunda tek sefer yapılır). */
+function applySecondLookDomain(rid, opts){
+  opts=opts||{};
+  const r=S.reports.find(x=>x.id===rid); if(!r) return {ok:false,reason:"Rapor bulunamadı"};
+  if(r.second) return {ok:false,reason:"Zaten ikinci kez izlendi"};
+  const p=S.world.players[r.pid]; if(!p) return {ok:false,reason:"Oyuncu bulunamadı"};
+  if(S.cash<SECOND_LOOK_COST) return {ok:false,reason:"Yetersiz bakiye"};
+  ledger("İkinci gözlem — "+p.name, -SECOND_LOOK_COST);
   r.second=true;
+  // gizli gerçek PA yalnız aralığı DARALTMAK için kullanılır; hiçbir yerde gösterilmez/loglanmaz
   const err2=Math.max(2,(r.hi-r.lo)*0.3);
   r.lo=clamp(Math.round(p.pa-err2),20,97);
   r.hi=clamp(Math.round(p.pa+err2*0.7),r.lo+2,97);
   r.conf=clamp(r.conf+ri(10,16),20,95);
+  if(!opts.silent){ toast("İkinci gözlem tamam — aralık daraldı 🔍","green"); save(); }
+  return {ok:true,reason:null,cost:SECOND_LOOK_COST};
+}
+function requestSecondLook(rid){
+  const res=applySecondLookDomain(rid,{silent:true});
+  if(!res.ok){ toast(res.reason==="Yetersiz bakiye"?"Yetersiz bakiye 💸":res.reason==="Zaten ikinci kez izlendi"?"Bu oyuncu zaten ikinci kez izlendi":res.reason); return; }
   toast("İkinci gözlem tamam — aralık daraldı 🔍","green");
   save(); openReportSheet(rid);
 }
@@ -2047,6 +2112,9 @@ function renderDelegationPolicyPanel(){
 }
 function repairSaveState(st){
   if(!st) return st;
+  // V11-D — toplu seçim SALT UI'dır ve kayda yazılmaz; başka bir save yüklendiğinde her zaman sıfırlanır
+  // (eski bir kayıt yüklenirken oyun ASLA kendiliğinden toplu seçim moduna girmez).
+  try{ bulkResetAll(); }catch(e){}
   migrateSaveState(st);
   // V11 — yönetim modu: eksik/bozuk değer her zaman "balanced"a onarılır (schemaRevision kapısından bağımsız)
   st.settings=st.settings||{};
@@ -2613,7 +2681,9 @@ let STAFFQ="";
 let WORLDTAB="pazarlar";
 let FINTAB="ozet";
 let FINWIN=16;
-function setSeg(t,v){ SEG[t]=v; renderAll(); window.scrollTo(0,0); }
+/* V11-D — segment değişimi (ör. Raporlar → Görevler, Teklifler → Kiralıklar) kapsamı TERK EDER.
+   Kapsam içi normal yeniden render (liste tazeleme, telefon filtre çipleri) seçimi korur. */
+function setSeg(t,v){ if(SEG[t]!==v) bulkLeaveScope("segment-change"); SEG[t]=v; renderAll(); window.scrollTo(0,0); }
 function gotoAgency(seg){
   const raw=seg||"genel";
   const normalized=(typeof AGENCY_SECTION_MAP!=="undefined"&&AGENCY_SECTION_MAP[raw])||raw;
@@ -2627,8 +2697,12 @@ function segBar(tab,items){ return `<div class="seg" role="tablist">`+items.map(
 /* ============================================================
    V5 — HAMBURGER MENÜ + ROUTE + BİLDİRİM + HERO + PORTRE/ARMA
    ============================================================ */
-const UI={menuOpen:false,lastFocus:null};
+/* V11-D — toplu seçim durumu SALT UI'dır: save payload'ına girmez, checksum'a dokunmaz,
+   migration gerektirmez. Yalnız kararlı entity ID'leri tutulur (dizi indeksi ASLA). */
+const UI={menuOpen:false,lastFocus:null,bulk:{active:false,scope:null,selectedIds:[],lastActionId:null},bulkExecuting:false};
 function navigateTo(screen,seg){
+  // V11-D — sayfadan/segmentten ayrılınca toplu seçim düşer (kapsam sızıntısı olamaz)
+  try{ bulkResetAll(); }catch(e){}
   if(typeof UI!=="undefined"&&!UI._suppressPush&&typeof pushHistory==="function"){ try{ saveCurrentScroll(); pushHistory(UI.route||{screen:TAB}); }catch(e){} }
   if(seg!==undefined&&seg!==null&&SEG[screen]!==undefined) SEG[screen]=seg;
   setActiveRoute({screen:screen,section:(seg!=null?seg:null)});
@@ -2853,7 +2927,12 @@ function confettiIfBig(amt){ if(amt<200000) return; for(let i=0;i<26;i++){
   document.body.appendChild(c);
   c.animate([{transform:c.style.transform,top:"-10px"},{transform:`rotate(${Math.random()*720}deg)`,top:"105vh"}],
     {duration:1800+Math.random()*1200,easing:"ease-in"}).onfinish=()=>c.remove(); } }
+/* V11-D düzeltme — switchTab hem mobil alt navigasyonun hem masaüstü kenar çubuğunun TEK ortak
+   yoludur; bu yüzden kapsam terki BURADA yapılır (tabbar/sidebar işaretlemesinde tekrarlanmaz).
+   Rota/geçmiş/render işinden ÖNCE ve senkron çalışır, böylece body.bulk-mode aynı render'da
+   kalkar ve "Haftayı Oynat" normal şekilde geri gelir. Aynı sekmeye tekrar basmak seçimi korur. */
 function switchTab(t){
+  if(TAB!==t){ try{ bulkLeaveScope("tab-change"); }catch(e){} }
   if(typeof UI!=="undefined"&&!UI._suppressPush&&typeof pushHistory==="function"){ try{ saveCurrentScroll(); pushHistory(UI.route||{screen:TAB}); }catch(e){} }
   setActiveRoute({screen:t});
   TAB=t; renderAll(); window.scrollTo(0,0);
@@ -3890,26 +3969,42 @@ function scoutSquad(){
   return h;
 }
 function scoutReports(){
+  const scope="scout:reports";
+  bulkEnsureScope(scope);
+  const bulkOn=bulkIsActive(scope);
   let h=`<h2 class="sec" style="margin-top:0">📬 Gelen Raporlar <span class="cnt">${S.reports.filter(r=>!r.opened).length}</span></h2>`;
   const unopened=S.reports.filter(r=>!r.opened);
-  if(unopened.length) h+=unopened.map(r=>`<div class="envelope" onclick="openReport('${r.id}')">
-    <div class="env-ic">✉️</div>YENİ SCOUT RAPORU<div class="tiny" style="color:var(--premium-ink)">${r.scout} · dokun ve aç</div></div>`).join("");
-  else h+=`<div class="empty">Yeni rapor yok. Scoutların sahada — birkaç hafta içinde döner. 🔭</div>`;
   const opened=S.reports.filter(r=>r.opened).slice(0,8);
+  bulkNoteVisible(scope,[...unopened,...opened].map(r=>r.id));
+  h+=renderBulkEntry(scope);
+  if(unopened.length) h+=unopened.map(r=>{
+    const env=`<div class="envelope" onclick="openReport('${r.id}')">
+      <div class="env-ic">✉️</div>YENİ SCOUT RAPORU<div class="tiny" style="color:var(--premium-ink)">${escapeHtml(r.scout||"")} · ${bulkOn?"seçmek için kutuya dokun":"dokun ve aç"}</div></div>`;
+    return bulkOn?`<div class="bulkrow ${bulkIsSelected(scope,r.id)?'sel':''}">${bulkCheckbox(scope,r.id,"raporu seç")}<div class="grow">${env}</div></div>`:env;
+  }).join("");
+  else h+=`<div class="empty">Yeni rapor yok. Scoutların sahada — birkaç hafta içinde döner. 🔭</div>`;
   if(opened.length){ h+=`<h2 class="sec">📂 Açılan Raporlar</h2>`;
     h+=opened.map(r=>{const p=S.world.players[r.pid]; if(!p) return "";
       const signed=p.agent==="you";
-      return `<div class="card ${p.gem&&signed?'gold':''} tappable" onclick="openReportSheet('${r.id}')">
+      const card=`<div class="card ${p.gem&&signed?'gold':''} tappable" onclick="openReportSheet('${r.id}')">
       <div class="row">${renderPlayerPortrait(p,36)}
       <div class="grow"><span class="b">${p.natFlag} ${p.name}</span> <span class="muted">${p.age}y · ${POS_LABEL[p.pos]}</span>
-      <div class="tiny">Potansiyel ${r.lo}–${r.hi} · güven %${r.conf}</div></div>
-      ${signed?'<span class="badge ok">✍️ İmzalı</span>':p.agent?'<span class="badge sad">Rakipte</span>':'<span class="badge hot">Serbest</span>'}</div></div>`;}).join("");}
+      <div class="tiny">Potansiyel ${r.lo}–${r.hi} · güven %${r.conf}${r.second?" · 🔍 ikinci gözlem":""}</div></div>
+      ${signed?'<span class="badge ok">✍️ İmzalı</span>':p.agent?'<span class="badge sad">Rakipte</span>':'<span class="badge hot">Serbest</span>'}</div></div>`;
+      return bulkOn?`<div class="bulkrow ${bulkIsSelected(scope,r.id)?'sel':''}">${bulkCheckbox(scope,r.id,p.name+" raporunu seç")}<div class="grow">${card}</div></div>`:card;
+    }).join("");}
+  h+=renderBulkBar({scope,actions:["scout.markOpened","scout.addWatchlist","scout.secondLook"]});
   return h;
 }
 function scoutWatchlist(){
+  const scope="scout:watchlist";
+  bulkEnsureScope(scope);
+  const bulkOn=bulkIsActive(scope);
   const wl=(S.watchlist||[]).map(id=>S.world.players[id]).filter(Boolean);
   let h=`<h2 class="sec" style="margin-top:0">👁️ İzleme Listesi <span class="cnt">${wl.length}</span></h2>`;
   if(!wl.length) return h+`<div class="empty">Liste boş. Scout raporlarından veya oyuncu detayından ekleyebilirsin.</div>`;
+  bulkNoteVisible(scope,wl.map(p=>p.id));
+  h+=renderBulkEntry(scope);
   for(const p of wl){
     let st, cls="pos";
     if(p.retired){ st="Emekli oldu 👞"; cls="sad"; }
@@ -3917,13 +4012,16 @@ function scoutWatchlist(){
     else if(p.agent){ st="Rakip kaptı"; cls="sad"; }
     else if(p.meetCooldown>0){ st=`Cooldown ${p.meetCooldown}h`; cls="sad"; }
     else { const w=calculatePlayerWillingness(p); st=`Görüşme %${w}`; cls=w>=50?"ok":"hot"; }
-    h+=`<div class="card"><div class="row">
+    const card=`<div class="card"><div class="row">
+    ${bulkOn?bulkCheckbox(scope,p.id,p.name+" seç"):""}
     ${renderPlayerPortrait(p,36)}
     <div class="grow tappable" onclick="openPlayer('${p.id}')"><span class="b">${p.natFlag} ${p.name}</span>
-    <div class="tiny">${p.age}y · ${POS_LABEL[p.pos]} · ${S.world.clubs[p.clubId]?.name||"Kulüpsüz"}${p.rivalId?" · 🦈":""}</div></div>
+    <div class="tiny">${p.age}y · ${POS_LABEL[p.pos]} · ${escapeHtml(S.world.clubs[p.clubId]?.name||"Kulüpsüz")}${p.rivalId?" · 🦈":""}</div></div>
     <span class="badge ${cls}">${st}</span>
-    <button class="btn sm ghost" aria-label="listeden çıkar" onclick="toggleWatch('${p.id}')">✕</button></div></div>`;
+    ${bulkOn?"":`<button class="btn sm ghost" aria-label="listeden çıkar" onclick="toggleWatch('${p.id}')">✕</button>`}</div></div>`;
+    h+=bulkOn?`<div class="bulkrow ${bulkIsSelected(scope,p.id)?'sel':''}"><div class="grow">${card}</div></div>`:card;
   }
+  h+=renderBulkBar({scope,actions:["watchlist.remove"]});
   return h;
 }
 function worldView(){ return worldViewV7(); }
@@ -3996,11 +4094,31 @@ function improveRelation(cid){
   c.relation=clamp(c.relation+ri(8,16),0,100);
   toast(`${c.name} ile ilişki güçlendi 🤝`,"green"); save(); closeSheet(); renderAll();
 }
-function openReport(rid){
+/* V11-D — "raporu açıldı say" TEK kanonik mutasyonu. Özel/major karar akışını ASLA atlamaz:
+   major bir rapor buradan işaretlenemez, openScoutFind karar akışına gitmek zorundadır. */
+function markReportOpenedDomain(rid, opts){
+  opts=opts||{};
+  const r=S.reports.find(x=>x.id===rid); if(!r) return {ok:false,reason:"Rapor bulunamadı"};
+  if(r.major&&!r.decided) return {ok:false,reason:"Özel karar gerektiriyor"};
+  if(r.opened) return {ok:false,reason:"Zaten açık"};
+  r.opened=true;
   if(typeof emitGameEvent==="function") emitGameEvent("SCOUT_REPORT_OPENED",{rid});
-  { const r=S.reports.find(x=>x.id===rid); if(r&&r.major&&!r.decided){ r.decided=true; r.opened=true; save(); openScoutFind(rid); return; } }
-  const r=S.reports.find(x=>x.id===rid); if(!r)return;
-  r.opened=true; taskDone("open_report"); save();
+  taskDone("open_report");
+  if(!opts.silent) save();
+  return {ok:true};
+}
+function openReport(rid){
+  const r=S.reports.find(x=>x.id===rid); if(!r) return;
+  // ÖZEL/major rapor: karar akışı açıkça korunur (kanonik yardımcı bunu bilerek reddeder)
+  if(r.major&&!r.decided){
+    if(typeof emitGameEvent==="function") emitGameEvent("SCOUT_REPORT_OPENED",{rid});
+    r.decided=true; r.opened=true; save(); openScoutFind(rid); return;
+  }
+  // V11-D düzeltme — NORMAL rapor açma mutasyonu artık TEK kanonik yoldan geçer.
+  // markReportOpenedDomain zaten SCOUT_REPORT_OPENED olayını ve taskDone'ı yürütür,
+  // bu yüzden burada TEKRARLANMAZ (tam olarak bir olay).
+  markReportOpenedDomain(rid,{silent:true});
+  save();
   openReportSheet(rid, true);
   renderAll();
 }
@@ -4216,7 +4334,12 @@ function renderTransfer(){
   h+=renderMetricGrid([{label:"Bu Sezon",value:seasonT+" transfer"},{label:"Toplam Komisyon",value:fmtM(S.totalCommission)}]);
   if(!win){ const nxt=BAL.transferWindows.find(([a])=>a>S.week);
     h+=`<div class="card alt" style="text-align:center">⏳ Sonraki pencere: <b>${nxt?`Hafta ${nxt[0]}`:`Gelecek sezon Hafta ${BAL.transferWindows[0][0]}`}</b><br><span class="tiny">Pencere kapalıyken pazarlama kampanyalarıyla ilgiyi biriktir.</span></div>`; }
+  const offerScope="transfer:offers";
+  bulkEnsureScope(offerScope);
+  const offerBulkOn=bulkIsActive(offerScope);
   if(S.offers.length){
+    bulkNoteVisible(offerScope,S.offers.map(o=>o.id));
+    h+=renderBulkEntry(offerScope);
     const byP={};
     for(const o of S.offers) (byP[o.pid]=byP[o.pid]||[]).push(o);
     for(const pid in byP){
@@ -4226,14 +4349,17 @@ function renderTransfer(){
         <button class="btn sm gold" onclick="compareOffers('${pid}')">⚖️ Karşılaştır</button></div></div>`;
       h+=list.map(o=>{ const c=S.world.clubs[o.cid];
         const L=S.world.leagues.find(l=>l.id===c.leagueId);
-        return `<div class="card gold tappable" onclick="openOffer('${o.id}')">
+        const card=`<div class="card gold tappable" onclick="openOffer('${o.id}')">
         <div class="row">${renderPlayerPortrait(p,46)}
         <div class="grow"><div class="b">${p.name} için resmi teklif</div>
         <div class="muted">${L.flag} ${c.name}</div>
         <div class="tiny">⏰ Hafta ${o.expires}'e kadar geçerli</div></div>
         <div style="text-align:right"><div class="tiny">BONSERVİS</div><div class="b" style="font-size:15px">${fmtM(o.fee)}</div>
-        <div class="tiny" style="color:var(--success-ink)">payın ${fmtM(o.comm)}</div></div></div></div>`;}).join("");
+        <div class="tiny" style="color:var(--success-ink)">payın ${fmtM(o.comm)}</div></div></div></div>`;
+        return offerBulkOn?`<div class="bulkrow ${bulkIsSelected(offerScope,o.id)?'sel':''}">${bulkCheckbox(offerScope,o.id,"teklifi seç")}<div class="grow">${card}</div></div>`:card;
+      }).join("");
     }
+    h+=renderBulkBar({scope:offerScope,actions:["transfer.rejectWeak"]});
   } else h+=`<div class="empty">Masada teklif yok. Formda oyuncu + pencere + pazarlama = telefon çalar. 📞</div>`;
   // Pipeline aşamaları — aynı ekranda
   h+=renderPipeline();
@@ -4749,10 +4875,21 @@ function restoreBackupSave(){
 }
 
 /* ---------- sheet / karar / özet ---------- *//* ---------- sheet / karar / özet ---------- */
-function openSheet(html){ $("sheet").innerHTML=html; $("sheetwrap").classList.add("open"); document.body.classList.add("sheet-open"); try{ mountCharts(); }catch(e){} }
+function openSheet(html){
+  /* V11-D düzeltme — açık bir toplu-işlem ÖNİZLEMESİ başka bir sheet ile değiştiriliyorsa jetonu
+     düşür; kapanmış bir önizlemenin onay callback'i sonradan çalışamaz. */
+  try{ if(UI.bulkPreview&&UI.bulkPreview.sheetOpen) bulkInvalidatePreviewToken(); }catch(e){}
+  $("sheet").innerHTML=html; $("sheetwrap").classList.add("open"); document.body.classList.add("sheet-open"); try{ mountCharts(); }catch(e){} }
 function closeSheet(){
   $("sheetwrap").classList.remove("open");
   document.body.classList.remove("sheet-open");
+  /* V11-D düzeltme — kapanan sheet bir toplu-işlem ÖNİZLEMESİ ise jeton HER kapanma yolunda düşer
+     (backdrop, Escape, goBack, programatik). Altındaki liste seçimi KORUNUR: kullanıcı yeni bir
+     önizleme açıp yeni bir jetonla onaylayabilir; eski jeton artık kullanılamaz. */
+  try{ if(UI.bulkPreview&&UI.bulkPreview.sheetOpen) bulkInvalidatePreviewToken(); }catch(e){}
+  // V11-D — telefon seçim modu YALNIZ sheet içinde yaşar: sheet kapandığında (backdrop, Escape,
+  // geri, başka bir yüzeye geçiş) görünmez bir aktif kapsam ASLA geride kalmaz.
+  try{ if(bulkState().scope==="phone:inbox") bulkLeaveScope("sheet-closed"); }catch(e){}
   // telefon → diplomasi masası eylemsiz kapatılırsa mesajı yeniden yanıt-bekliyor durumuna al
   if(typeof _phoneDiplomacyMsgId!=="undefined" && _phoneDiplomacyMsgId){
     const pm=(S.phoneInbox||[]).find(x=>x.id===_phoneDiplomacyMsgId);
@@ -5178,6 +5315,8 @@ function syncVisibleRoute(){
 function renderAll(){
   if(!S){ renderOnboarding(); return; }
   syncVisibleRoute();
+  // V11-D — toplu seçim modu gövde sınıfı: playbar gizlenir, sticky çubuk için alt boşluk açılır
+  try{ document.body.classList[bulkState().active?"add":"remove"]("bulk-mode"); }catch(e){}
   renderChrome();
   (SCREEN_RENDERERS[TAB]||SCREEN_RENDERERS.home)();
   try{ mountCharts(); }catch(e){ console.error("mountCharts",e); }
@@ -5598,6 +5737,495 @@ function logTeamOperation(entry,task){
 function alreadyLoggedBlocked(policyPath,sourceId,reason){
   return (S.teamOperations||[]).some(o=>o.season===S.season&&o.week===S.week&&o.status==="blocked"&&
     o.policyPath===policyPath&&o.sourceId===sourceId&&o.reason===reason);
+}
+
+/* ============================================================
+   V11-D — PAYLAŞILAN TOPLU İŞLEM (BULK) ÇERÇEVESİ
+   TEK seçim durumu, TEK kayıt (registry), TEK önizleme/onay sayfası,
+   TEK yürütme döngüsü. Her sayfa için ayrı bir toplu sistem YOKTUR.
+   Domain mutasyonları HER ZAMAN var olan kanonik fonksiyonlardan geçer.
+   ============================================================ */
+const BULK_SCOPES=["portfolio:list","scout:reports","scout:watchlist","transfer:offers","phone:inbox"];
+/* ASLA toplu yapılamayacak işlemler. Bu yalnız bir yorum değildir: registry kaydı ve
+   yürütme kapısı bu kümeyi kontrol eder, listedeki bir id kaydedilemez/çalıştırılamaz. */
+const NEVER_BULK_OPERATIONS=new Set([
+  "acceptOffer","signTransferContract","counterOffer","signSponsorDeal","terminateRepresentation",
+  "releaseClient","fireStaff","hireStaff","buyAsset","sellAsset","takeLoan","repayLoan",
+  "promisePlayerRole","recallLoan","acceptMoralitySettlement","resolveRivalThreat",
+  "completePlayerDecision","manipulateHiddenPA","bypassDecisions","bypassDeadlineDay","bypassTutorialDecision"
+]);
+function bulkState(){
+  UI.bulk=UI.bulk||{active:false,scope:null,selectedIds:[],lastActionId:null};
+  if(!Array.isArray(UI.bulk.selectedIds)) UI.bulk.selectedIds=[];
+  return UI.bulk;
+}
+function bulkIsActive(scope){ const b=bulkState(); return !!b.active&&b.scope===scope; }
+function bulkSelectedIds(scope){ const b=bulkState(); return (b.active&&b.scope===scope)?b.selectedIds.slice():[]; }
+function bulkSelectionCount(scope){ return bulkSelectedIds(scope).length; }
+function bulkIsSelected(scope,id){ const b=bulkState(); return !!b.active&&b.scope===scope&&b.selectedIds.includes(id); }
+/* telefon gelen kutusu bir SHEET'tir; renderAll onu tazelemez — kapsama göre doğru yüzeyi yenile */
+function bulkRerender(scope){
+  document.body.classList[bulkState().active?"add":"remove"]("bulk-mode");
+  if(scope==="phone:inbox"){ try{ openPhone(); return; }catch(e){} }
+  renderAll();
+}
+function bulkEnter(scope){
+  if(!BULK_SCOPES.includes(scope)) return;
+  const b=bulkState();
+  if(b.scope!==scope) b.selectedIds=[]; // kapsamlar arası ID sızıntısı olamaz
+  b.active=true; b.scope=scope; b.lastActionId=null;
+  bulkInvalidatePreviewToken();
+  bulkRerender(scope);
+}
+function bulkExit(){
+  const b=bulkState(); const prev=b.scope;
+  bulkLeaveScope("cancel");
+  bulkRerender(prev);
+}
+function bulkToggle(scope,id){
+  const b=bulkState(); if(!b.active||b.scope!==scope) return;
+  const i=b.selectedIds.indexOf(id);
+  if(i>=0) b.selectedIds.splice(i,1); else b.selectedIds.push(id);
+  bulkInvalidatePreviewToken(); // seçim değişti → bekleyen onay geçersiz
+  bulkRerender(scope);
+}
+function bulkClear(scope){ const b=bulkState(); if(!b.active||b.scope!==scope) return; b.selectedIds=[]; bulkInvalidatePreviewToken(); bulkRerender(scope); }
+/* görünür liste render sırasında kaydedilir; "Görünenleri Seç" bunu kullanır (dizi indeksi değil ID) */
+function bulkNoteVisible(scope,ids){ const b=bulkState(); if(b.active&&b.scope===scope) b._visible=ids.slice(); }
+function bulkSelectVisible(scope){
+  const b=bulkState(); if(!b.active||b.scope!==scope) return;
+  const set=new Set(b.selectedIds);
+  for(const id of (b._visible||[])) set.add(id);
+  b.selectedIds=[...set];
+  bulkInvalidatePreviewToken();
+  bulkRerender(scope);
+}
+/* V11-D düzeltme — TEK kanonik kapsam-terk yolu. Kapsamdan çıkılan HER akış bunu çağırır
+   (segment/sayfa/entity/geri/sheet kapanışı/save yükleme). Senkron olarak: seçim, kapsam,
+   görünür liste ve önizleme jetonu temizlenir, kilit bırakılır ve body sınıfı ANINDA kalkar —
+   böylece playbar normal render ile geri gelir. */
+function bulkLeaveScope(reason,options){
+  options=options||{};
+  const b=bulkState();
+  const had=!!b.active;
+  b.active=false; b.scope=null; b.selectedIds=[]; b._visible=[];
+  if(!options.keepLastAction) b.lastActionId=null;
+  UI.bulkExecuting=false;
+  bulkInvalidatePreviewToken();
+  try{ document.body.classList.remove("bulk-mode"); }catch(e){}
+  if(had&&options.rerender) renderAll();
+  return had;
+}
+/* geriye dönük ad — tüm eski çağrı yerleri kanonik yola düşer */
+function bulkResetAll(){ return bulkLeaveScope("reset"); }
+/* uyumsuz sayfa/segmentte render olursa son savunma hattı (tek yol DEĞİL, yalnız yedek) */
+function bulkEnsureScope(scope){
+  const b=bulkState();
+  if(b.active&&b.scope&&b.scope!==scope) bulkLeaveScope("scope-mismatch");
+}
+/* --- V11-D düzeltme: ÖNİZLEME JETONU (idempotent onay) --- */
+function bulkInvalidatePreviewToken(){ UI.bulkPreview=null; }
+function bulkSelectionSignature(scope){ return bulkSelectedIds(scope).slice().sort().join("|"); }
+function bulkMakeToken(){ return "bt"+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+/* Jeton openSheet'ten SONRA saklanır: openSheet açık bir önizlemenin jetonunu düşürdüğü için
+   önce saklamak yeni jetonu da silerdi. sheetOpen, kapanma yollarının jetonu geçersiz kılmasını sağlar. */
+function bulkStorePreviewToken(token,actionId,scope){
+  UI.bulkPreview={token,actionId,scope,selectedSignature:bulkSelectionSignature(scope),consumed:false,sheetOpen:true};
+  return token;
+}
+/* --- V11-D düzeltme: yürütme SIRASI görünür/kanonik liste sırasıdır, tıklama sırası değil --- */
+function bulkCanonicalOrder(scope){
+  try{
+    if(scope==="portfolio:list") return getFilteredPortfolioPlayers(getPortfolioPlayers()).map(p=>p.id);
+    if(scope==="scout:reports") return [...S.reports.filter(r=>!r.opened),...S.reports.filter(r=>r.opened)].map(r=>r.id);
+    if(scope==="scout:watchlist") return (S.watchlist||[]).slice();
+    if(scope==="transfer:offers") return (S.offers||[]).map(o=>o.id);
+    if(scope==="phone:inbox") return (S.phoneInbox||[]).filter(m=>!m.hiddenFromInbox).map(m=>m.id);
+  }catch(e){}
+  return [];
+}
+/* V11-D düzeltme — sıra: (1) ŞU AN GÖRÜNEN öğeler görünüm sırasıyla, (2) kalan seçililer kanonik
+   kaynak sırasıyla, (3) artakalan bayat ID'ler seçim sırasıyla (deterministik son çare).
+   Aynı sıra hem önizlemede hem yürütmede kullanılır. */
+function bulkOrderedSelectedIds(scope){
+  const selected=bulkSelectedIds(scope);
+  const sel=new Set(selected);
+  const out=[];
+  const take=id=>{ if(sel.has(id)){ out.push(id); sel.delete(id); } };
+  for(const id of (bulkState()._visible||[])) take(id);   // 1: görünenler önce
+  for(const id of bulkCanonicalOrder(scope)) take(id);    // 2: gizli seçililer kanonik sırada
+  for(const id of selected) take(id);                     // 3: kaynakta bulunmayan bayatlar
+  return out;
+}
+/* --- ortak yürütme uygunluğu: departman + personel + iş yükü (paylaşılan V11-C kapısı) --- */
+function bulkDeptReady(deptId){ return _deptDelegAvailability(deptId); }
+/* --- ÖNİZLEME: seçilen her öğe için item düzeyinde uygunluk --- */
+function buildBulkPreview(actionId){
+  const a=BULK_ACTIONS[actionId]; if(!a) return null;
+  const ids=bulkOrderedSelectedIds(a.scope); // görünür/kanonik sıra — tıklama sırası değil
+  const items=ids.map(id=>{
+    let ev; try{ ev=a.evaluateItem(id); }catch(e){ console.error("bulk evaluateItem",actionId,id,e); ev={eligible:false,reason:"Değerlendirilemedi",cost:0,warning:null}; }
+    return {id,ev:ev||{eligible:false,reason:"Değerlendirilemedi",cost:0,warning:null}};
+  });
+  const eligible=items.filter(x=>x.ev.eligible);
+  const blocked=items.filter(x=>!x.ev.eligible);
+  const totalCost=eligible.reduce((t,x)=>t+(x.ev.cost||0),0);
+  const reasons={};
+  for(const b of blocked){ const k=b.ev.reason||"Uygun değil"; reasons[k]=(reasons[k]||0)+1; }
+  const warnings={};
+  for(const e of eligible){ if(e.ev.warning) warnings[e.ev.warning]=(warnings[e.ev.warning]||0)+1; }
+  return {actionId,action:a,items,eligible,blocked,totalCost,reasons,warnings,
+    affordable:totalCost<=S.cash,deficit:Math.max(0,totalCost-S.cash)};
+}
+function openBulkActionPreview(actionId){
+  const a=BULK_ACTIONS[actionId];
+  if(!a||NEVER_BULK_OPERATIONS.has(actionId)){ toast("Bu işlem toplu yapılamaz.","gold"); return; }
+  const pv=buildBulkPreview(actionId); if(!pv) return;
+  if(!pv.items.length){ toast("Önce en az bir kayıt seç."); return; }
+  const canRun=pv.eligible.length>0&&pv.affordable;
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">TOPLU İŞLEM</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:17px">${a.icon||""} ${escapeHtml(a.label)}</div></div>`;
+  h+=`<div class="card">
+    <div class="sumline"><span class="muted">Seçilen</span><b>${pv.items.length} seçildi</b></div>
+    <div class="sumline"><span class="muted">Uygulanabilir</span><b class="${pv.eligible.length?'':'muted'}">${pv.eligible.length} uygulanabilir</b></div>
+    <div class="sumline"><span class="muted">Atlanacak</span><b>${pv.blocked.length} atlanacak</b></div>
+    ${pv.totalCost>0?`<div class="sumline"><span class="muted">Toplam maliyet</span><b>${fmtM(pv.totalCost)}</b></div>`:""}
+  </div>`;
+  if(pv.eligible.length&&typeof a.describeItem==="function"){
+    const shown=pv.eligible.slice(0,6);
+    h+=`<div class="card"><div class="tiny b">Etkilenecek kayıtlar</div>`+
+      shown.map(x=>`<div class="tiny">• ${escapeHtml(String(a.describeItem(x.id)))}</div>`).join("")+
+      (pv.eligible.length>shown.length?`<div class="tiny muted">… ve ${pv.eligible.length-shown.length} tane daha</div>`:"")+`</div>`;
+  }
+  if(pv.blocked.length){
+    h+=`<div class="card alt"><div class="tiny b">Atlanma nedenleri</div>`+
+      Object.entries(pv.reasons).map(([r,n])=>`<div class="tiny">• ${n} ${escapeHtml(r)}</div>`).join("")+`</div>`;
+  }
+  if(Object.keys(pv.warnings).length){
+    h+=`<div class="card alt"><div class="tiny b">⚠️ Dikkat</div>`+
+      Object.entries(pv.warnings).map(([w,n])=>`<div class="tiny">• ${n} ${escapeHtml(w)}</div>`).join("")+`</div>`;
+  }
+  if(!pv.affordable) h+=`<div class="card urgent"><div class="tiny b">💸 Yetersiz kasa</div>
+    <div class="tiny">Gerekli ${fmtM(pv.totalCost)} · mevcut ${fmtM(S.cash)} · eksik ${fmtM(pv.deficit)}</div></div>`;
+  if(a.irreversible) h+=`<div class="card urgent"><div class="tiny b">⛔ Bu işlem geri alınamaz.</div></div>`;
+  // V11-D düzeltme — her önizleme TEK kullanımlık bir jeton üretir; tekrarlanan callback no-op olur
+  const token=bulkMakeToken();
+  h+=`<button class="btn block ${a.irreversible?'danger':'gold'}" style="margin-top:8px" ${canRun?"":"disabled"}
+    onclick="executeBulkAction('${actionId}','${token}')">${escapeHtml(a.confirmLabel||a.label)}${pv.eligible.length?` (${pv.eligible.length})`:""}</button>`;
+  // V11-D düzeltme — telefon kapsamında "Vazgeç" tüm kutuyu kapatmaz, seçim sheet'ine döner
+  h+=`<button class="btn block ghost" style="margin-top:8px" onclick="cancelBulkPreview()">Vazgeç</button>`;
+  openSheet(h);                                   // önce aç (varsa eski önizleme jetonunu düşürür)
+  bulkStorePreviewToken(token,actionId,a.scope);   // sonra bu önizlemenin jetonunu sakla
+}
+/* Önizlemeden vazgeçme: jeton düşer, telefon kapsamında gelen kutusuna geri dönülür. */
+function cancelBulkPreview(){
+  const scope=bulkState().scope;
+  bulkInvalidatePreviewToken();
+  if(scope==="phone:inbox"){ try{ openPhone(); return; }catch(e){} }
+  closeSheet();
+}
+/* --- YÜRÜTME: her öğe yürütme anında YENİDEN doğrulanır; tek save/render/toast --- */
+function executeBulkAction(actionId,token){
+  if(UI.bulkExecuting) return; // aynı senkron çağrı içinde yeniden giriş
+  const a=BULK_ACTIONS[actionId];
+  if(!a||NEVER_BULK_OPERATIONS.has(actionId)){ toast("Bu işlem toplu yapılamaz.","gold"); return; }
+  // ---- V11-D düzeltme: JETON KAPISI — bayat/tüketilmiş callback TAM no-op'tur ----
+  // (save/render/toast/sheet-kapatma dahil hiçbir şey yapılmaz)
+  const pt=UI.bulkPreview;
+  if(!pt||pt.consumed||pt.token!==token||pt.actionId!==actionId) return;
+  if(!bulkIsActive(a.scope)||pt.scope!==a.scope) return;
+  if(pt.selectedSignature!==bulkSelectionSignature(a.scope)) return; // seçim değişmiş
+  const ids=bulkOrderedSelectedIds(a.scope);                          // görünür/kanonik sıra
+  if(!ids.length) return;
+  // ---- V11-D düzeltme: ATOMİK ÖDENEBİLİRLİK — onay anında tüm partiyi yeniden değerlendir ----
+  const fresh=ids.map(id=>{ let ev; try{ ev=a.evaluateItem(id); }catch(e){ ev={eligible:false}; } return {id,ev:ev||{eligible:false}}; });
+  const freshEligible=fresh.filter(x=>x.ev.eligible);
+  const freshCost=freshEligible.reduce((t,x)=>t+(x.ev.cost||0),0);
+  if(freshCost>S.cash){
+    // hiçbir ücretli öğe uygulanmaz, kasa değişmez, SEÇİM KORUNUR — önizleme güncel açıkla yeniden açılır
+    bulkInvalidatePreviewToken();
+    toast(`Yetersiz kasa · gereken ${fmtM(freshCost)} · eksik ${fmtM(freshCost-S.cash)}`,"gold");
+    try{ openBulkActionPreview(actionId); }catch(e){}
+    return {completed:0,skipped:ids.length,failed:0,totalCost:0,abortedForFunds:true};
+  }
+  pt.consumed=true;                        // İLK mutasyondan ÖNCE tüketildi olarak işaretle
+  UI.bulkExecuting=true;
+  UI.bulkSuppressToast=true;               // öğe yürütücüleri kendi toast'ını atamaz
+  UI.bulkNotices=[];                       // ikincil bildirimler toplanır (ör. tutorial tamamlandı)
+  let completed=0,skipped=0,failed=0,totalCost=0;
+  try{
+    for(const {id} of fresh){
+      let ev; try{ ev=a.evaluateItem(id); }catch(e){ ev={eligible:false}; }
+      if(!ev||!ev.eligible){ skipped++; continue; } // öğe düzeyinde son doğrulama (iş yükü/çift/bayat)
+      let res=null;
+      try{ res=a.executeItem(id,{}); }catch(e){ console.error("bulk executeItem",actionId,id,e); res={ok:false}; }
+      if(res&&res.ok){ completed++; totalCost+=(res.cost||0); }
+      else if(res&&res.skipped){ skipped++; }
+      else failed++;
+    }
+  } finally {
+    UI.bulkExecuting=false;                // kilit HER ZAMAN açılır
+    UI.bulkSuppressToast=false;
+  }
+  const notices=(UI.bulkNotices||[]).slice(); UI.bulkNotices=[];
+  const b=bulkState();
+  const wasScope=b.scope;
+  bulkLeaveScope("executed",{keepLastAction:true});
+  b.lastActionId=actionId;
+  try{ closeSheet(); }catch(e){}
+  save();                                                // tek save
+  renderAll();                                           // tek render
+  if(wasScope==="phone:inbox"){ try{ openPhone(); }catch(e){} }
+  const parts=[`${completed} tamamlandı`];
+  if(skipped) parts.push(`${skipped} atlandı`);
+  if(failed) parts.push(`${failed} başarısız`);
+  if(totalCost>0) parts.push(`${fmtM(totalCost)} harcandı`);
+  for(const n of notices) parts.push(n);                 // ikincil bilgi kaybolmaz, ayrı toast da atılmaz
+  toast(parts.join(" · "), completed?"green":"gold");     // TEK özet toast
+  return {completed,skipped,failed,totalCost,notices};
+}
+/* --- PAYLAŞILAN SEÇİM ARAÇ ÇUBUĞU ---
+   V11-D düzeltme — GİRİŞ düğmesi listenin ÜSTÜNDE, eylem ÇUBUĞU listenin ALTINDA render edilir.
+   Sticky-bottom yalnız öğe akışta listeden SONRA geldiğinde çalışır; önceki sürümde çubuk
+   listeden önce olduğu için kendi (kısa) kapsayıcısıyla birlikte ekrandan kayıyordu. */
+function renderBulkEntry(scope){
+  if(bulkIsActive(scope)) return "";
+  return `<div class="row" style="justify-content:flex-end;margin:2px 0 8px">
+    <button class="btn sm ghost bulkctl" onclick="bulkEnter('${scope}')" aria-label="toplu seçim modunu aç">☑️ Seç</button></div>`;
+}
+function renderBulkBar(cfg){
+  const scope=cfg.scope;
+  if(!bulkIsActive(scope)) return "";
+  const n=bulkSelectionCount(scope);
+  const acts=(cfg.actions||[]).filter(id=>BULK_ACTIONS[id]);
+  return `<div class="bulkbar${cfg.inSheet?" in-sheet":""}" role="region" aria-label="toplu seçim araç çubuğu">
+    <div class="row" style="justify-content:space-between;gap:6px;flex-wrap:wrap">
+      <span class="b tiny" aria-live="polite">${n} seçildi</span>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button class="btn sm ghost bulkctl" onclick="bulkSelectVisible('${scope}')">Görünenleri Seç</button>
+        <button class="btn sm ghost bulkctl" onclick="bulkClear('${scope}')" ${n?"":"disabled"}>Temizle</button>
+        <button class="btn sm ghost bulkctl" onclick="bulkExit()">Vazgeç</button>
+      </div></div>
+    <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+      ${acts.map(id=>`<button class="btn sm bulkctl ${BULK_ACTIONS[id].irreversible?'danger':'gold'}" ${n?"":"disabled"}
+        onclick="openBulkActionPreview('${id}')">${BULK_ACTIONS[id].icon||""} ${escapeHtml(BULK_ACTIONS[id].label)}</button>`).join("")}
+    </div></div>`;
+}
+/* geriye dönük sarmalayıcı — eski tek çağrı noktaları giriş düğmesini alır */
+function renderBulkToolbar(cfg){ return renderBulkEntry(cfg.scope); }
+/* seçim kutusu — kart tıklamasını TETİKLEMEZ (stopPropagation), 44px hedef, renkten bağımsız işaret */
+function bulkCheckbox(scope,id,label){
+  const on=bulkIsSelected(scope,id);
+  return `<button class="bulkcheck ${on?'on':''}" role="checkbox" aria-checked="${on?"true":"false"}"
+    aria-label="${escapeHtml(label||"seç")}" onclick="event.stopPropagation();bulkToggle('${scope}','${id}')">${on?"✓":""}</button>`;
+}
+
+/* ============================================================
+   V11-D — TOPLU İŞLEM KAYDI (REGISTRY)
+   Her eylem: kapsam, etiket, geri alınabilirlik, item düzeyinde uygunluk
+   ve TEK öğe yürütmesi tanımlar. Yürütme HER ZAMAN kanonik domain
+   fonksiyonlarını çağırır — mutasyon satırları asla kopyalanmaz.
+   ============================================================ */
+const BULK_ACTIONS={
+  /* ---------- GATE 6: PORTFÖY ---------- */
+  "portfolio.contractReview":{
+    scope:"portfolio:list", label:"Sözleşme İncelemesine Gönder", icon:"📄",
+    irreversible:false, confirmLabel:"Hukuk Ekibine Gönder",
+    describeItem(pid){ const p=S.world.players[pid]; return p?p.name:pid; },
+    evaluateItem(pid){
+      const p=S.world.players[pid];
+      if(!p) return {eligible:false,reason:"oyuncu bulunamadı",cost:0};
+      if(p.agent!=="you") return {eligible:false,reason:"müşterin değil",cost:0};
+      if(p.retired) return {eligible:false,reason:"emekli oyuncu",cost:0};
+      if(!p.clubId||!S.world.clubs[p.clubId]) return {eligible:false,reason:"kulübü yok",cost:0};
+      const pol=(S.delegationPolicies&&S.delegationPolicies.contracts)||{};
+      const win=pol.prepareClubContractBelowWeeks||20;
+      if(contractWeeksLeft(p)>win) return {eligible:false,reason:`inceleme penceresi dışında (${win} hafta)`,cost:0};
+      if(p._clubContractReviewedSig===clubContractSignature(p)) return {eligible:false,reason:"bu sözleşme zaten incelendi",cost:0};
+      if(p._clubContractReviewCooldownUntil&&nowTick()<p._clubContractReviewCooldownUntil) return {eligible:false,reason:"yeniden inceleme beklemede",cost:0};
+      if(findActiveDeptTask("club-contract-review",pid)) return {eligible:false,reason:"zaten ekipte",cost:0};
+      const av=bulkDeptReady("legal"); if(!av.ok) return {eligible:false,reason:av.reason,cost:0};
+      return {eligible:true,reason:null,cost:0,warning:null};
+    },
+    executeItem(pid){
+      const p=S.world.players[pid]; if(!p) return {ok:false,skipped:true};
+      // yürütme anındaki iş yükü/personel durumu createDeptTask içinde tekrar denetlenir
+      const t=createDeptTask("club-contract-review","legal",{title:`${p.name} kulüp sözleşmesi incelemesi`,
+        pid,dur:2,baseSucc:0.75,attentionSaved:1,silent:true,suppressToast:true});
+      if(!t) return {ok:false,skipped:true};
+      logTeamOperation({domain:"contracts",action:"Kulüp sözleşmesi incelemesi başlatıldı",
+        reason:`Toplu işlem · ${contractWeeksLeft(p)} hafta kaldı`,policyPath:null,departmentId:"legal",
+        sourceType:"player",sourceId:pid,pid,status:"delegated",result:null,cost:0},t);
+      return {ok:true,cost:0};
+    }
+  },
+  /* ---------- GATE 7.1: RAPORU AÇILDI İŞARETLE ---------- */
+  "scout.markOpened":{
+    scope:"scout:reports", label:"Açıldı Olarak İşaretle", icon:"📬",
+    irreversible:false, confirmLabel:"Açıldı Olarak İşaretle",
+    evaluateItem(rid){
+      const r=S.reports.find(x=>x.id===rid);
+      if(!r) return {eligible:false,reason:"rapor bulunamadı",cost:0};
+      if(r.opened) return {eligible:false,reason:"zaten açık",cost:0};
+      if(r.major&&!r.decided) return {eligible:false,reason:"özel karar gerektiriyor",cost:0};
+      if(!r.pid||!S.world.players[r.pid]) return {eligible:false,reason:"oyuncu bulunamadı",cost:0};
+      return {eligible:true,reason:null,cost:0};
+    },
+    executeItem(rid){ const res=markReportOpenedDomain(rid,{silent:true}); return res.ok?{ok:true,cost:0}:{ok:false,skipped:true}; }
+  },
+  /* ---------- GATE 7.2: İZLEME LİSTESİNE EKLE ---------- */
+  "scout.addWatchlist":{
+    scope:"scout:reports", label:"İzleme Listesine Ekle", icon:"👁️",
+    irreversible:false, confirmLabel:"İzlemeye Ekle",
+    evaluateItem(rid){
+      const r=S.reports.find(x=>x.id===rid); if(!r) return {eligible:false,reason:"rapor bulunamadı",cost:0};
+      const p=r.pid&&S.world.players[r.pid]; if(!p) return {eligible:false,reason:"oyuncu bulunamadı",cost:0};
+      if(p.retired) return {eligible:false,reason:"emekli oyuncu",cost:0};
+      if(p.agent==="you") return {eligible:false,reason:"zaten müşterin",cost:0};
+      if((S.watchlist||[]).includes(r.pid)) return {eligible:false,reason:"zaten izleme listesinde",cost:0};
+      return {eligible:true,reason:null,cost:0};
+    },
+    executeItem(rid){
+      const r=S.reports.find(x=>x.id===rid); if(!r) return {ok:false,skipped:true};
+      const res=setWatchlistMembership(r.pid,true,{silent:true});
+      return res.added?{ok:true,cost:0}:{ok:false,skipped:true};
+    }
+  },
+  /* ---------- GATE 7.3: İKİNCİ GÖZLEM ---------- */
+  "scout.secondLook":{
+    scope:"scout:reports", label:"İkinci Gözlem İste", icon:"🔍",
+    irreversible:false, confirmLabel:"İkinci Gözlem Başlat",
+    evaluateItem(rid){
+      const r=S.reports.find(x=>x.id===rid); if(!r) return {eligible:false,reason:"rapor bulunamadı",cost:0};
+      if(!r.opened) return {eligible:false,reason:"önce rapor açılmalı",cost:0};
+      if(r.major&&!r.decided) return {eligible:false,reason:"özel karar gerektiriyor",cost:0};
+      if(!r.pid||!S.world.players[r.pid]) return {eligible:false,reason:"oyuncu bulunamadı",cost:0};
+      if(r.second) return {eligible:false,reason:"ikinci gözlem zaten yapıldı",cost:0};
+      if(findActiveDeptTask("second-look",r.pid)) return {eligible:false,reason:"ekip zaten üzerinde",cost:0};
+      const av=bulkDeptReady("scouting"); if(!av.ok) return {eligible:false,reason:av.reason,cost:0};
+      return {eligible:true,reason:null,cost:SECOND_LOOK_COST};
+    },
+    executeItem(rid){
+      const res=applySecondLookDomain(rid,{silent:true}); // kasa kontrolü kanonik fonksiyonun içinde
+      return res.ok?{ok:true,cost:res.cost}:{ok:false,skipped:true};
+    }
+  },
+  /* ---------- GATE 8: İZLEMEDEN ÇIKAR ---------- */
+  "watchlist.remove":{
+    scope:"scout:watchlist", label:"İzlemeden Çıkar", icon:"✕",
+    irreversible:false, confirmLabel:"İzlemeden Çıkar",
+    describeItem(pid){ const p=S.world.players[pid]; return p?p.name:pid; },
+    evaluateItem(pid){
+      if(!(S.watchlist||[]).includes(pid)) return {eligible:false,reason:"listede değil",cost:0};
+      return {eligible:true,reason:null,cost:0};
+    },
+    executeItem(pid){ const res=setWatchlistMembership(pid,false,{silent:true}); return res.removed?{ok:true,cost:0}:{ok:false,skipped:true}; }
+  },
+  /* ---------- GATE 9: ZAYIF TEKLİFLERİ REDDET (GERİ ALINAMAZ) ---------- */
+  "transfer.rejectWeak":{
+    scope:"transfer:offers", label:"Zayıf Teklifleri Reddet", icon:"🚫",
+    irreversible:true, confirmLabel:"Evet, Reddet",
+    describeItem(oid){
+      const o=S.offers.find(x=>x.id===oid); if(!o) return oid;
+      const p=S.world.players[o.pid], c=S.world.clubs[o.cid];
+      return `${p?p.name:"?"} · ${c?c.name:"?"} · ${fmtM(o.fee)}`;
+    },
+    evaluateItem(oid){
+      const o=S.offers.find(x=>x.id===oid); if(!o) return {eligible:false,reason:"teklif artık yok",cost:0};
+      if(o.season!==S.season) return {eligible:false,reason:"geçmiş sezon teklifi",cost:0};
+      const p=S.world.players[o.pid]; if(!p) return {eligible:false,reason:"oyuncu bulunamadı",cost:0};
+      if(p.agent!=="you") return {eligible:false,reason:"müşterin değil",cost:0};
+      if(typeof repValid==="function"&&!repValid(o.pid)) return {eligible:false,reason:"temsil geçersiz",cost:0};
+      if(S.negotiationSessions&&S.negotiationSessions[o.id]) return {eligible:false,reason:"aktif pazarlık",cost:0};
+      if(o.expires-S.week<=1) return {eligible:false,reason:"süresi dolmak üzere",cost:0};
+      const pol=(S.delegationPolicies&&S.delegationPolicies.transfer)||{};
+      const pct=Math.round(o.fee/Math.max(1,p.value)*100);
+      if(pct>=(pol.alwaysShowAboveValuePct||115)) return {eligible:false,reason:"güçlü teklif",cost:0};
+      if(pct>=100) return {eligible:false,reason:"piyasa değeri üstünde",cost:0};
+      return {eligible:true,reason:null,cost:0};
+    },
+    executeItem(oid){
+      const o=S.offers.find(x=>x.id===oid); if(!o) return {ok:false,skipped:true}; // önizlemeden sonra kaldırılmış
+      rejectOfferDomain(o); // TEK kanonik red yolu (manuel/politika/toplu hepsi buradan)
+      return {ok:true,cost:0};
+    }
+  },
+  /* ---------- GATE 10.1: RUTİN GÖRÜŞMELERİ DELEGE ET ---------- */
+  "phone.delegateRoutine":{
+    scope:"phone:inbox", label:"Rutin Görüşmeleri Delege Et", icon:"🧑‍💼",
+    irreversible:false, confirmLabel:"Ekibe Devret",
+    describeItem(mid){
+      const m=(S.phoneInbox||[]).find(x=>x.id===mid); if(!m) return mid;
+      const best=getEligibleDelegates(m)[0];
+      return `${m.subject} → ${best?DEPT_MAP[best.id].name:"—"}`;
+    },
+    evaluateItem(mid){
+      const m=(S.phoneInbox||[]).find(x=>x.id===mid); if(!m) return {eligible:false,reason:"mesaj bulunamadı",cost:0};
+      if(!canDelegatePhoneMessage(m)) return {eligible:false,reason:"artık delege edilemez",cost:0};
+      if(m.urgency==="yüksek") return {eligible:false,reason:"yüksek aciliyet",cost:0};
+      if(m.fromType==="oyuncu") return {eligible:false,reason:"oyuncu mesajı",cost:0};
+      if(m.fromType==="aile") return {eligible:false,reason:"aile mesajı",cost:0};
+      if(m.fromType==="rakip"||m.rid) return {eligible:false,reason:"rakip ajans konusu",cost:0};
+      const topic=inferPhoneTopic(m);
+      if(PHONE_ALWAYS_MANUAL_TOPICS.has(topic)) return {eligible:false,reason:"elle yönetilmesi gerekir",cost:0};
+      const isMedia=m.fromType==="gazeteci"||["transfer_rumour","player_form","agency_strategy","controversy"].includes(topic);
+      const isClub=m.fromType==="kulup"&&["transfer_interest","loan_interest","contract_renewal"].includes(topic);
+      if(!isMedia&&!isClub) return {eligible:false,reason:"rutin kapsamda değil",cost:0};
+      if(findActiveDeptTask("phoneDelegate",null,m.id)) return {eligible:false,reason:"zaten ekipte",cost:0};
+      const best=getEligibleDelegates(m)[0]; if(!best) return {eligible:false,reason:"uygun/açık departman yok",cost:0};
+      return {eligible:true,reason:null,cost:best.cost||0,department:best.id};
+    },
+    executeItem(mid){
+      const m=(S.phoneInbox||[]).find(x=>x.id===mid); if(!m) return {ok:false,skipped:true};
+      const best=getEligibleDelegates(m)[0]; if(!best) return {ok:false,skipped:true};
+      if(S.cash<(best.cost||0)) return {ok:false,skipped:true}; // kasa asla eksiye düşmez
+      const task=assignPhoneConversation(m.id,best.id,{silent:true,suppressToast:true});
+      if(!task) return {ok:false,skipped:true}; // iş yükü/çift kayıt vb. yürütme anında düştü
+      logTeamOperation({domain:"phone",action:"Görüşme devredildi (toplu)",reason:"Toplu işlem: rutin görüşme devredildi",
+        policyPath:null,departmentId:best.id,sourceType:"phoneMessage",sourceId:m.id,pid:m.pid||null,
+        status:"delegated",result:null,cost:best.cost||0},task);
+      return {ok:true,cost:best.cost||0};
+    }
+  },
+  /* ---------- GATE 10.2: GÜVENLİ MESAJLARI KAPAT ---------- */
+  "phone.dismissSafe":{
+    scope:"phone:inbox", label:"Güvenli Mesajları Kapat", icon:"✔️",
+    irreversible:false, confirmLabel:"Kapat",
+    evaluateItem(mid){
+      const m=(S.phoneInbox||[]).find(x=>x.id===mid); if(!m) return {eligible:false,reason:"mesaj bulunamadı",cost:0};
+      if(PHONE_STATUS_DONE.has(m.status)) return {eligible:false,reason:"zaten sonuçlanmış",cost:0};
+      if(m.status==="delegated") return {eligible:false,reason:"ekibe devredilmiş",cost:0};
+      if(m.status==="awaiting_followup") return {eligible:false,reason:"takip bekliyor",cost:0};
+      if(m.status==="in_conversation") return {eligible:false,reason:"görüşme sürüyor",cost:0};
+      if(m.urgency==="yüksek") return {eligible:false,reason:"yüksek aciliyet",cost:0};
+      const impact=phoneDismissImpact(m);
+      if(impact.hasConsequence) return {eligible:false,reason:"kapatmanın bedeli var",cost:0};
+      if(!PHONE_INFO_TOPICS.has(inferPhoneTopic(m))) return {eligible:false,reason:"bilgilendirici konu değil",cost:0};
+      if(findActiveDeptTask("phoneDelegate",null,m.id)) return {eligible:false,reason:"aktif görev bağlı",cost:0};
+      if((S.phoneInbox||[]).some(x=>x.parentMessageId===m.id&&!PHONE_TERMINAL_STATUS.has(x.status)))
+        return {eligible:false,reason:"bağlı aktif mesaj var",cost:0};
+      return {eligible:true,reason:null,cost:0};
+    },
+    executeItem(mid){ const res=dismissPhoneMessageDomain(mid,{silent:true}); return res.ok?{ok:true,cost:0}:{ok:false,skipped:true}; }
+  },
+  /* ---------- GATE 10.3: GELEN KUTUSUNDAN GİZLE ---------- */
+  "phone.hide":{
+    scope:"phone:inbox", label:"Gelen Kutusundan Gizle", icon:"🙈",
+    irreversible:false, confirmLabel:"Gizle",
+    evaluateItem(mid){
+      const m=(S.phoneInbox||[]).find(x=>x.id===mid); if(!m) return {eligible:false,reason:"mesaj bulunamadı",cost:0};
+      if(m.hiddenFromInbox) return {eligible:false,reason:"zaten gizli",cost:0};
+      // gizleme bir SONUÇ değildir: yalnız sonuçlanmış/devredilmiş/takipteki mesajlarda serbesttir
+      if(!["delegated","awaiting_followup","resolved","dismissed","expired"].includes(m.status))
+        return {eligible:false,reason:"önce yanıtlanmalı veya devredilmeli",cost:0};
+      return {eligible:true,reason:null,cost:0};
+    },
+    executeItem(mid){ const res=hidePhoneMessageDomain(mid,{silent:true}); return res.ok?{ok:true,cost:0}:{ok:false,skipped:true}; }
+  },
+};
+/* GATE 11 zorlaması — yasaklı bir işlem kayda giremez; girmişse çalışma zamanında kaldırılır. */
+for(const _id of Object.keys(BULK_ACTIONS)){
+  if(NEVER_BULK_OPERATIONS.has(_id)){ console.error("V11-D: yasaklı toplu işlem kayıttan çıkarıldı:",_id); delete BULK_ACTIONS[_id]; }
 }
 /* ---------- 2A: TRANSFER — düşük teklif otomatik reddi ---------- */
 /* V11-C — iş/aday uygunluğu (değer/süre/pazarlık kuralları) ile YÜRÜTME uygunluğu (departman
@@ -6668,9 +7296,15 @@ function openPhone(){
     return true;
   };
   const inbox=all.filter(match);
+  // V11-D — telefon bir SHEET'tir: seçim modu sheet İÇİNDE yaşar, ikinci bir tam-ekran rota açılmaz.
+  const scope="phone:inbox";
+  bulkEnsureScope(scope);
+  const bulkOn=bulkIsActive(scope);
+  bulkNoteVisible(scope,inbox.map(m=>m.id));
   let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">MENAJER TELEFONU</div>
     <div class="b" style="font-family:'Fraunces',serif;font-size:18px">📱 Gelen Kutusu</div></div>
     <div class="filterrow" role="group" aria-label="mesaj filtreleri">${FILTERS.map(([k,l])=>`<button class="fchip ${PHONE_FILTER===k?'on':''}" onclick="setPhoneFilter('${k}')">${l}</button>`).join("")}</div>`;
+  h+=renderBulkEntry(scope);
   if(!inbox.length) h+=renderEmptyState({icon:"📱",title:PHONE_FILTER==="all"?"Kutun temiz":"Bu filtrede mesaj yok",
     desc:PHONE_FILTER==="all"?"Oyuncular, kulüpler ve sponsorlar aradığında burada görürsün.":"Farklı bir filtre dene.",
     action:PHONE_FILTER!=="all"?{label:"Tümünü Gör",fn:"setPhoneFilter('all')"}:null});
@@ -6679,12 +7313,15 @@ function openPhone(){
     if(m.pid&&S.world.players[m.pid]) ctxBits.push("👤 "+S.world.players[m.pid].name);
     if(m.cid&&S.world.clubs[m.cid]) ctxBits.push("🏟️ "+S.world.clubs[m.cid].name);
     const rem=(m.expiresAtTick!=null&&!m.done)?Math.max(0,m.expiresAtTick-nowTick()):null;
-    return `<div class="card tappable ${!m.done?'gold':''}" onclick="openPhoneMsg('${m.id}')" style="padding:10px 12px;border-left:3px solid ${m.urgency==="yüksek"&&!m.done?"#D9534F":(PHONE_SENDER_COLOR[m.fromType]||"var(--div)")}">
+    const card=`<div class="card tappable ${!m.done?'gold':''}" onclick="openPhoneMsg('${m.id}')" style="padding:10px 12px;border-left:3px solid ${m.urgency==="yüksek"&&!m.done?"#D9534F":(PHONE_SENDER_COLOR[m.fromType]||"var(--div)")}">
     <div class="row" style="justify-content:space-between"><span class="b" style="font-size:13px">${PHONE_ICON[m.fromType]||"✉️"} ${escapeHtml(m.from)}</span>
     <span class="badge ${phoneStatusBadgeClass(m)}">${phoneStatusLabel(m)}</span></div>
     <div class="tiny b">${escapeHtml(m.subject)}</div>
     <div class="tiny">${ctxBits.length?ctxBits.map(escapeHtml).join(" · ")+" · ":""}S${m.s} H${m.w}${m.urgency==="yüksek"&&!m.done?" · 🔴 acil":""}${rem!=null?` · son ${rem} hafta`:""}</div></div>`;
+    return bulkOn?`<div class="bulkrow ${bulkIsSelected(scope,m.id)?'sel':''}">${bulkCheckbox(scope,m.id,"mesajı seç")}<div class="grow">${card}</div></div>`:card;
   }).join("");
+  // sheet kendi kaydırma kabıdır → çubuk sheet'in altına yapışır (sayfa tabbar'ına göre DEĞİL)
+  h+=renderBulkBar({scope,actions:["phone.delegateRoutine","phone.dismissSafe","phone.hide"],inSheet:true});
   openSheet(h);
 }
 const PHONE_ICON={oyuncu:"👤",aile:"👨‍👩‍👦",kulup:"🏟️",td:"📋",scout:"🔭",personel:"🧑‍💼",sponsor:"👟",gazeteci:"📰",rakip:"🦈",hukuk:"⚖️"};
@@ -6693,6 +7330,9 @@ const PHONE_ICON={oyuncu:"👤",aile:"👨‍👩‍👦",kulup:"🏟️",td:"�
    ============================================================ */
 function openPhoneMsg(id){
   const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m){ openPhone(); return; }
+  /* V11-D düzeltme — mesaj detayına girmek telefon seçim modundan ÇIKIŞtır (tutarlı tek davranış).
+     Aksi halde detay sheet'i içinde görünmez bir phone:inbox kapsamı aktif kalırdı. */
+  if(bulkState().scope==="phone:inbox") bulkLeaveScope("phone-detail");
   if(m.status==null) setPhoneStatus(m, m.done?"resolved":"unread");
   const p=m.pid?S.world.players[m.pid]:null, c=m.cid?S.world.clubs[m.cid]:null, rv=m.rid?rivalById(m.rid):null;
   let ctxCard=`<div class="card">`;
@@ -6797,15 +7437,33 @@ function phoneConfirmDismiss(id){
     <button class="btn block ghost" style="margin-top:8px" onclick="openPhoneMsg('${id}')">Vazgeç</button>`;
   openSheet(h);
 }
-function phoneAct(id, act){
-  const m=(S.phoneInbox||[]).find(x=>x.id===id); if(!m) return;
-  if(act==="dismiss"){
-    if(m.status==="delegated"||m.status==="awaiting_followup"){ m.hiddenFromInbox=true; save(); openPhone(); return; }
-    if(!PHONE_STATUS_DONE.has(m.status)) applyPhoneDismissConsequence(m);
-    setPhoneStatus(m,"dismissed");
-  } else if(act==="hide"){
+/* V11-D — mesaj kapatma/gizlemenin TEK kanonik mutasyonu; manuel phoneAct ve toplu işlem
+   aynı yoldan geçer. opts.silent → save/sheet yenilemesi yapılmaz. */
+function dismissPhoneMessageDomain(messageId, opts){
+  opts=opts||{};
+  const m=(S.phoneInbox||[]).find(x=>x.id===messageId); if(!m) return {ok:false,reason:"Mesaj bulunamadı"};
+  // devredilmiş/takipteki bir mesaj "kapatılmaz" — yalnız kutudan gizlenir (sonucu değişmez)
+  if(m.status==="delegated"||m.status==="awaiting_followup"){
     m.hiddenFromInbox=true;
+    if(!opts.silent) save();
+    return {ok:true,hiddenOnly:true};
   }
+  if(!PHONE_STATUS_DONE.has(m.status)) applyPhoneDismissConsequence(m);
+  setPhoneStatus(m,"dismissed");
+  if(!opts.silent) save();
+  return {ok:true,hiddenOnly:false};
+}
+/* Yalnız görünürlük: sonucu/durumu/görevi DEĞİŞTİRMEZ, bedel uygulamaz. */
+function hidePhoneMessageDomain(messageId, opts){
+  opts=opts||{};
+  const m=(S.phoneInbox||[]).find(x=>x.id===messageId); if(!m) return {ok:false,reason:"Mesaj bulunamadı"};
+  m.hiddenFromInbox=true;
+  if(!opts.silent) save();
+  return {ok:true};
+}
+function phoneAct(id, act){
+  if(act==="dismiss") dismissPhoneMessageDomain(id,{silent:true});
+  else if(act==="hide") hidePhoneMessageDomain(id,{silent:true});
   save(); openPhone();
 }
 /* ============================================================
@@ -8477,6 +9135,11 @@ function entityTopBar(){
 }
 function showEntityPage(type,id,html,opts){
   opts=opts||{};
+  /* V11-D düzeltme — KANONİK entity giriş sınırı. Üretimdeki kartlar openEntity() çağırmaz
+     (playerCard→openPlayer, transfer kartı→openOffer gibi doğrudan yollar buraya düşer), bu yüzden
+     kapsam terki openEntity yerine BURADA yapılır. Aktif kapsam yoksa hiçbir yan etki üretilmez —
+     aynı entity'nin tekrar render edilmesi listeyi/seçimi etkilemez. */
+  if(bulkState().active) bulkLeaveScope("entity-page"); else bulkInvalidatePreviewToken();
   const cur=UI.route||{screen:TAB};
   const sameEntity=cur.screen==="entity"&&cur.entityType===type&&String(cur.entityId)===String(id);
   if(!sameEntity){ if(cur.screen!=="entity") saveCurrentScroll(); pushHistory(cur); }
@@ -8493,6 +9156,7 @@ const ENTITY_OPENERS={player:pid=>openPlayer(pid),country:cid=>openCountry(cid),
   department:id=>openDepartmentEntity(id),finance:()=>openFinanceEntity(),
   competition:id=>openCompetition(id),scoutFind:id=>openScoutFind(id),match:id=>openMatch(id)};
 function openEntity(type,id,opts){ opts=opts||{};
+  bulkLeaveScope("entity-open"); // V11-D — liste kapsamından entity detayına geçiş kapsamı terk eder
   if(opts.section!=null){ if(type==="player") PDTAB=opts.section; if(type==="rivalAgency") RVTAB=opts.section; }
   const fn=ENTITY_OPENERS[type];
   if(!fn){ toast("Bilinmeyen ekran"); return; }
@@ -8520,6 +9184,7 @@ function renderEntity(){ const r=UI.route; if(!r||r.screen!=="entity") return;
 function goBack(){
   const sw=$("sheetwrap"); if(sw&&sw.classList&&sw.classList.contains("open")){ closeSheet(); return; }
   if(UI.menuOpen){ closeMainMenu(); return; }
+  bulkLeaveScope("back"); // V11-D — tarayıcı/uygulama geri hareketi kapsamı terk eder
   const prev=popHistory();
   if(!prev){ navigateTo("home"); return; }
   UI._suppressPush=true;
@@ -10703,19 +11368,33 @@ function renderPortfolioFilteredEmptyState(total){
 function clearPortfolioFilters(){ PSTATE.q=""; PSTATE.f="all"; PSTATE.s="value"; renderAll(); }
 function renderPortfolioCards(arr){ return arr.map(p=>playerCard(p)).join(""); }
 function renderPortfolioTable(arr){ return portfolioTable(arr); }
+/* V11-D — seçim modunda kartlar seçilebilir satırlara sarılır; kartın normal tıklaması
+   seçim modu DIŞINDA aynen korunur (bkz. playerCard). */
+function renderPortfolioSelectableCards(arr){
+  const scope="portfolio:list";
+  return arr.map(p=>`<div class="bulkrow ${bulkIsSelected(scope,p.id)?'sel':''}">
+    ${bulkCheckbox(scope,p.id,p.name+" seç")}
+    <div class="grow">${playerCard(p)}</div></div>`).join("");
+}
 /* TEK PRODUCTION ENTRYPOINT — bütün render yolları bunu kullanır */
 function buildPlayerList(){
   const allClients=getPortfolioPlayers();
   const filtered=getFilteredPortfolioPlayers(allClients);
   const isTable=getPortfolioViewMode()==="table";
+  const scope="portfolio:list";
+  bulkEnsureScope(scope);
+  const bulkOn=bulkIsActive(scope);
   const tog=`<div class="row" style="justify-content:space-between;margin:2px 0 6px">
     <span class="tiny b">${allClients.length} aktif müşteri${filtered.length!==allClients.length?` · ${filtered.length} gösteriliyor`:""}</span>
-    <button class="btn sm ghost" onclick="PSTATE.view='${isTable?"card":"table"}';renderAll()">${isTable?"🃏 Kart":"📋 Tablo"}</button></div>`;
+    ${bulkOn?"":`<button class="btn sm ghost" onclick="PSTATE.view='${isTable?"card":"table"}';renderAll()">${isTable?"🃏 Kart":"📋 Tablo"}</button>`}</div>`;
   if(!allClients.length) return tog+renderNoClientsState();
   if(!filtered.length) return tog+renderPortfolioFilteredEmptyState(allClients.length);
   const hidden=allClients.length-filtered.length;
   const note=hidden>0?`<div class="tiny" style="margin-bottom:6px">${hidden} oyuncu mevcut filtre nedeniyle gizli · <a onclick="clearPortfolioFilters()" style="cursor:pointer;color:var(--gold)">Filtreleri Temizle</a></div>`:"";
-  return tog+note+(isTable?renderPortfolioTable(filtered):renderPortfolioCards(filtered));
+  bulkNoteVisible(scope,filtered.map(p=>p.id));
+  // seçim modunda her zaman kart görünümü: satır bazlı seçim hedefi tabloda güvenli değil
+  const list=bulkOn?renderPortfolioSelectableCards(filtered):(isTable?renderPortfolioTable(filtered):renderPortfolioCards(filtered));
+  return tog+note+renderBulkEntry(scope)+list+renderBulkBar({scope,actions:["portfolio.contractReview"]});
 }
 function invalidatePortfolioIndexes(reason){
   try{ if(S._idx) S._idx.builtWeek=-1; }catch(e){}
