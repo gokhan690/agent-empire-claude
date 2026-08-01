@@ -248,6 +248,45 @@ body.bulk-mode .screen{padding-bottom:190px}
   body.bulk-mode .screen{padding-bottom:170px}
 }
 
+/* ---------- V11-E paylaşılan açılır bölüm ---------- */
+/* TEK bileşen: başlık düğmesi + özet + chevron; içerik yalnız açıkken DOM'a girer.
+   Marka rengi/koyu tema aynen korunur — yalnız bilgi yoğunluğu azalır. */
+.disc{border:1px solid var(--div);background:var(--card);border-radius:var(--radius-md);
+  margin:0 0 10px;box-shadow:var(--shadow-sm);overflow:hidden}
+.disc-t{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:10px 12px;
+  border:none;background:none;font-family:inherit;font-size:13px;font-weight:800;color:var(--ink);
+  cursor:pointer;text-align:left}
+.disc-t:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.disc-ttl{flex:0 0 auto}
+.disc-sum{flex:1 1 auto;min-width:0;font-size:11.5px;font-weight:600;color:var(--ink3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.disc-chev{flex:0 0 auto;font-size:12px;color:var(--ink3);transition:transform .16s ease}
+.disc.open .disc-chev{transform:rotate(180deg)}
+.disc-p{padding:0 12px 12px}
+.disc-p[hidden]{display:none}
+.disc-p>.card:last-child,.disc-p>.disc:last-child{margin-bottom:0}
+@media (prefers-reduced-motion:reduce){.disc-chev{transition:none}}
+/* V11-E: filtre çipleri de birincil dokunma hedefi — 44px */
+.fchip{min-height:44px}
+/* V11-E: kompakt sayfa başlığı — hero ilk ekranı yutmasın */
+.hero-page.hero-compact{padding:12px 14px;border-radius:16px;margin-bottom:10px}
+.hero-page.hero-compact h1{font-size:18px;margin:1px 0 2px}
+.hero-page.hero-compact .hdesc{font-size:11.5px}
+/* V11-E: oyuncu detayı — mobilde 4 sekme, masaüstünde altı sekmenin tamamı */
+.seg.pdtabs-d{display:none}
+@media(min-width:1100px){.seg.pdtabs-m{display:none}.seg.pdtabs-d{display:flex}}
+/* V11-E: ajans grup navigasyonu içindeki ikinci seviye seçici */
+.seg.subseg{margin:-4px 0 12px}
+.seg.subseg button{font-size:11.5px;padding:7px 13px}
+/* V11-E: pazarlık ayar kontrolleri — .btn.sm 40px'e, satır içi override'lar 30-32px'e
+   düşürüyordu; .btn.sm'i yenmek için daha yüksek özgüllük (bkz. .bulkctl deseni) */
+.btn.sm.negoctl,.negoctl{min-height:44px}
+/* V11-E: basit pazarlık özeti */
+.nego-compact{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:9px 12px;
+  border:1px solid var(--div);background:var(--card);border-radius:var(--radius-md);margin-bottom:10px;
+  font-family:inherit;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;text-align:left}
+.nego-compact .ncs{margin-left:auto;font-size:11px;font-weight:700;color:var(--ink3)}
+
 /* ---------- alt tab bar ---------- */
 .tabbar{position:fixed;bottom:0;left:0;right:0;z-index:50;display:flex;justify-content:center;
   background:var(--tabbar-bg);backdrop-filter:blur(14px);border-top:1px solid var(--div)}
@@ -1006,6 +1045,7 @@ function newGame(agentName, agencyName){
   S.settings.edgeSwipeMenu=true;
   S.settings.managementMode="balanced";
   S.settings.negotiationView="simple";
+  try{ ensureGameplayViewState(S); }catch(e){}   // V11-E — sunum tercihleri sınırlı ve güvenli başlar
   S.delegationPolicies=defaultDelegationPolicies();
   applyManagementModeDefaults("balanced",{full:true,silent:true});
   S.teamOperations=[];
@@ -2110,15 +2150,31 @@ function renderDelegationPolicyPanel(){
   </div>`;
   return h;
 }
+/* V11-E son düzeltme — KÖK kapsayıcı normalizasyonu TEK yerde ve EN BAŞTA yapılır.
+   Önceden `st.settings=st.settings||{}` truthy-ama-geçersiz kökleri (dizi/string/sayı/
+   fonksiyon) geçiriyordu: managementMode bir DİZİYE yazılıyor, ardından
+   ensureGameplayViewState o diziyi {} ile değiştirince yazılan değer kayboluyordu.
+   Sonuç: tam onarım idempotent değildi ve V11-C yönetim modu ilk geçişte tamamlanmıyordu. */
+function normalizeSaveRootContainers(st){
+  if(!st) return st;
+  const invalidRoot=v=>!v||typeof v!=="object"||Array.isArray(v);
+  if(invalidRoot(st.uiState)) st.uiState={};
+  if(invalidRoot(st.settings)) st.settings={};
+  return st;
+}
 function repairSaveState(st){
   if(!st) return st;
   // V11-D — toplu seçim SALT UI'dır ve kayda yazılmaz; başka bir save yüklendiğinde her zaman sıfırlanır
   // (eski bir kayıt yüklenirken oyun ASLA kendiliğinden toplu seçim moduna girmez).
   try{ bulkResetAll(); }catch(e){}
+  // kökler, settings/uiState okuyan ya da yazan HER ŞEYDEN önce geçerli hale getirilir
+  normalizeSaveRootContainers(st);
   migrateSaveState(st);
+  normalizeSaveRootContainers(st);   // migration yeni alan ekleyebilir, kök tipini bozamaz — ucuz güvence
   // V11 — yönetim modu: eksik/bozuk değer her zaman "balanced"a onarılır (schemaRevision kapısından bağımsız)
-  st.settings=st.settings||{};
   if(!MANAGEMENT_MODES.some(m=>m.id===st.settings.managementMode)) st.settings.managementMode="balanced";
+  // V11-E — sunum tercihleri: sınırlı yapı, bilinmeyen ID temizliği, güvenli varsayılan (şema sürümü DEĞİŞMEZ)
+  try{ ensureGameplayViewState(st); }catch(e){}
   // güvenlik: eksik V6 koleksiyonlarını doldur
   st.departments=st.departments||{}; st.staffDirectory=st.staffDirectory||[];
   st.departmentTasks=st.departmentTasks||[]; st.negotiationSessions=st.negotiationSessions||{};
@@ -2683,7 +2739,33 @@ let FINTAB="ozet";
 let FINWIN=16;
 /* V11-D — segment değişimi (ör. Raporlar → Görevler, Teklifler → Kiralıklar) kapsamı TERK EDER.
    Kapsam içi normal yeniden render (liste tazeleme, telefon filtre çipleri) seçimi korur. */
-function setSeg(t,v){ if(SEG[t]!==v) bulkLeaveScope("segment-change"); SEG[t]=v; renderAll(); window.scrollTo(0,0); }
+/* ============================================================
+   V11-E son düzeltme — EKRAN İÇİ UI DURUMU İÇİN TEK SENKRONİZASYON YOLU.
+   Sorun: setSeg/pQ/setPF/setPS yalnız global'i değiştirip render ediyordu; UI.route,
+   S.routeState ve S.uiState.screenFilters güncellenmiyordu. syncVisibleRoute yalnız
+   UI.route.screen !== TAB olduğunda devreye girdiği için AYNI ekrandaki segment/filtre
+   değişimi bayat kalıyor ve kayda eski değer yazılıyordu.
+   Burada setActiveRoute kanonik rota serileştirici olarak kullanılır (tarayıcı geçmişine
+   İTMEZ), kayıt mevcut 350ms debounce ile istenir. Hiçbir domain mutasyonu yoktur. */
+function syncCurrentScreenUiState(screen,section,reason){
+  if(typeof S==="undefined"||!S) return;
+  const activeNonEntity = TAB===screen && UI.route && UI.route.screen===screen && !UI.route.entityType;
+  if(activeNonEntity){
+    setActiveRoute({screen:screen,
+      section:(section!==undefined?section:((SEG&&SEG[screen]!==undefined)?SEG[screen]:null))});
+  } else {
+    try{ persistScreenFilters(); }catch(e){}
+  }
+  try{ requestSave(reason||"screen-ui"); }catch(e){}
+}
+function setSeg(t,v){
+  const changed=SEG[t]!==v;
+  if(changed) bulkLeaveScope("segment-change");   // V11-D — yalnız GERÇEK değişimde kapsam terki
+  SEG[t]=v;
+  syncCurrentScreenUiState(t,v,"segment");        // rota/filtre durumu render'dan ÖNCE tutarlı olur
+  renderAll();
+  window.scrollTo(0,0);
+}
 function gotoAgency(seg){
   const raw=seg||"genel";
   const normalized=(typeof AGENCY_SECTION_MAP!=="undefined"&&AGENCY_SECTION_MAP[raw])||raw;
@@ -2693,6 +2775,127 @@ function gotoAgency(seg){
 }
 function segBar(tab,items){ return `<div class="seg" role="tablist">`+items.map(([id,label])=>
   `<button role="tab" aria-selected="${SEG[tab]===id}" class="${SEG[tab]===id?'on':''}" onclick="setSeg('${tab}','${id}')">${label}</button>`).join("")+`</div>`; }
+
+/* ============================================================
+   V11-E — PAYLAŞILAN AÇILIR BÖLÜM (DISCLOSURE) SİSTEMİ
+   TEK uygulama: renderDisclosure / toggleDisclosure / isDisclosureOpen.
+   Durum SALT SUNUMDUR: sınırlı S.uiState.gameplayView yapısında tutulur, iş
+   mantığına asla girmez, hiçbir oyun varlığına alan eklemez, şema sürümünü
+   yükseltmez, migration kapısı gerektirmez. Yalnız aşağıdaki BİLİNEN ID'ler
+   saklanır; bilinmeyen/bozuk değerler idempotent biçimde onarılır.
+   Her bölüm için ayrı boolean değişken YOKTUR — tek kayıt, tek yol.
+   ============================================================ */
+const DISCLOSURES={
+  "home.portfolioDetails":{defaultOpen:false},
+  "home.objectives":{defaultOpen:false},
+  "home.agencySummary":{defaultOpen:false},
+  "portfolio.moreFilters":{defaultOpen:false},
+  "scout.networkDetails":{defaultOpen:false},
+  "scout.openedReports":{defaultOpen:false},
+  "transfer.pipeline":{defaultOpen:false},
+  /* aktif teklif YOKKEN pazarlama asıl iştir → varsayılan açık (yalnız varsayılan; kullanıcı
+     bir kez dokunduysa onun tercihi kazanır) */
+  "transfer.marketing":{defaultOpen:()=>!(typeof S!=="undefined"&&S&&S.offers&&S.offers.length)},
+  "nego.extraClauses":{defaultOpen:false},
+  "nego.stepList":{defaultOpen:false},
+  "nego.contractExtras":{defaultOpen:false},
+};
+const NEGOTIATION_MODES=["simple","advanced"];
+/* sınırlı + kendini onaran UI tercihi — eski kayıtlar her zaman güvenli varsayılana düşer */
+function ensureGameplayViewState(st){
+  st=st||(typeof S!=="undefined"?S:null); if(!st) return null;
+  /* Savunma amaçlı kök kontrolü — AYNI paylaşılan normalizer kullanılır (ikinci bir
+     uygulama yok). repairSaveState bunu zaten en başta çağırdığı için burada normalde
+     bir şey değişmez; doğrudan çağrılan yollar (accessor, newGame) için güvence sağlar. */
+  normalizeSaveRootContainers(st);
+  let g=st.uiState.gameplayView;
+  if(!g||typeof g!=="object"||Array.isArray(g)){
+    /* V11-E kuralı: YENİ ve ESKİ kayıtlar her zaman Basit başlar. Eski
+       settings.negotiationView OKUNMAZ — ikinci bir okuma yolu yaratmaz. */
+    g=st.uiState.gameplayView={disclosures:{},negotiationMode:"simple"};
+  }
+  if(!g.disclosures||typeof g.disclosures!=="object"||Array.isArray(g.disclosures)) g.disclosures={};
+  for(const k of Object.keys(g.disclosures)){
+    // bilinmeyen ID saklanmaz; BOZUK değer !!v ile kabaca doğruya çevrilmez ("false"/{}/"x" hepsi true olurdu) —
+    // anahtar silinir ve bölüm KAYITLI varsayılanına döner. Onarım idempotenttir.
+    if(!Object.prototype.hasOwnProperty.call(DISCLOSURES,k)) delete g.disclosures[k];
+    else if(typeof g.disclosures[k]!=="boolean") delete g.disclosures[k];
+  }
+  if(!NEGOTIATION_MODES.includes(g.negotiationMode)) g.negotiationMode="simple";           // yalnız simple/advanced
+  // settings.negotiationView artık YALNIZ uyumluluk aynası: okuma yolu yok, tek kanonik kaynak yukarısıdır
+  st.settings.negotiationView=g.negotiationMode;
+  return g;
+}
+function gameplayView(){ return ensureGameplayViewState(typeof S!=="undefined"?S:null); }
+function disclosureDefault(def){
+  try{ return typeof def.defaultOpen==="function"?!!def.defaultOpen():!!def.defaultOpen; }catch(e){ return false; }
+}
+function isDisclosureOpen(id){
+  const def=DISCLOSURES[id]; if(!def) return false;        // kayıtsız ID daima kapalı sayılır
+  const g=gameplayView(); if(!g) return disclosureDefault(def);
+  const v=g.disclosures[id];
+  return typeof v==="boolean"?v:disclosureDefault(def);
+}
+function setDisclosureOpen(id,open){
+  if(!DISCLOSURES[id]) return false;                       // kayıtsız ID yazılmaz
+  const g=gameplayView(); if(!g) return false;
+  g.disclosures[id]=!!open; return true;
+}
+/* Açma/kapama YALNIZ sunum durumunu değiştirir: domain mutasyonu yok, toplu seçim
+   etkisi yok. Kayıt YALNIZ kullanıcı etkileşiminde istenir — render'da asla. */
+function toggleDisclosure(id){
+  if(!DISCLOSURES[id]) return;
+  if(!setDisclosureOpen(id,!isDisclosureOpen(id))) return;
+  save();
+  rerenderCurrentView();
+}
+/* ekran mı entity sayfası mı olduğunu bilen tek yeniden-render yolu; kaydırma korunur */
+function rerenderCurrentView(){
+  let y=0; try{ y=window.scrollY||0; }catch(e){}
+  const r=(typeof UI!=="undefined")?UI.route:null;
+  if(TAB==="entity"&&r&&r.screen==="entity"&&typeof renderEntity==="function"){ try{ renderEntity(); }catch(e){ renderAll(); } }
+  else renderAll();
+  try{ window.scrollTo(0,y); }catch(e){}
+}
+/* config: {id,title,summary,content,badge,tone}. content bir fonksiyon olabilir —
+   yalnız bölüm açıkken değerlendirilir. İçerik HER ZAMAN aria-controls'ün işaret ettiği
+   bölgenin içine render edilir; kapalıyken hiç üretilmez (gizli etkileşimli kart kalmaz). */
+function renderDisclosure(cfg){
+  cfg=cfg||{};
+  const id=cfg.id;
+  const body=()=>{ const c=cfg.content; return String((typeof c==="function"?c():c)||""); };
+  if(!DISCLOSURES[id]) return body();                      // kayıtsız ID: içerik ASLA erişilemez olmaz
+  const open=isDisclosureOpen(id);
+  const bid="disc-b-"+id, pid="disc-p-"+id;
+  const badge=cfg.badge?`<span class="disc-badge status-chip t-${cfg.tone||"neutral"}">${escapeHtml(cfg.badge)}</span>`:"";
+  const sum=(!open&&cfg.summary)?escapeHtml(cfg.summary):"";
+  return `<div class="disc${open?" open":""}">
+    <button type="button" class="disc-t" id="${bid}" aria-expanded="${open?"true":"false"}" aria-controls="${pid}" onclick="toggleDisclosure('${id}')"
+      ><span class="disc-ttl">${escapeHtml(cfg.title||"Detaylar")}</span>${badge}<span class="disc-sum">${sum}</span><span class="disc-chev" aria-hidden="true">▾</span></button>
+    <div class="disc-p" id="${pid}" role="region" aria-labelledby="${bid}"${open?"":" hidden"}>${open?body():""}</div>
+  </div>`;
+}
+/* V11-E — pazarlık görünüm tercihi (Basit/Gelişmiş). YALNIZ sunumu değiştirir:
+   teklif değerleri, başarı şansı, sabır, taviz bütçesi, kontrat şartları,
+   uygunluk/temsil/izin/kayıt mantığı ve tamamlama doğrulaması aynen kalır. */
+function getNegotiationMode(){ const g=gameplayView(); return (g&&g.negotiationMode)||"simple"; }
+function setNegotiationMode(m){ if(!NEGOTIATION_MODES.includes(m)) return false; const g=gameplayView(); if(!g) return false; g.negotiationMode=m; save(); return true; }
+/* V11-E son düzeltme — mod değişimi AKTİF bölümü korur. Eskiden yalnız package/contract
+   ele alınıyordu; representation/eligibility openOffer(oid)'e düşüp rotayı review'a
+   sıfırlıyordu. Artık tek kanonik bölüm-duyarlı render kullanılıyor. */
+function negoSetMode(mode,oid,section){
+  if(!setNegotiationMode(mode)) return;
+  if(!oid){ rerenderCurrentView(); return; }
+  renderNegotiationRoute(oid,section);
+}
+function negoModeToggleRow(oid,section){
+  const adv=getNegotiationMode()==="advanced";
+  const sec=(typeof NEGO_ROUTE_SECTIONS!=="undefined"&&NEGO_ROUTE_SECTIONS.includes(section))?section:"review";
+  return `<div class="seg" role="group" aria-label="pazarlık görünümü" style="margin:2px 0 10px">
+    <button type="button" class="${adv?"":"on"}" aria-pressed="${adv?"false":"true"}" onclick="negoSetMode('simple','${oid}','${sec}')">Basit</button>
+    <button type="button" class="${adv?"on":""}" aria-pressed="${adv?"true":"false"}" onclick="negoSetMode('advanced','${oid}','${sec}')">Gelişmiş</button>
+  </div>`;
+}
 
 /* ============================================================
    V5 — HAMBURGER MENÜ + ROUTE + BİLDİRİM + HERO + PORTRE/ARMA
@@ -3068,29 +3271,41 @@ function renderChrome(){
 }
 
 /* ---------- oyuncu kartı bileşeni ---------- */
+/* V11-E — liste kartı yalnız KARAR için gerekeni gösterir: kimlik, mevki+kulüp, piyasa
+   değeri, TEK birincil durum ve acil rozetler (sakatlık/teklif/kontrat/rakip). Ayrıntılı
+   istatistikler (yıldız, rating sparkline, moral/rol dökümü) oyuncu detayında kalır. */
+function playerPrimaryStatus(p){
+  if(p.injury) return {t:`🤕 Sakat · ${p.injury.weeks}h`,c:"inj"};
+  if(p.suspension>0) return {t:`Cezalı ${p.suspension}h`,c:"inj"};
+  if(p.rivalId&&p.agent==="you") return {t:"🦈 Rakip riski",c:"inj"};
+  if(S.offers.some(o=>o.pid===p.id)) return {t:"📩 Teklif var",c:"ok"};
+  const cw=p.clubId?contractWeeksLeft(p):null;
+  if(cw!=null&&cw<26&&cw<999) return {t:`📄 Kontrat ${Math.max(0,cw)}h`,c:"sad"};
+  if(p.agentWeeksLeft>0&&p.agentWeeksLeft<15) return {t:`⏳ Temsil ${p.agentWeeksLeft}h`,c:"sad"};
+  if(p.loan) return {t:`Kiralık ${p.loan.weeks}h`,c:"pos"};
+  if(p.morale<40) return {t:"😞 Mutsuz",c:"sad"};
+  if(p.breakout) return {t:"🔥 Patlama",c:"hot"};
+  return {t:p.squadRole||playerRole(p)||"Kadroda",c:"pos"};
+}
 function playerCard(p, compact){
   const club=S.world.clubs[p.clubId]; const val=fmtM(p.value);
-  const badges=[`<span class="badge pos">${POS_LABEL[p.pos]}</span>`];
-  if(p.injury) badges.push(`<span class="badge inj">🤕 ${p.injury.weeks}h</span>`);
-  if(p.suspension>0) badges.push(`<span class="badge inj">Cezalı ${p.suspension}h</span>`);
-  if(p.loan) badges.push(`<span class="badge pos">Kiralık ${p.loan.weeks}h</span>`);
-  if(p.breakout) badges.push(`<span class="badge hot">🔥 Patlama</span>`);
-  if(p.morale<40) badges.push(`<span class="badge sad">Mutsuz</span>`);
-  if(p.rivalId&&p.agent==="you") badges.push(`<span class="badge inj">🦈 Rakip riski</span>`);
-  if(S.offers.some(o=>o.pid===p.id)) badges.push(`<span class="badge ok">📩 Teklif var</span>`);
+  const st=playerPrimaryStatus(p);
+  /* acil işaretler — birincil durumla çakışan tekrar edilmez */
+  const urgent=[];
+  if(p.injury&&st.c!=="inj") urgent.push(`<span class="badge inj">🤕 ${p.injury.weeks}h</span>`);
+  if(S.offers.some(o=>o.pid===p.id)&&st.t!=="📩 Teklif var") urgent.push(`<span class="badge ok">📩 Teklif</span>`);
   const cw=p.clubId?contractWeeksLeft(p):null;
-  if(cw!=null&&cw<26&&cw<999) badges.push(`<span class="badge sad">Kontrat ${Math.max(0,cw)}h</span>`);
+  if(cw!=null&&cw<26&&cw<999&&!st.t.startsWith("📄")) urgent.push(`<span class="badge sad">📄 ${Math.max(0,cw)}h</span>`);
+  if(p.rivalId&&p.agent==="you"&&st.t!=="🦈 Rakip riski") urgent.push(`<span class="badge inj">🦈</span>`);
   return `<div class="card tappable ${p.breakout?'gold':''}" onclick="openPlayer('${p.id}')">
     <div class="row">
       ${renderPlayerPortrait(p,46)}
-      <div class="grow">
-        <div class="row" style="justify-content:space-between">
-          <span class="b">${p.natFlag} ${p.name}</span>
-          <span class="b" style="color:var(--success-ink)">${val}</span></div>
-        <div class="muted">${p.age} yaş · ${club?club.name:"Kulüpsüz"} · ${moodEmoji(p.morale)}${p.agent==="you"?` · ${p.squadRole||playerRole(p)}`:""}</div>
-        <div class="row" style="justify-content:space-between;margin-top:3px">
-          <div>${starStr(p.ca)}</div>${sparkline(p.ratings)}</div>
-        ${compact?"":`<div class="badges">${badges.join("")}</div>`}
+      <div class="grow" style="min-width:0">
+        <div class="row" style="justify-content:space-between;gap:8px">
+          <span class="b trunc">${p.natFlag} ${escapeHtml(p.name)}</span>
+          <span class="b" style="color:var(--success-ink);flex:0 0 auto">${val}</span></div>
+        <div class="muted trunc">${POS_LABEL[p.pos]} · ${escapeHtml(club?club.name:"Kulüpsüz")}</div>
+        ${compact?"":`<div class="badges" style="margin-top:4px"><span class="badge ${st.c}">${escapeHtml(st.t)}</span>${urgent.slice(0,3).join("")}</div>`}
       </div></div></div>`;
 }
 
@@ -3132,8 +3347,11 @@ function openActionCenterSheet(){
       h+=grp.map(a=>renderPriorityCard(a,{closeSheetFirst:true})).join(""); } }
   openSheet(h);
 }
-let HOME_MORE_OPEN=false;
-function toggleHomeMore(){ HOME_MORE_OPEN=!HOME_MORE_OPEN; renderHome(); }
+/* V11-E — Home'daki "Detaylar" artık paylaşılan disclosure sistemine bağlı
+   (ayrı bir boolean değişken tutulmaz, tercih kayıtta yaşar). */
+/* Home'da kendi ayrı, her zaman görünür afişi olan öncelik anahtarları — Guided Week
+   listesinde tekrarlanmazlar (bkz. renderHome: karar / negatif kasa / Deadline Day). */
+const HOME_DEDICATED_PRIORITY_KEYS=new Set(["deadline","decisions","cash"]);
 function renderGuidedWeekCard(g){
   const parts=[];
   if(g.counts.blocking) parts.push(`${g.counts.blocking} kritik karar`);
@@ -3152,9 +3370,15 @@ function renderGuidedWeekCard(g){
     ${secondaryBits.length?`<div class="tiny" style="margin-top:2px;opacity:.85">${secondaryBits.map(escapeHtml).join(" · ")}</div>`:""}
     <div class="tiny" style="margin-top:6px"><b>AJANS ÖNERİSİ</b> · ${escapeHtml(g.recommendationText)}</div>
   </div>`;
-  const shown=g.priorities.filter(p=>p.key!=="deadline"); // özel deadline afişi zaten ayrı gösteriliyor
-  if(!shown.length) h+=renderEmptyState({icon:"✅",title:"Acil iş yok",desc:"Masa temiz — haftayı oynatabilirsin."});
-  else h+=shown.map(p=>renderPriorityCard(p)).join("");
+  /* V11-E son düzeltme — Home'un KENDİ özel afişi olan koşullar burada TEKRAR kart
+     üretmez; aksi halde iki "Karar Ver" ve iki "Finans" düğmesi çıkıyordu. Öncelikler
+     silinmez: sayımlar, ajans önerisi ve Aksiyon Merkezi hepsini görmeye devam eder. */
+  const shown=g.priorities.filter(p=>!HOME_DEDICATED_PRIORITY_KEYS.has(p.key));
+  const dedicatedActive=g.priorities.some(p=>HOME_DEDICATED_PRIORITY_KEYS.has(p.key));
+  if(shown.length) h+=shown.map(p=>renderPriorityCard(p)).join("");
+  /* "Acil iş yok" YALNIZCA gerçekten hiçbir öncelik yokken gösterilir — hemen altında
+     dedike bir kriz afişi dururken bu ifade kendisiyle çelişirdi. */
+  else if(!dedicatedActive) h+=renderEmptyState({icon:"✅",title:"Acil iş yok",desc:"Masa temiz — haftayı oynatabilirsin."});
   if(g.allPriorities.length>shown.length) h+=`<button class="section-action" onclick="openActionCenterSheet()">Tüm ${g.allPriorities.length} işi gör →</button>`;
   return h;
 }
@@ -3179,15 +3403,29 @@ function renderHome(){
   const rw=runwayWeeks();
   const tier=calculateAgencyTier(), score=calculateAgencyScore();
   const nextT=TIERS.find(t=>t.lv===tier.lv+1);
-  h+=`<div class="hero-page tone-gold"><div class="eyebrow">SEZON ${S.season} · HAFTA ${S.week}${inWindow(S.week)?" · PENCERE AÇIK":""}</div>
+  /* V11-E — kompakt kimlik: sezon/hafta, pencere, ajans adı, tier ve sonraki tier ilerlemesi
+     korunur; dikey yükseklik düşürülür ki ilk mobil ekranı hero yutmasın. */
+  h+=`<div class="hero-page tone-gold hero-compact"><div class="eyebrow">SEZON ${S.season} · HAFTA ${S.week}${inWindow(S.week)?" · PENCERE AÇIK":""}</div>
     <h1>${escapeHtml(S.agencyName)}</h1>
-    <div class="hdesc">${tier.icon} ${tier.name} · Seviye ${tier.lv}/6</div>
-    ${nextT?`<div class="sb" style="margin:8px 0 0;max-width:340px"><div class="lbl"><span>Sonraki: ${nextT.icon} ${nextT.name}</span><span>${score}/${nextT.min}</span></div>
-    <div class="track"><div class="fill au" style="width:${clamp(score/nextT.min*100,0,100)}%"></div></div></div>`:`<div class="tiny" style="margin-top:6px">Zirvedesin 👑</div>`}</div>`;
+    <div class="hdesc">${tier.icon} ${tier.name} · Seviye ${tier.lv}/6${nextT?` · sonraki ${nextT.icon} ${nextT.name} ${score}/${nextT.min}`:" · zirve 👑"}</div>
+    ${nextT?`<div class="sb" style="margin:6px 0 0;max-width:340px"><div class="track"><div class="fill au" style="width:${clamp(score/nextT.min*100,0,100)}%"></div></div></div>`:""}</div>`;
   /* V11-A — BU HAFTA karar merkezi + haftaya hazır durumu, metriklerden önce */
   const guided=buildGuidedWeekModel();
   h+=renderGuidedWeekCard(guided);
   h+=renderWeekReadinessRow();
+  /* V11-E — engelleyici kararlar: her zaman açıkta, ASLA bir disclosure içinde değil */
+  if(S.decisions&&S.decisions.length){
+    h+=`<div class="card urgent"><div class="row"><span style="font-size:24px">⚡</span>
+      <div class="grow"><span class="b">${S.decisions.length} bekleyen karar — hafta ilerlemez</span>
+      <div class="tiny">Karar verilmeden "Haftayı Oynat" çalışmaz.</div></div>
+      <button class="btn sm gold" onclick="openDecision(0)">Karar Ver</button></div></div>`;
+  }
+  if(S.cash<0){
+    h+=`<div class="card urgent"><div class="row"><span style="font-size:24px">🚨</span>
+      <div class="grow"><span class="b">Kasa ekside: ${fmtM(S.cash)}</span>
+      <div class="tiny">Gider kes, kredi kapat veya komisyon getir — kriz büyümeden.</div></div>
+      <button class="btn sm gold" onclick="gotoAgency('finans')">Finans</button></div></div>`;
+  }
   if(deadlineActive()){
     h+=`<div class="card urgent"><div class="row"><span style="font-size:26px">⏰</span>
       <div class="grow"><span class="b">DEADLINE DAY — pencere bu hafta kapanıyor!</span>
@@ -3201,32 +3439,6 @@ function renderHome(){
     {label:"Haftalık Net",value:(net>=0?"+":"")+fmtM(net),tone:net>=0?"success":"danger"},
     rw!=null?{label:"Runway",value:rw+" hafta",tone:rw<10?"warning":null}:{label:"Komisyon",value:fmtM(S.totalCommission)},
   ]);
-  /* portföy nabzı — metriklerin hemen ardından */
-  if(mp.length){
-    const best=[...mp].sort((a,b)=>b.value-a.value)[0];
-    const formUp=[...mp].sort((a,b)=>b.form-a.form)[0];
-    const risky=[...mp].sort((a,b)=>a.loyalty-b.loyalty)[0];
-    const cexp=[...mp].filter(p=>p.clubId).sort((a,b)=>contractWeeksLeft(a)-contractWeeksLeft(b))[0];
-    const offered=mp.filter(p=>S.offers.some(o=>o.pid===p.id));
-    h+=`<h2 class="sec">💓 Portföy Nabzı</h2><div class="card">
-    <div class="sumline"><span class="muted">Formda</span><span class="b tappable" onclick="openPlayer('${formUp.id}')">${formUp.name} · form ${Math.round(formUp.form)}</span></div>
-    <div class="sumline"><span class="muted">Sadakat riski</span><span class="b tappable" onclick="openPlayer('${risky.id}')">${risky.name} · ${Math.round(risky.loyalty)}</span></div>
-    ${cexp?`<div class="sumline"><span class="muted">Kontrat en erken</span><span class="b tappable" onclick="openPlayer('${cexp.id}')">${cexp.name} · ${Math.max(0,contractWeeksLeft(cexp))}h</span></div>`:""}
-    ${offered.length?`<div class="sumline"><span class="muted">Teklif alan</span><span class="b tappable" onclick="navigateTo('transfer')">${offered.length} oyuncu →</span></div>`:""}
-    <div class="sumline"><span class="muted">En değerli</span><span class="b tappable" onclick="openPlayer('${best.id}')">${best.name} · ${fmtM(best.value)}</span></div>
-    </div>`;
-  }
-  /* sezon hedefi (kompakt) */
-  if(!S.seasonObjectives){
-    h+=`<div class="card gold tappable" onclick="openGoalPicker()"><div class="row"><span style="font-size:22px">🎯</span>
-    <div class="grow"><span class="b">Sezon hedefini seç</span><div class="tiny">Ödüllü hedef paketleri seni bekliyor</div></div><span class="tiny">→</span></div></div>`;
-  } else {
-    const pack0=GOAL_PACKS.find(x=>x.id===S.seasonObjectives.pack);
-    if(pack0) h+=`<div class="card"><span class="b" style="font-size:13.5px">${pack0.icon} Sezon Hedefleri — ${pack0.label}</span>
-    ${pack0.goals.map(([gid,label])=>{const pr=goalProgress(gid);
-      return `<div class="sb" style="margin-top:6px"><div class="lbl"><span>${label}</span><span>%${pr}</span></div>
-      <div class="track"><div class="fill ${pr>=100?'g':'au'}" style="width:${pr}%"></div></div></div>`;}).join("")}</div>`;
-  }
   /* telefon + dikkat */
   const pu=phoneUnread();
   const at0=S.managerAttention||{max:3,used:0};
@@ -3238,40 +3450,116 @@ function renderHome(){
       <div style="font-size:20px">🧠</div><div class="b" style="font-size:13.5px">Dikkat ${at0.used}/${at0.max}</div>
       <div class="tiny">Haftalık planı aç</div><span class="slotdots" style="margin-top:4px">${Array.from({length:at0.max},(_,i)=>`<i class="${i<at0.used?'used':''}"></i>`).join("")}</span></div>
   </div>`;
+  /* V11-E — Portföy Nabzı: tek satırlık özet + EN ÖNCELİKLİ tek endişe; ayrıntılar disclosure'da */
+  h+=renderPortfolioPulse(mp);
+  /* V11-E — sezon hedefi: seçilmemişse CTA açıkta; seçilmişse tek özet + ayrıntı disclosure'ı.
+     Tamamlanan hedefler ÖZETTE açıkça listelenir, hiçbir zaman gizlenmez. */
+  h+=renderSeasonObjectivesBlock();
   if(S.weeklyBriefing){ h+=`<div class="card tappable" style="padding:9px 12px" onclick="openWeeklyBriefing()"><div class="row"><span style="font-size:20px">📋</span><div class="grow"><span class="b" style="font-size:13px">Son Haftanın Özeti</span><div class="tiny">S${S.weeklyBriefing.s} H${S.weeklyBriefing.w} brifingi</div></div><span class="tiny">→</span></div></div>`; }
   if(S.tasks && !TASKS.every(t=>S.tasks.done[t.id])){
     const done=TASKS.filter(t=>S.tasks.done[t.id]).length;
     h+=`<div class="card"><div class="row" style="justify-content:space-between"><span class="b">🎓 Başlangıç Görevleri</span><span class="tiny">${done}/${TASKS.length}</span></div>
     <div style="margin-top:6px">${TASKS.map(t=>`<div class="sumline"><span class="${S.tasks.done[t.id]?'muted':''}" style="${S.tasks.done[t.id]?'text-decoration:line-through':''}">${S.tasks.done[t.id]?"✅":"◻️"} ${t.t}</span></div>`).join("")}</div></div>`;
   }
-  /* daha az öncelikli detay — varsayılan kapalı, Home'un varsayılan yüksekliğini büyütmemek için */
-  h+=`<button class="section-action" onclick="toggleHomeMore()">${HOME_MORE_OPEN?"Detayları Gizle ▴":"Detayları Göster ▾"}</button>`;
-  if(HOME_MORE_OPEN){
-    const acts=guided.allPriorities;
-    const MET={pv:["Portföy",v=>fmtM(v)],cash:["Kasa",v=>fmtM(v)],rep:["İtibar",v=>Math.round(v)],score:["Skor",v=>Math.round(v)]};
-    const vals=H.slice(-CHART.win).map(x=>x[CHART.m]);
-    h+=`<h2 class="sec">📈 Trend</h2><div class="chartbox">
-      <div class="seg" style="margin:0 0 8px">${Object.entries(MET).map(([k,[l]])=>`<button class="${CHART.m===k?'on':''}" onclick="setChart('${k}')">${l}</button>`).join("")}
-      ${[8,16,32].map(w=>`<button class="${CHART.win===w?'on':''}" onclick="setChart(null,${w})">${w}h</button>`).join("")}</div>
-      ${interactiveChart([{label:MET[CHART.m][0],color:CHART.m==="cash"?"#3E8E63":CHART.m==="rep"?"#D9AE54":"#4A7FB5",points:vals}],{fmt:MET[CHART.m][1],label:MET[CHART.m][0]+" trendi",h:120})}
-      <div class="cnote">${chartComment(vals,MET[CHART.m][0])}</div></div>`;
-    const upcoming=[];
-    { const nxtW=BAL.transferWindows.find(([a])=>a>S.week);
-      if(inWindow(S.week)){ const w=BAL.transferWindows.find(([a,b])=>S.week>=a&&S.week<=b); if(w) upcoming.push(`🔓 Transfer penceresi H${w[1]}'e kadar açık`); }
-      else if(nxtW) upcoming.push(`🔒 Pencere H${nxtW[0]}'te açılıyor`);
-      const soonActs=acts.filter(a=>a.category==="soon").slice(0,2); soonActs.forEach(a=>upcoming.push("🔵 "+a.title));
-      const expO=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=2)[0];
-      if(expO&&upcoming.length<3){ const p=S.world.players[expO.pid]; if(p) upcoming.push(`📩 ${p.name} teklifi H${expO.expires}'te doluyor`); }
-      if(S.week===BAL.weeksPerSeason) upcoming.unshift("🏁 Sezonun son haftası"); }
-    if(upcoming.length){ h+=`<h2 class="sec">📆 Gelecek Hafta</h2><div class="card">${upcoming.slice(0,3).map(u=>`<div class="sumline"><span>${u}</span></div>`).join("")}</div>`; }
-    h+=`<h2 class="sec">📰 Gündem <button class="btn sm ghost" style="margin-left:auto" onclick="navigateTo('news')">Haber Merkezi →</button></h2>`;
-    const news=S.news.slice(0,2);
-    h+= news.length? news.map(n=>`<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}">
-      <div class="src">${n.kind==="me"?"AJANS GÜNDEMİ":"FUTBOL BASINI"} · S${n.season} H${n.week}</div>
-      <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
-      : renderEmptyState({icon:"📰",title:"Henüz haber yok",desc:"Haftayı oynat, gündem oluşsun."});
+  /* V11-E — düşük öncelikli analiz ve açıklamalar TEK paylaşılan "Ajans Özeti" bölümünde.
+     Guided Week / Week Readiness'ın zaten gösterdiği bilgi burada tekrarlanmaz. */
+  { const upcoming=[];
+    const nxtW=BAL.transferWindows.find(([a])=>a>S.week);
+    if(inWindow(S.week)){ const w=BAL.transferWindows.find(([a,b])=>S.week>=a&&S.week<=b); if(w) upcoming.push(`🔓 Transfer penceresi H${w[1]}'e kadar açık`); }
+    else if(nxtW) upcoming.push(`🔒 Pencere H${nxtW[0]}'te açılıyor`);
+    guided.allPriorities.filter(a=>a.category==="soon").slice(0,2).forEach(a=>upcoming.push("🔵 "+a.title));
+    const expO=S.offers.filter(o=>o.season===S.season&&o.expires-S.week<=2)[0];
+    if(expO&&upcoming.length<3){ const p=S.world.players[expO.pid]; if(p) upcoming.push(`📩 ${p.name} teklifi H${expO.expires}'te doluyor`); }
+    if(S.week===BAL.weeksPerSeason) upcoming.unshift("🏁 Sezonun son haftası");
+    const summaryBits=[];
+    if(upcoming.length) summaryBits.push(upcoming.length+" yaklaşan");
+    if(S.news.length) summaryBits.push("gündem");
+    summaryBits.push("trend");
+    h+=renderDisclosure({id:"home.agencySummary",title:"📊 Ajans Özeti",summary:summaryBits.join(" · "),content:()=>{
+      const MET={pv:["Portföy",v=>fmtM(v)],cash:["Kasa",v=>fmtM(v)],rep:["İtibar",v=>Math.round(v)],score:["Skor",v=>Math.round(v)]};
+      const vals=H.slice(-CHART.win).map(x=>x[CHART.m]);
+      let c=`<h2 class="sec" style="margin-top:2px">📈 Trend</h2><div class="chartbox">
+        <div class="seg" style="margin:0 0 8px">${Object.entries(MET).map(([k,[l]])=>`<button class="${CHART.m===k?'on':''}" onclick="setChart('${k}')">${l}</button>`).join("")}
+        ${[8,16,32].map(w=>`<button class="${CHART.win===w?'on':''}" onclick="setChart(null,${w})">${w}h</button>`).join("")}</div>
+        ${interactiveChart([{label:MET[CHART.m][0],color:CHART.m==="cash"?"#3E8E63":CHART.m==="rep"?"#D9AE54":"#4A7FB5",points:vals}],{fmt:MET[CHART.m][1],label:MET[CHART.m][0]+" trendi",h:120})}
+        <div class="cnote">${chartComment(vals,MET[CHART.m][0])}</div></div>`;
+      if(upcoming.length) c+=`<h2 class="sec">📆 Gelecek Hafta</h2><div class="card">${upcoming.slice(0,3).map(u=>`<div class="sumline"><span>${u}</span></div>`).join("")}</div>`;
+      c+=`<h2 class="sec">📰 Gündem <button class="btn sm ghost" style="margin-left:auto" onclick="navigateTo('news')">Haber Merkezi →</button></h2>`;
+      const news=S.news.slice(0,2);
+      c+= news.length? news.map(n=>`<div class="news ${n.kind==="me"?"me":""} ${n.tone||""}">
+        <div class="src">${n.kind==="me"?"AJANS GÜNDEMİ":"FUTBOL BASINI"} · S${n.season} H${n.week}</div>
+        <div class="hl">${n.hl}</div><div class="bd">${n.bd}</div></div>`).join("")
+        : renderEmptyState({icon:"📰",title:"Henüz haber yok",desc:"Haftayı oynat, gündem oluşsun."});
+      return c; }});
   }
   $("scr-home").innerHTML=h;
+}
+/* V11-E — Portföy Nabzı önceliklendirmesi. YENİ hesaplama yok: yalnız var olan alanlar
+   (agentWeeksLeft, contractWeeksLeft, loyalty/rivalId, S.offers, injury, form) okunur.
+   Sıra: 1) kontrat/temsil riski 2) sadakat/rakip riski 3) aktif teklif 4) sakatlık 5) en güçlü form. */
+function portfolioPulseTop(mp){
+  const repRisk=mp.filter(p=>p.agentWeeksLeft>0&&p.agentWeeksLeft<15).sort((a,b)=>a.agentWeeksLeft-b.agentWeeksLeft)[0];
+  if(repRisk) return {p:repRisk,label:"Temsil süresi bitiyor",detail:`${repRisk.agentWeeksLeft} hafta kaldı`,tone:"danger"};
+  const conRisk=mp.filter(p=>p.clubId&&contractWeeksLeft(p)<26).sort((a,b)=>contractWeeksLeft(a)-contractWeeksLeft(b))[0];
+  if(conRisk) return {p:conRisk,label:"Kontrat bitmek üzere",detail:`${Math.max(0,contractWeeksLeft(conRisk))} hafta kaldı`,tone:"danger"};
+  const rival=mp.filter(p=>p.rivalId||p.loyalty<45).sort((a,b)=>a.loyalty-b.loyalty)[0];
+  if(rival) return {p:rival,label:rival.rivalId?"Rakip ajans peşinde":"Sadakat düşük",detail:`sadakat ${Math.round(rival.loyalty)}`,tone:"warning"};
+  const off=mp.filter(p=>S.offers.some(o=>o.pid===p.id))[0];
+  if(off) return {p:off,label:"Masada teklifi var",detail:`${S.offers.filter(o=>o.pid===off.id).length} teklif`,tone:"info"};
+  const inj=mp.filter(p=>p.injury)[0];
+  if(inj) return {p:inj,label:"Sakat",detail:"tedavi sürüyor",tone:"warning"};
+  const form=[...mp].sort((a,b)=>b.form-a.form)[0];
+  if(form) return {p:form,label:"En iyi form",detail:`form ${Math.round(form.form)}`,tone:"success"};
+  return null;
+}
+function renderPortfolioPulse(mp){
+  if(!mp.length) return "";
+  const top=portfolioPulseTop(mp);
+  const totalVal=mp.reduce((t,p)=>t+p.value,0);
+  let h=`<div class="card" style="padding:10px 12px">
+    <div class="row" style="justify-content:space-between"><span class="b" style="font-size:13px">💓 Portföy Nabzı</span>
+      <span class="tiny">${mp.length} müşteri · ${fmtM(totalVal)}</span></div>`;
+  if(top) h+=`<div class="row tappable" style="margin-top:6px" onclick="openPlayer('${top.p.id}')">
+    <span class="status-chip t-${top.tone}">${escapeHtml(top.label)}</span>
+    <div class="grow"><span class="b" style="font-size:13px">${escapeHtml(top.p.name)}</span>
+    <div class="tiny">${escapeHtml(top.detail)}</div></div><span class="tiny">→</span></div>`;
+  h+=`</div>`;
+  h+=renderDisclosure({id:"home.portfolioDetails",title:"Portföy Detayları",summary:"form · sadakat · kontrat · teklif · değer",content:()=>{
+    const best=[...mp].sort((a,b)=>b.value-a.value)[0];
+    const formUp=[...mp].sort((a,b)=>b.form-a.form)[0];
+    const risky=[...mp].sort((a,b)=>a.loyalty-b.loyalty)[0];
+    const cexp=[...mp].filter(p=>p.clubId).sort((a,b)=>contractWeeksLeft(a)-contractWeeksLeft(b))[0];
+    const offered=mp.filter(p=>S.offers.some(o=>o.pid===p.id));
+    return `<div class="sumline"><span class="muted">Formda</span><span class="b tappable" onclick="openPlayer('${formUp.id}')">${escapeHtml(formUp.name)} · form ${Math.round(formUp.form)}</span></div>
+    <div class="sumline"><span class="muted">Sadakat riski</span><span class="b tappable" onclick="openPlayer('${risky.id}')">${escapeHtml(risky.name)} · ${Math.round(risky.loyalty)}</span></div>
+    ${cexp?`<div class="sumline"><span class="muted">Kontrat en erken</span><span class="b tappable" onclick="openPlayer('${cexp.id}')">${escapeHtml(cexp.name)} · ${Math.max(0,contractWeeksLeft(cexp))}h</span></div>`:""}
+    ${offered.length?`<div class="sumline"><span class="muted">Teklif alan</span><span class="b tappable" onclick="navigateTo('transfer')">${offered.length} oyuncu →</span></div>`:""}
+    <div class="sumline"><span class="muted">En değerli</span><span class="b tappable" onclick="openPlayer('${best.id}')">${escapeHtml(best.name)} · ${fmtM(best.value)}</span></div>`;
+  }});
+  return h;
+}
+function renderSeasonObjectivesBlock(){
+  if(!S.seasonObjectives){
+    return `<div class="card gold tappable" onclick="openGoalPicker()"><div class="row"><span style="font-size:22px">🎯</span>
+    <div class="grow"><span class="b">Sezon hedefini seç</span><div class="tiny">Ödüllü hedef paketleri seni bekliyor</div></div><span class="tiny">→</span></div></div>`;
+  }
+  const pack=GOAL_PACKS.find(x=>x.id===S.seasonObjectives.pack);
+  if(!pack) return "";
+  const rows=pack.goals.map(([gid,label])=>({gid,label,pr:goalProgress(gid)}));
+  const done=rows.filter(r=>r.pr>=100);
+  const avg=Math.round(rows.reduce((t,r)=>t+r.pr,0)/(rows.length||1));
+  let h=`<div class="card" style="padding:10px 12px">
+    <div class="row" style="justify-content:space-between"><span class="b" style="font-size:13px">${pack.icon} Sezon Hedefleri — ${escapeHtml(pack.label)}</span>
+      <span class="status-chip t-${done.length?"success":"neutral"}">${done.length}/${rows.length} tamam</span></div>
+    <div class="sb" style="margin-top:6px"><div class="lbl"><span class="tiny">Genel ilerleme</span><span class="tiny">%${avg}</span></div>
+    <div class="track"><div class="fill ${avg>=100?'g':'au'}" style="width:${clamp(avg,0,100)}%"></div></div></div>`;
+  /* tamamlanan hedefler ASLA kapalı bir bölümde saklanmaz — ödül sezon sonunda buradan gelir */
+  if(done.length) h+=`<div class="tiny" style="margin-top:6px">🏆 Tamamlandı: ${done.map(r=>escapeHtml(r.label)).join(" · ")}</div>`;
+  h+=`</div>`;
+  h+=renderDisclosure({id:"home.objectives",title:"Hedef Detayları",summary:`${rows.length} hedef · %${avg}`,content:()=>
+    rows.map(r=>`<div class="sb" style="margin-top:6px"><div class="lbl"><span>${escapeHtml(r.label)}</span><span>%${r.pr}</span></div>
+      <div class="track"><div class="fill ${r.pr>=100?'g':'au'}" style="width:${clamp(r.pr,0,100)}%"></div></div></div>`).join("")});
+  return h;
 }
 /* tek kaynak kategorizer — hem filtre hem rozet aynı sınıflandırmayı kullanır */
 const NEWS_CATEGORIES=[
@@ -3313,9 +3601,13 @@ function renderNewsFeed(){
 }
 
 /* ---------- OYUNCULARIM ---------- */
-function pQ(v){ PSTATE.q=(v||"").toLowerCase(); const el=$("plist"); if(el) el.innerHTML=buildPlayerList(); }
-function setPF(f){ PSTATE.f=f; renderAll(); }
-function setPS(v){ PSTATE.s=v; renderAll(); }
+/* V11-E — üç portföy ayarı da AYNI paylaşılan senkronizasyon yolunu kullanır.
+   pQ yalnız liste gövdesini tazeler (arama kutusu yeniden render EDİLMEZ → odak korunur),
+   kayıt requestSave'in 350ms debounce'u ile tuş vuruşları arasında birleşir. */
+function pQ(v){ PSTATE.q=(v||"").toLowerCase(); const el=$("plist"); if(el) el.innerHTML=buildPlayerList();
+  syncCurrentScreenUiState("players",undefined,"portfolio-search"); }
+function setPF(f){ PSTATE.f=f; syncCurrentScreenUiState("players",undefined,"portfolio-filter"); renderAll(); }
+function setPS(v){ PSTATE.s=v; syncCurrentScreenUiState("players",undefined,"portfolio-sort"); renderAll(); }
 function playersFiltered(){
   let arr=myPlayers();
   if(PSTATE.q) arr=arr.filter(p=>p.name.toLowerCase().includes(PSTATE.q)||(S.world.clubs[p.clubId]?.name||"").toLowerCase().includes(PSTATE.q));
@@ -3354,23 +3646,41 @@ function renderPlayers(){
   let h=`<div class="page-header"><div class="page-eyebrow">MÜŞTERİ YÖNETİMİ</div>
     <div class="page-title">Portföy</div>
     <div class="page-subtitle">${mp.length}/${cap} müşteri · toplam değer ${fmtM(tv)}${pvDelta!=null?` · bu hafta <span class="${pvDelta>=0?'pos-delta':'neg-delta'}">${pvDelta>=0?"+":""}${fmtM(pvDelta)}</span>`:""}</div></div>`;
-  /* risk şeridi — dokununca ilgili filtre açılır */
-  h+=`<div class="filterrow" role="group" aria-label="risk özeti">
-    <button class="fchip ${PSTATE.f==='risk'?'on':''}" onclick="setPF('risk')">🔴 Acil ${urgentN}</button>
-    <button class="fchip ${PSTATE.f==='teklif'?'on':''}" onclick="setPF('teklif')">📩 Teklifli ${offN}</button>
-    <button class="fchip ${PSTATE.f==='mutsuz'?'on':''}" onclick="setPF('mutsuz')">😞 Mutsuz ${sadN}</button>
-    <button class="fchip ${PSTATE.f==='sakat'?'on':''}" onclick="setPF('sakat')">🤕 Sakat ${injN}</button>
-    <button class="fchip ${PSTATE.f==='kontrat'?'on':''}" onclick="setPF('kontrat')">📄 Kontrat ${conN}</button></div>`;
-  h+=`
-  <input class="search" placeholder="Oyuncu veya kulüp ara..." value="${PSTATE.q}" oninput="pQ(this.value)" aria-label="oyuncu ara">
-  <div class="filterrow">${[["all","Tümü"],["genc","Gençler"],["form","Formda"],["mutsuz","Mutsuz"],["sakat","Sakat"],["teklif","Teklifli"],["kontrat","Kontrat"],["risk","Acil"]].map(([k,l])=>
-    `<button class="fchip ${PSTATE.f===k?'on':''}" onclick="setPF('${k}')">${l}</button>`).join("")}</div>
-  <div class="row" style="justify-content:flex-end;margin-bottom:8px"><label class="tiny" style="margin-right:6px">Sırala:</label>
-  <select class="sel" onchange="setPS(this.value)" aria-label="sıralama">
-    ${[["value","Piyasa değeri"],["pot","Potansiyel"],["age","Yaş"],["form","Form"],["morale","Moral"],["loyalty","Sadakat"],["contract","Sözleşme süresi"]].map(([k,l])=>`<option value="${k}" ${PSTATE.s===k?"selected":""}>${l}</option>`).join("")}
-  </select></div>
-  <div id="plist">${buildPlayerList()}</div>`;
+  /* V11-E — TEK filtre sistemi: eskiden aynı PSTATE.f'i süren iki ayrı satır vardı.
+     Birincil kontroller her zaman görünür; ikincil filtreler "Diğer Filtreler" içinde.
+     Tüm PSTATE değerleri aynen çalışır, arama/sıralama/geri-yükleme değişmez. */
+  h+=renderPortfolioControls({urgentN,offN,sadN,injN,conN});
+  h+=`<div id="plist">${buildPlayerList()}</div>`;
   $("scr-players").innerHTML=h;
+}
+const PORTFOLIO_PRIMARY_FILTERS=[["all","Tümü"],["risk","🔴 Acil"],["teklif","📩 Teklifli"],["kontrat","📄 Kontrat"]];
+const PORTFOLIO_SECONDARY_FILTERS=[["genc","Gençler"],["form","Formda"],["mutsuz","Mutsuz"],["sakat","Sakat"]];
+const PORTFOLIO_SORTS=[["value","Piyasa değeri"],["pot","Potansiyel"],["age","Yaş"],["form","Form"],["morale","Moral"],["loyalty","Sadakat"],["contract","Sözleşme süresi"]];
+function portfolioFilterLabel(f){
+  const all=[...PORTFOLIO_PRIMARY_FILTERS,...PORTFOLIO_SECONDARY_FILTERS].find(([k])=>k===f);
+  return all?all[1]:"Tümü";
+}
+function renderPortfolioControls(counts){
+  counts=counts||{};
+  const cnt={risk:counts.urgentN,teklif:counts.offN,kontrat:counts.conN,mutsuz:counts.sadN,sakat:counts.injN};
+  const secondaryActive=PORTFOLIO_SECONDARY_FILTERS.some(([k])=>k===PSTATE.f);
+  let h=`<input class="search" placeholder="Oyuncu veya kulüp ara..." value="${escapeHtml(PSTATE.q)}" oninput="pQ(this.value)" aria-label="oyuncu ara">`;
+  h+=`<div class="filterrow" role="group" aria-label="portföy filtreleri">
+    ${PORTFOLIO_PRIMARY_FILTERS.map(([k,l])=>`<button class="fchip ${PSTATE.f===k?'on':''}" aria-pressed="${PSTATE.f===k?"true":"false"}" onclick="setPF('${k}')">${l}${cnt[k]!=null?" "+cnt[k]:""}</button>`).join("")}
+    ${/* ikincil filtre seçiliyken bölüm KAPALI olsa bile aktif filtre burada görünür kalır */""}
+    ${secondaryActive?`<button class="fchip on" aria-pressed="true" onclick="setPF('all')" aria-label="aktif filtreyi kaldır">${escapeHtml(portfolioFilterLabel(PSTATE.f))} ✕</button>`:""}
+  </div>`;
+  h+=`<div class="row" style="justify-content:flex-end;margin-bottom:8px;gap:6px"><label class="tiny" style="margin-right:2px">Sırala:</label>
+    <select class="sel" onchange="setPS(this.value)" aria-label="sıralama">
+      ${PORTFOLIO_SORTS.map(([k,l])=>`<option value="${k}" ${PSTATE.s===k?"selected":""}>${l}</option>`).join("")}
+    </select></div>`;
+  h+=renderDisclosure({id:"portfolio.moreFilters",title:"Diğer Filtreler",
+    summary:secondaryActive?"aktif: "+portfolioFilterLabel(PSTATE.f):"gençler · formda · mutsuz · sakat",
+    badge:secondaryActive?"1 aktif":"",tone:secondaryActive?"info":"neutral",
+    content:()=>`<div class="filterrow" role="group" aria-label="ikincil portföy filtreleri" style="margin-bottom:0;padding-bottom:2px">
+      ${PORTFOLIO_SECONDARY_FILTERS.map(([k,l])=>`<button class="fchip ${PSTATE.f===k?'on':''}" aria-pressed="${PSTATE.f===k?"true":"false"}" onclick="setPF('${k}')">${l}${cnt[k]!=null?" "+cnt[k]:""}</button>`).join("")}
+    </div>`});
+  return h;
 }
 
 /* ---------- OYUNCU DETAY (sheet) ---------- */
@@ -3386,6 +3696,35 @@ function careerStage(p){
 /* eski PDTAB değerlerinin son 6-sekme yapısına güvenli, idempotent göçü */
 const PDTAB_MIGRATION={perf:"kariyer",pazar:"soz"};
 function normalizePDTab(tab){ return PDTAB_MIGRATION[tab]||tab; }
+/* V11-E — kanonik PDTAB değerleri DEĞİŞMEZ (genel/kariyer/soz/iliskiler/gelisim/marka).
+   Yalnız sunum: mobilde 4 birincil sekme + "Daha Fazla"; masaüstünde (≥1100px) altısı da
+   görünür. İki şerit de aynı pdTab() yoluna basar; sekme içerik fonksiyonları birleştirilmez. */
+const PD_PRIMARY_TABS=["genel","kariyer","soz"];
+const PD_SECONDARY_TABS=[["iliskiler","İlişkiler"],["gelisim","Gelişim"],["marka","Marka"]];
+function renderPlayerTabs(p,tabs){
+  const btn=(id,l)=>`<button role="tab" aria-selected="${PDTAB===id?"true":"false"}" class="${PDTAB===id?'on':''}" onclick="pdTab('${p.id}','${id}')">${l}</button>`;
+  /* temsil edilmeyen oyuncu: yalnız iki bölüm — "Daha Fazla" üretilmez */
+  if(tabs.length<=2) return `<div class="seg" role="tablist" style="margin-top:10px">${tabs.map(([id,l])=>btn(id,l)).join("")}</div>`;
+  const secActive=PD_SECONDARY_TABS.find(([id])=>id===PDTAB);
+  const moreLabel=secActive?`${secActive[1]} ▾`:"Daha Fazla ▾";
+  const mobile=`<div class="seg pdtabs-m" role="tablist" style="margin-top:10px">
+    ${PD_PRIMARY_TABS.map(id=>btn(id,(tabs.find(([t])=>t===id)||[id,id])[1])).join("")}
+    <button role="tab" aria-selected="${secActive?"true":"false"}" aria-haspopup="dialog" class="${secActive?'on':''}" onclick="openPlayerMoreSheet('${p.id}')">${escapeHtml(moreLabel)}</button>
+  </div>`;
+  const desktop=`<div class="seg pdtabs-d" role="tablist" style="margin-top:10px">${tabs.map(([id,l])=>btn(id,l)).join("")}</div>`;
+  return mobile+desktop;
+}
+/* "Daha Fazla" — mevcut sheet altyapısını kullanan tek paylaşılan seçim ekranı */
+function openPlayerMoreSheet(pid){
+  const p=S.world.players[pid]; if(!p) return;
+  let h=`<div class="grab"></div><div style="text-align:center"><div class="tiny">OYUNCU BÖLÜMLERİ</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:17px">${escapeHtml(p.name)}</div></div>
+    <div style="margin-top:10px">`;
+  h+=PD_SECONDARY_TABS.map(([id,l])=>`<button class="focus-chip ${PDTAB===id?'on':''}" onclick="closeSheet();pdTab('${p.id}','${id}')">
+    <span>${l}</span></button>`).join("");
+  h+=`</div><button class="btn block ghost" style="margin-top:6px" onclick="closeSheet()">Kapat</button>`;
+  openSheet(h);
+}
 function openPlayer(pid){
   const p=S.world.players[pid]; if(!p) return;
   if(typeof canViewPlayer==="function"&&!canViewPlayer(pid)){ showEntityPage("player",pid,lockedEntityPage("player",pid)); return; }
@@ -3405,7 +3744,7 @@ function openPlayer(pid){
   <div style="text-align:right"><div class="tiny">DEĞER</div><div class="b" style="color:var(--success-ink);font-size:16px">${isMine?fmtM(p.value):fmtRange(p.value,(p.clubId?(S.world.clubs[p.clubId]||{}).countryId:(p.countryId||p.nat)),"playerKnowledge")}</div>
   ${isMine?`<div class="tiny">${p.squadRole||playerRole(p)}</div>`:""}</div></div>
   ${isMine?playerDualStatus(p):""}
-  <div class="seg" style="margin-top:10px">${tabs.map(([id,l])=>`<button class="${PDTAB===id?'on':''}" onclick="pdTab('${p.id}','${id}')">${l}</button>`).join("")}</div>`;
+  ${renderPlayerTabs(p,tabs)}`;
   h+= PDTAB==="kariyer"? pdCareer(p): PDTAB==="soz"? pdContract(p): PDTAB==="iliskiler"? pdRelations(p): PDTAB==="gelisim"? pdDevelopment(p): PDTAB==="marka"? pdBrand(p): pdOverview(p);
   h+=playerStickyActions(p);
   showEntityPage("player",p.id,h,{section:PDTAB});
@@ -3730,10 +4069,11 @@ const PROFILE_HINT={
 };
 const SELLON_STEPS=[0,10,15], SB_STEPS=[0,0.03,0.05];
 function negoRow(label,val,dn,up){
+  /* V11-E — dokunma hedefi: satır içi min-height override'ı kaldırıldı, paylaşılan .negoctl 44px verir */
   return `<div class="nego-line"><span class="muted">${label}</span><span class="row" style="gap:8px">
-  <button class="btn sm ghost" style="min-height:32px;padding:4px 11px" aria-label="azalt" onclick="${dn}">−</button>
+  <button class="btn sm ghost negoctl" style="padding:4px 11px" aria-label="azalt" onclick="${dn}">−</button>
   <span class="b" style="min-width:78px;text-align:center">${val}</span>
-  <button class="btn sm ghost" style="min-height:32px;padding:4px 11px" aria-label="artır" onclick="${up}">+</button></span></div>`;
+  <button class="btn sm ghost negoctl" style="padding:4px 11px" aria-label="artır" onclick="${up}">+</button></span></div>`;
 }
 function negoValues(o){
   const fee=Math.round(o.fee*(1+o.ask.fee*0.1)/1000)*1000;
@@ -3761,30 +4101,42 @@ function openNegoTable(oid,msg){
   const pat=o.patience??3;
   const load=negoLoad(o);
   const heat=load<1?"Rahat 🟢":load<2.2?"Gergin 🟡":"Riskli 🔴";
+  const advanced=getNegotiationMode()==="advanced";
+  /* Ek maddeler — Basit modda "Ek Maddeler" içinde, Gelişmiş modda doğrudan akışta.
+     Her iki modda da AYNI negoAdj yolunu çağırır; ikinci bir kontrol yolu yoktur. */
+  const extras=`${negoRow("Sell-on payı","%"+v.sellOn,`negoAdj('${oid}','sellOn',-1)`,`negoAdj('${oid}','sellOn',1)`)}
+    ${negoRow("İmza parası",v.signBonus?fmtM(v.signBonus):"Yok",`negoAdj('${oid}','signBonus',-1)`,`negoAdj('${oid}','signBonus',1)`)}
+    <div class="nego-line"><span class="muted">Oynama garantisi</span>
+      <button class="btn sm ${o.ask.playGuar?'primary':'ghost'} negoctl" onclick="negoAdj('${oid}','playGuar',0)">${o.ask.playGuar?"İsteniyor ✅":"İstenmiyor"}</button></div>`;
   let h=`<div class="grab"></div>
   <div style="text-align:center"><div class="tiny">PAZARLIK MASASI · TUR BAZLI</div>
-  <div class="b" style="font-family:'Fraunces',serif;font-size:19px">${c.name} × ${p.name}</div>
+  <div class="b" style="font-family:'Fraunces',serif;font-size:19px">${escapeHtml(c.name)} × ${escapeHtml(p.name)}</div>
   <div class="tiny">${c.profile||""} — ${PROFILE_HINT[c.profile]||""}</div></div>
+  ${negoModeToggleRow(oid,"package")}
   <div class="card alt" style="margin-top:8px">🗣️ ${msg||`"Masaya hoş geldin. Taleplerini duyalım."`}</div>
-  ${(typeof negoQuickBar==="function")?negoQuickBar(oid):""}
+  ${/* negoQuickBar (dört hazır ayar + kabul ihtimali + direktör) ileri yoğunluklu bir
+       kontroldür — YALNIZ Gelişmiş modda. Fonksiyon ve negoPreset davranışı değişmedi. */""}
+  ${(advanced&&typeof negoQuickBar==="function")?negoQuickBar(oid):""}
   <div class="card">
     ${negoRow("Bonservis",fmtM(v.fee),`negoAdj('${oid}','fee',-1)`,`negoAdj('${oid}','fee',1)`)}
     ${negoRow("Oyuncu maaşı",fmtM(v.wage)+"/hf",`negoAdj('${oid}','wage',-1)`,`negoAdj('${oid}','wage',1)`)}
-    ${negoRow("Sell-on payı","%"+v.sellOn,`negoAdj('${oid}','sellOn',-1)`,`negoAdj('${oid}','sellOn',1)`)}
-    ${negoRow("İmza parası",v.signBonus?fmtM(v.signBonus):"Yok",`negoAdj('${oid}','signBonus',-1)`,`negoAdj('${oid}','signBonus',1)`)}
-    <div class="nego-line"><span class="muted">Oynama garantisi</span>
-      <button class="btn sm ${o.ask.playGuar?'primary':'ghost'}" onclick="negoAdj('${oid}','playGuar',0)">${o.ask.playGuar?"İsteniyor ✅":"İstenmiyor"}</button></div>
+    ${advanced?extras:""}
     <div class="nego-line"><span class="muted">Ajans komisyonu (%${Math.round(p.agentCommission*100)})</span>
       <span class="b" style="color:var(--success-ink)">${fmtM(Math.round(v.fee*p.agentCommission))}</span></div>
     <div class="tiny" style="margin-top:6px">Talep yükü: <b>${heat}</b> · Kulüp sabrı: ${pat} tur</div>
     <div class="patience"><div class="pf" style="width:${clamp(pat/3*100,5,100)}%"></div></div>
   </div>
+  ${advanced?"":renderDisclosure({id:"nego.extraClauses",title:"Ek Maddeler",
+    summary:`sell-on %${v.sellOn} · imza ${v.signBonus?fmtM(v.signBonus):"yok"} · garanti ${o.ask.playGuar?"var":"yok"}`,
+    content:()=>`<div class="card" style="margin-bottom:0">${extras}</div>`})}
   <button class="btn block primary" ${pat<=0?"disabled":""} onclick="sendNegoOffer('${oid}')">📨 Teklifi Gönder (1 tur)</button>
   <div class="btnrow">
     <button class="btn gold" onclick="doAccept('${oid}')">✍️ Mevcut Şartlarla İmzala</button>
     <button class="btn ghost" onclick="openOffer('${oid}')">← Teklife Dön</button>
   </div>`;
-  { const _u=negoSessionUI(oid); if(_u)_u.activeStep="package"; showEntityPage("negotiation",oid, negoStepperHeader(oid,"package")+h, {section:"package"}); return; }
+  { const _u=negoSessionUI(oid); if(_u)_u.activeStep="package";
+    const head=advanced?negoStepperHeader(oid,"package"):negoCompactStepper(oid,"package");
+    showEntityPage("negotiation",oid, head+h, {section:"package"}); return; }
 }
 function negoAdj(oid,k,d){
   const o=S.offers.find(x=>x.id===oid); if(!o||!o.ask) return;
@@ -3953,7 +4305,10 @@ function scoutMarkets(){
 function scoutSquad(){
   const cap=BAL.officeLevels[S.officeLevel].scoutCap;
   const wl=(S.watchlist||[]).length;
-  let h=renderMetricGrid([{label:"Scout",value:S.scouts.length+"/"+cap},{label:"Yeni Rapor",value:S.reports.filter(r=>!r.opened).length},{label:"İzleme",value:wl},{label:"Toplam Keşif",value:S.reports.length}]);
+  const active=S.scouts.filter(sc=>sc.assign).length;
+  /* V11-E — dört yarışan figür yerine en işe yarar üçü; toplam keşif ve eğitici metin
+     "Scout Ağı Detayları" içinde. İşe alma ve görev atama HER ZAMAN görünür kalır. */
+  let h=renderMetricGrid([{label:"Aktif Görev",value:active+"/"+S.scouts.length},{label:"Yeni Rapor",value:S.reports.filter(r=>!r.opened).length},{label:"İzleme",value:wl}]);
   h+=`<h2 class="sec">Scout Kadrom</h2>`;
   h+=S.scouts.map(sc=>{
     const L=sc.assign?S.world.leagues.find(l=>l.id===sc.assign.leagueId):null;
@@ -3965,17 +4320,48 @@ function scoutSquad(){
     <button class="btn sm ghost" onclick="assignScout('${sc.id}')">Görev</button></div></div>`;}).join("");
   if(S.scouts.length<cap) h+=`<button class="btn block gold" onclick="hireScout()">➕ Yeni Scout Kirala</button>`;
   else h+=`<div class="card lockcard">Scout kapasitesi dolu — ofis büyüt, ağını genişlet</div>`;
-  h+=`<div class="card alt" style="margin-top:10px"><b>Görev nasıl çalışır?</b><div class="muted" style="margin-top:4px">Scout'a lig ve odak ver. Alt ligler ucuz elmas ama belirsizlik yüksek; U19 odağı genç cevher arar. Kalite yükseldikçe tahmin aralığı daralır.</div></div>`;
+  h+=`<div style="height:10px"></div>`;
+  h+=renderDisclosure({id:"scout.networkDetails",title:"Scout Ağı Detayları",
+    summary:`${S.reports.length} toplam keşif · kapasite ${S.scouts.length}/${cap}`,
+    content:()=>`<div class="sumline"><span class="muted">Toplam keşif</span><span class="b">${S.reports.length}</span></div>
+      <div class="sumline"><span class="muted">Scout kapasitesi</span><span class="b">${S.scouts.length}/${cap}</span></div>
+      <div class="sumline"><span class="muted">Haftalık scout gideri</span><span class="b">${fmtM(S.scouts.reduce((t,sc)=>t+(sc.cost||0),0))}</span></div>
+      <div class="card alt" style="margin-top:8px;margin-bottom:0"><b>Görev nasıl çalışır?</b><div class="muted" style="margin-top:4px">Scout'a lig ve odak ver. Alt ligler ucuz elmas ama belirsizlik yüksek; U19 odağı genç cevher arar. Kalite yükseldikçe tahmin aralığı daralır.</div></div>`});
   return h;
 }
+/* V11-E — "büyük/özel" rapor: elmas oyuncu veya ikinci gözlem. Açılan geçmiş daraltılsa
+   bile bunlar ASLA gizlenmez (açılmamış raporlar zaten hiçbir zaman gizlenmez). */
+function isMajorScoutReport(r){
+  if(!r) return false;
+  if(r.major) return true;          // motorun açık işareti (yüksek güven / elmas) BAĞLAYICIDIR
+  if(r.second) return true;
+  const p=S.world.players[r.pid];
+  return !!(p&&p.gem);
+}
+const SCOUT_OPENED_PREVIEW=5;
 function scoutReports(){
   const scope="scout:reports";
   bulkEnsureScope(scope);
   const bulkOn=bulkIsActive(scope);
   let h=`<h2 class="sec" style="margin-top:0">📬 Gelen Raporlar <span class="cnt">${S.reports.filter(r=>!r.opened).length}</span></h2>`;
   const unopened=S.reports.filter(r=>!r.opened);
-  const opened=S.reports.filter(r=>r.opened).slice(0,8);
-  bulkNoteVisible(scope,[...unopened,...opened].map(r=>r.id));
+  const openedAll=S.reports.filter(r=>r.opened);
+  const expanded=isDisclosureOpen("scout.openedReports");
+  /* V11-E son düzeltme — KANONİK KAYNAK SIRASI her iki durumda da korunur.
+     Daraltılmış: ilk 5 + her BÜYÜK rapor, kaynaktaki göreli sırayla (gruplama YOK).
+     Genişletilmiş: openedAll aynen kaynak sırasında.
+     Eskiden [...alwaysShown,...rest] büyük raporları kendilerinden önce gelen normal
+     raporların ÖNÜNE taşıyordu. */
+  const collapsedOpened=openedAll.filter((r,i)=>i<SCOUT_OPENED_PREVIEW||isMajorScoutReport(r));
+  const hiddenN=openedAll.length-collapsedOpened.length;
+  /* V11-E son düzeltme — ETKİN genişleme durumu. Saklanan tercih true olsa bile gizlenecek
+     rapor yoksa açılır bölüm ANLAMSIZDIR: eskiden "expanded && hiddenN===0" durumunda ne
+     kartlar (dışarıda) ne de bölüm (içeride) render ediliyordu — bölüm bomboş kalıyordu. */
+  const canExpand=hiddenN>0;
+  const effectiveExpanded=canExpand&&expanded;
+  const openedShown=effectiveExpanded?openedAll:collapsedOpened;
+  /* toplu seçim görünür listesi GERÇEK render edilen listeyi ve SIRASINI yansıtır */
+  bulkNoteVisible(scope,[...unopened,...openedShown].map(r=>r.id));
   h+=renderBulkEntry(scope);
   if(unopened.length) h+=unopened.map(r=>{
     const env=`<div class="envelope" onclick="openReport('${r.id}')">
@@ -3983,16 +4369,26 @@ function scoutReports(){
     return bulkOn?`<div class="bulkrow ${bulkIsSelected(scope,r.id)?'sel':''}">${bulkCheckbox(scope,r.id,"raporu seç")}<div class="grow">${env}</div></div>`:env;
   }).join("");
   else h+=`<div class="empty">Yeni rapor yok. Scoutların sahada — birkaç hafta içinde döner. 🔭</div>`;
-  if(opened.length){ h+=`<h2 class="sec">📂 Açılan Raporlar</h2>`;
-    h+=opened.map(r=>{const p=S.world.players[r.pid]; if(!p) return "";
-      const signed=p.agent==="you";
-      const card=`<div class="card ${p.gem&&signed?'gold':''} tappable" onclick="openReportSheet('${r.id}')">
-      <div class="row">${renderPlayerPortrait(p,36)}
-      <div class="grow"><span class="b">${p.natFlag} ${p.name}</span> <span class="muted">${p.age}y · ${POS_LABEL[p.pos]}</span>
-      <div class="tiny">Potansiyel ${r.lo}–${r.hi} · güven %${r.conf}${r.second?" · 🔍 ikinci gözlem":""}</div></div>
-      ${signed?'<span class="badge ok">✍️ İmzalı</span>':p.agent?'<span class="badge sad">Rakipte</span>':'<span class="badge hot">Serbest</span>'}</div></div>`;
-      return bulkOn?`<div class="bulkrow ${bulkIsSelected(scope,r.id)?'sel':''}">${bulkCheckbox(scope,r.id,p.name+" raporunu seç")}<div class="grow">${card}</div></div>`:card;
-    }).join("");}
+  const openedCard=r=>{const p=S.world.players[r.pid]; if(!p) return "";
+    const signed=p.agent==="you";
+    const card=`<div class="card ${p.gem&&signed?'gold':''} tappable" onclick="openReportSheet('${r.id}')">
+    <div class="row">${renderPlayerPortrait(p,36)}
+    <div class="grow"><span class="b">${p.natFlag} ${escapeHtml(p.name)}</span> <span class="muted">${p.age}y · ${POS_LABEL[p.pos]}</span>
+    <div class="tiny">Potansiyel ${r.lo}–${r.hi} · güven %${r.conf}${r.second?" · 🔍 ikinci gözlem":""}</div></div>
+    ${signed?'<span class="badge ok">✍️ İmzalı</span>':p.agent?'<span class="badge sad">Rakipte</span>':'<span class="badge hot">Serbest</span>'}</div></div>`;
+    return bulkOn?`<div class="bulkrow ${bulkIsSelected(scope,r.id)?'sel':''}">${bulkCheckbox(scope,r.id,p.name+" raporunu seç")}<div class="grow">${card}</div></div>`:card;
+  };
+  /* TEK BÖLGE mimarisi — kayıtlar ya dışarıda (daraltılmış) ya da açılır bölgenin içinde
+     (genişletilmiş) render edilir; ASLA ikisi birden. Böylece kart kopyası olmaz,
+     aria-controls hedefi tek kalır ve daraltılmışken gizli etkileşimli kart bulunmaz. */
+  if(openedAll.length) h+=`<h2 class="sec">📂 Açılan Raporlar</h2>`;
+  if(!effectiveExpanded) h+=collapsedOpened.map(openedCard).join("");
+  if(canExpand){
+    h+=renderDisclosure({id:"scout.openedReports",
+      title:effectiveExpanded?"Açılan Raporları Daralt":"Tüm Açılan Raporları Göster",
+      summary:`${hiddenN} rapor daha`,
+      content:()=>openedAll.map(openedCard).join("")});
+  }
   h+=renderBulkBar({scope,actions:["scout.markOpened","scout.addWatchlist","scout.secondLook"]});
   return h;
 }
@@ -4328,12 +4724,24 @@ function renderTransfer(){
     $("scr-transfer").innerHTML=h; return;
   }
   const seasonT=((S.history&&S.history.transferHistory)||[]).filter(t=>t.s===S.season).length;
+  /* 1) Pencere/deadline durumu — her zaman en üstte, hiçbir zaman daraltılmaz */
   h+=`<div class="card alt accent-bar" style="padding:12px 14px">
     <div class="b" style="font-size:14px">${win?"🔓 Pencere açık — telefonlar susmuyor":"🔒 Pencere kapalı — ilgiyi biriktir"}</div>
     <div class="tiny" style="margin-top:2px">${win?"Teklifleri karşılaştır, masada kazan.":"Pazarlama kampanyalarıyla pencereye hazırlan."}</div></div>`;
-  h+=renderMetricGrid([{label:"Bu Sezon",value:seasonT+" transfer"},{label:"Toplam Komisyon",value:fmtM(S.totalCommission)}]);
+  if(deadlineActive()){
+    h+=`<div class="card urgent"><div class="row"><span style="font-size:24px">⏰</span>
+      <div class="grow"><span class="b">DEADLINE DAY — pencere bu hafta kapanıyor</span>
+      <div class="tiny">${S.offers.length} aktif teklif · son dakika hamleleri</div></div>
+      <button class="btn sm gold" onclick="openDeadlineDay()">Panel</button></div></div>`;
+  }
   if(!win){ const nxt=BAL.transferWindows.find(([a])=>a>S.week);
     h+=`<div class="card alt" style="text-align:center">⏳ Sonraki pencere: <b>${nxt?`Hafta ${nxt[0]}`:`Gelecek sezon Hafta ${BAL.transferWindows[0][0]}`}</b><br><span class="tiny">Pencere kapalıyken pazarlama kampanyalarıyla ilgiyi biriktir.</span></div>`; }
+  /* süresi dolmak üzere olan teklifler — pipeline disclosure'ının DIŞINDA kalır */
+  { const exp=S.offers.filter(o=>o.season===S.season&&(o.expires-S.week)<=1);
+    if(exp.length) h+=`<div class="card urgent"><div class="row"><span style="font-size:22px">⏳</span>
+      <div class="grow"><span class="b">${exp.length} teklifin süresi doluyor</span>
+      <div class="tiny">${exp.slice(0,3).map(o=>escapeHtml((S.world.players[o.pid]||{}).name||"?")+" · H"+o.expires).join(" · ")}</div></div>
+      <button class="btn sm gold" onclick="openOffer('${exp[0].id}')">Masaya Git</button></div></div>`; }
   const offerScope="transfer:offers";
   bulkEnsureScope(offerScope);
   const offerBulkOn=bulkIsActive(offerScope);
@@ -4361,29 +4769,214 @@ function renderTransfer(){
     }
     h+=renderBulkBar({scope:offerScope,actions:["transfer.rejectWeak"]});
   } else h+=`<div class="empty">Masada teklif yok. Formda oyuncu + pencere + pazarlama = telefon çalar. 📞</div>`;
-  // Pipeline aşamaları — aynı ekranda
-  h+=renderPipeline();
-  // Pazarlama: ilgisi zayıf oyuncular için hızlı kampanya girişi
-  const weak=myPlayers().filter(p=>!p.loan && Object.values(p.interest||{}).filter(v=>v>55).length===0);
-  if(weak.length){ h+=`<h2 class="sec">📣 Pazarlama Fırsatı <span class="cnt">${weak.length}</span></h2>
-    <div class="muted" style="margin-bottom:8px">İlgisi zayıf oyuncular — kampanyayla talep yarat.</div>`;
-    h+=weak.sort((a,b)=>b.value-a.value).slice(0,6).map(p=>`<div class="card tappable" style="padding:9px 12px" onclick="openMarketing('${p.id}')"><div class="row">${renderPlayerPortrait(p,34)}<div class="grow"><span class="b" style="font-size:13px">${p.name}</span><div class="tiny">${fmtM(p.value)} · ilgi zayıf</div></div><span class="badge sad">📣 Kampanya</span></div></div>`).join(""); }
+  /* 5) Kompakt pipeline özeti — tam kanban "Transfer Pipeline Detayları" içinde,
+     kartlar ve rotalar aynen korunur. Aktif pazarlık uyarısı disclosure'ın DIŞINDA. */
+  { const pm=pipelineModel();
+    if(pm.nego.length) h+=`<div class="card gold"><div class="row"><span style="font-size:22px">🪑</span>
+      <div class="grow"><span class="b">${pm.nego.length} aktif pazarlık sürüyor</span>
+      <div class="tiny">Sabır tükenirse teklif masadan kalkar.</div></div>
+      <button class="btn sm ghost" onclick="openNegoTable('${pm.nego[0].id}')">Masaya Dön</button></div></div>`;
+    h+=`<h2 class="sec">🔀 Transfer Pipeline</h2>`;
+    h+=renderMetricGrid([
+      {label:"İlgi",value:pm.interest.length},
+      {label:"Resmî Teklif",value:pm.offers.length},
+      {label:"Pazarlık",value:pm.nego.length},
+      {label:"Tamamlanan",value:seasonT},
+    ]);
+    h+=renderDisclosure({id:"transfer.pipeline",title:"Transfer Pipeline Detayları",
+      summary:`${pm.interest.length} ilgi · ${pm.offers.length} teklif · ${pm.nego.length} pazarlık`,
+      content:()=>renderPipeline()});   /* yardım metni renderPipeline'ın sonunda ZATEN var — tekrarlanmaz */
+  }
+  /* 6) Kompakt pazarlama özeti — tam liste "Pazarlama Fırsatlarını Göster" içinde.
+     Kampanya maliyetleri, ilgi hesabı ve pencere mantığı DEĞİŞMEZ. */
+  { const weak=myPlayers().filter(p=>!p.loan && Object.values(p.interest||{}).filter(v=>v>55).length===0);
+    if(weak.length){
+      const sorted=weak.sort((a,b)=>b.value-a.value);
+      h+=`<h2 class="sec">📣 Pazarlama Fırsatı <span class="cnt">${weak.length}</span></h2>
+        <div class="card" style="padding:10px 12px"><div class="row"><span style="font-size:20px">📣</span>
+        <div class="grow"><span class="b" style="font-size:13px">${weak.length} oyuncunun ilgisi zayıf</span>
+        <div class="tiny">Kampanyayla talep yarat — en değerlisi ${escapeHtml(sorted[0].name)}</div></div></div></div>`;
+      h+=renderDisclosure({id:"transfer.marketing",title:"Pazarlama Fırsatlarını Göster",
+        summary:`${Math.min(6,sorted.length)} oyuncu listelenir`,
+        content:()=>sorted.slice(0,6).map(p=>`<div class="card tappable" style="padding:9px 12px" onclick="openMarketing('${p.id}')"><div class="row">${renderPlayerPortrait(p,34)}<div class="grow"><span class="b" style="font-size:13px">${escapeHtml(p.name)}</span><div class="tiny">${fmtM(p.value)} · ilgi zayıf</div></div><span class="badge sad">📣 Kampanya</span></div></div>`).join("")});
+    }
+  }
+  /* "Bu Sezon" sayısı yukarıdaki pipeline özetinde zaten var — burada tekrarlanmaz */
+  h+=renderMetricGrid([{label:"Toplam Komisyon",value:fmtM(S.totalCommission)}]);
   $("scr-transfer").innerHTML=h;
+}
+/* ============================================================
+   V11-E — TEK KANONİK PAZARLIK HAZIRLIK MODELİ
+   Yeni bir doğrulama motoru KURULMAZ: pkgOk / contractOk / repValid /
+   offerEligibility / validateTransferCompletion aynen okunur ve yalnız
+   SUNUM verisine dönüştürülür. Basit ve Gelişmiş görünüm aynı modeli kullanır.
+   ============================================================ */
+function getNegotiationReadiness(o){
+  if(!o) return {packageReady:false,contractReady:false,representationReady:false,eligibilityReady:false,
+    completionReady:false,nextStep:null,blockers:["Teklif bulunamadı"],warnings:[],doneCount:0,totalSteps:NEGO_STEPS.length};
+  ensureOfferV6(o);
+  const packageReady=!!o.pkgOk;
+  const contractReady=!!o.contractOk;
+  const representationReady=!!repValid(o.pid);
+  const est=negoEligibilityState(o);                       // TEK ortak etkin uygunluk/kayıt durumu
+  const permit=est.permit, reg=est.reg;
+  const eligibilityReady=est.resolved;
+  const v=validateTransferCompletion(o.id);
+  const completionReady=!!v.ok;
+  const blockers=(v.reasons||[]).slice();                 // kanonik gerekçeler — yeniden yazılmaz
+  const warnings=[];
+  const pat=o.patience??3;
+  if(pat<=1) warnings.push(pat<=0?"Kulübün sabrı bitti — yeni tur pazarlık yok":"Kulübün sabrı son turda");
+  if(o.expires!=null&&o.season===S.season&&(o.expires-S.week)<=1) warnings.push(`Teklif H${o.expires}'te doluyor`);
+  try{ const p=S.world.players[o.pid], c=S.world.clubs[o.cid];
+    if(p&&c){ const fit=calculateCareerFit(p,c); if(fit.score<38) warnings.push("Kariyer uyumu düşük — kulübede kalma riski"); } }catch(e){}
+  if(permit&&permit.verdict==="itiraz"&&!o._permitAppealed) warnings.push("Çalışma izni için itiraz gerekiyor");
+  if(reg&&!reg.ok&&(o._regLoanWorkaround||o._regU21)) warnings.push("Kadro kaydı istisna ile çözüldü");
+  let nextStep;
+  if(!packageReady) nextStep={id:"package",label:"Paket Pazarlığı",short:"Paket",fn:`openNegoTable('${o.id}')`};
+  else if(!contractReady) nextStep={id:"contract",label:"Kontratı Görüş",short:"Kontrat",fn:`openContractLayer('${o.id}')`};
+  else if(!representationReady) nextStep={id:"representation",label:"Temsil Yetkisi",short:"Temsil",fn:`openPlayer('${o.pid}')`};
+  else if(!eligibilityReady) nextStep={id:"eligibility",label:"Uygunluk & Kayıt",short:"Uygunluk",fn:null};
+  else if(!completionReady) nextStep={id:"review",label:"Son Kontrol",short:"Son Kontrol",fn:null};
+  else nextStep={id:"review",label:"Transferi Tamamla",short:"İmza",fn:`signTransfer('${o.id}')`};
+  const doneCount=[packageReady,contractReady,representationReady,eligibilityReady,completionReady].filter(Boolean).length;
+  return {packageReady,contractReady,representationReady,eligibilityReady,completionReady,
+    nextStep,blockers,warnings,doneCount,totalSteps:NEGO_STEPS.length,permit,reg};
+}
+/* ============================================================
+   V11-E düzeltme — ETKİN UYGUNLUK/KAYIT DURUMU: TEK KAYNAK.
+   Daha önce hazırlık modeli kiralık/U21 istisnalarını çözülmüş sayarken rozet saymıyordu;
+   aynı teklif hem "kayıt sorunu" gösterip hem tamamlanabilir görünebiliyordu.
+   Burada tek bir etkin durum hesaplanır; rozet, metin, çözüm düğmesi ve hazırlık modeli
+   HEP bunu kullanır. offerEligibility, validateTransferCompletion, kayıt ve çalışma izni
+   kuralları DEĞİŞMEZ — yalnız aynı gerçeğin tek biçimde sunulması sağlanır.
+   ============================================================ */
+function negoEligibilityState(o){
+  let el=null; try{ el=offerEligibility(o); }catch(e){ el=null; }
+  const reg=el?el.reg:null, permit=el?el.permit:null;
+  const pv=permit?permit.verdict:null;
+  const loan=!!o._regLoanWorkaround, u21=!!o._regU21;
+  const registrationResolved=!!((reg&&reg.ok)||loan||u21);
+  const permitResolved=!o._permitDenied && pv!=="uygun-değil" && !(pv==="itiraz"&&!o._permitAppealed);
+  const resolved=!!el && registrationResolved && permitResolved;
+  let badge;
+  if(o._permitDenied) badge="❌ İzin reddedildi";
+  else if(pv==="uygun-değil") badge="❌ İzin yok";
+  else if(pv==="itiraz"&&!o._permitAppealed) badge="⚠️ İtiraz gerekli";
+  else if(!registrationResolved) badge="⚠️ Kayıt sorunu";
+  else if(reg&&reg.ok) badge="✅ Uygun";
+  else if(loan) badge="✅ Kiralık çözüm";
+  else badge="✅ U21 kaydı";
+  return {el,reg,permit,pv,loan,u21,registrationResolved,permitResolved,resolved,badge};
+}
+/* Uygunluk & Kayıt bloğu — TEK uygulama, hem Basit hem Gelişmiş görünüm bunu kullanır.
+   İçindeki çözüm/itiraz düğmeleri mevcut kanonik fonksiyonlara gider. */
+function negoEligibilityBlock(o){
+  const st=negoEligibilityState(o);
+  if(!st.el) return "";
+  let x=`<div class="sumline"><span>4️⃣ Uygunluk & Kayıt</span><span class="badge ${st.resolved?"ok":"inj"}">${st.badge}</span></div>`;
+  /* çözüm düğmesi YALNIZ kayıt gerçekten çözülmemişken görünür */
+  if(!st.registrationResolved){
+    if(st.reg&&st.reg.reason) x+=`<div class="tiny" style="color:var(--danger-ink)">${escapeHtml(st.reg.reason)}</div>`;
+    x+=`<button class="btn sm gold negoctl" style="margin-top:6px" onclick="openRegistrationSolutions('${o.id}')">🔁 Çözüm Seçenekleri</button>`;
+  } else if(st.loan) x+=`<div class="tiny">🔁 Kadro kaydı kiralık çözümüyle karşılandı</div>`;
+  else if(st.u21) x+=`<div class="tiny">🎓 Oyuncu U21 kontenjanından kaydediliyor</div>`;
+  else if(st.reg&&st.reg.note) x+=`<div class="tiny">${escapeHtml(st.reg.note)}</div>`;
+  { const _ck=countryKnow((S.world.clubs[o.cid]||{}).countryId||"tr"); if((_ck.regulationKnowledge||0)<50) x+=`<div class="tiny">ℹ️ Regülasyon bilgin düşük — değerlendirme tahminidir</div>`;
+    const _p2=S.world.players[o.pid]; const _tc=(S.world.clubs[o.cid]||{}).countryId;
+    if(_p2&&_tc&&_tc!==(_p2.countryId||_p2.nat)) x+=`<div class="tiny">🌍 Uyum riski: ${_ck.cultureKnowledge>=60?((((COUNTRY_BY_ID[_tc]||{}).adapt||0.5)>0.55)?"yüksek":"orta/düşük"):"bilinmiyor (kültür bilgisi düşük)"}</div>`; }
+  if(st.pv==="itiraz"&&!o._permitAppealed&&!o._permitDenied) x+=`<button class="btn sm gold negoctl" style="margin-top:6px" onclick="openPermitAppealSheet('${o.id}')">⚖️ İtiraz Seçenekleri</button>`;
+  return x;
+}
+/* V11-E son düzeltme — maaş değişimi için TEK güvenli sunum yardımcısı.
+   Akademi oyuncularının p.wage değeri 0 olabilir; ham (yeni/eski-1)*100 formülü hem Basit
+   hem Gelişmiş incelemede "+Infinity%" üretiyordu. Yalnız SUNUM: hiçbir maaş, kontrat,
+   teklif ya da denge değeri değişmez, gizli bir başarı hesabı eklenmez. */
+function wageChangePresentation(oldWage,newWage){
+  const oldValue=Number(oldWage), newValue=Number(newWage);
+  if(!Number.isFinite(newValue)) return {text:"",cls:"muted"};
+  if(!Number.isFinite(oldValue)||oldValue<=0)
+    return newValue>0?{text:"ilk profesyonel maaş",cls:"pos-delta"}:{text:"maaş yok",cls:"muted"};
+  const pct=Math.round((newValue/oldValue-1)*100);
+  return {text:(pct>0?"+":"")+pct+"%",cls:pct>0?"pos-delta":pct<0?"neg-delta":"muted"};
+}
+/* Basit modda geniş beş düğmeli stepper yerine tek kompakt ilerleme satırı.
+   Paylaşılan disclosure ile açılınca mevcut beş adımlı stepper aynen görünür. */
+function negoCompactStepper(oid,active){
+  const o=S.offers.find(x=>x.id===oid); if(!o) return "";
+  const rd=getNegotiationReadiness(o);
+  return renderDisclosure({id:"nego.stepList",title:`${rd.doneCount}/${rd.totalSteps} aşama hazır`,
+    summary:`Sonraki: ${rd.nextStep?rd.nextStep.short:"—"}`,
+    badge:rd.completionReady?"İmzaya hazır":"",tone:rd.completionReady?"success":"neutral",
+    content:()=>negoStepperHeader(oid,active)});
 }
 function openOffer(oid,opts){ opts=opts||{}; const _sec=opts.section||"review";
   const o=S.offers.find(x=>x.id===oid); if(!o)return;
   ensureOfferV6(o);
   const p=S.world.players[o.pid]; const c=S.world.clubs[o.cid];
   const cur=S.world.clubs[p.clubId];
+  const advanced=getNegotiationMode()==="advanced";
+  const head=`<div class="grab"></div>
+  <div style="text-align:center"><div class="tiny">PAZARLIK MASASI</div>
+  <div class="b" style="font-family:'Fraunces',serif;font-size:19px">${escapeHtml(p.name)}</div>
+  <div class="muted">${escapeHtml(cur?cur.name:"?")} → <b>${escapeHtml(c.name)}</b></div></div>`;
+  const stepper=advanced?negoStepperHeader(oid,_sec):negoCompactStepper(oid,_sec);
+  /* V11-E — aktif bölüm render'a GİRDİ olarak verilir; alttaki "Gelişmiş Görünüm" CTA'sı
+     bayat bir global okumaz, üstteki toggle ile birebir aynı bölüm anlamını kullanır. */
+  const body=advanced?renderAdvancedOfferReview(o,{p,c,cur,section:_sec}):renderSimpleOfferReview(o,{p,c,cur,section:_sec});
+  { const _u=negoSessionUI(oid); if(_u)_u.activeStep=_sec;
+    showEntityPage("negotiation",oid, stepper+head+negoModeToggleRow(oid,_sec)+body, {section:_sec}); }
+}
+/* --- BASİT TEKLİF İNCELEMESİ --- aynı offer/domain nesnesi, yalnız daha az kontrol. --- */
+function renderSimpleOfferReview(o,ctx){
+  const p=ctx.p, c=ctx.c;
+  const section=NEGO_ROUTE_SECTIONS.includes(ctx.section)?ctx.section:"review";
+  const rd=getNegotiationReadiness(o);
   const fit=calculateCareerFit(p,c);
   const pat=o.patience??3;
-  let h=`<div class="grab"></div>
-  <div style="text-align:center"><div class="tiny">PAZARLIK MASASI</div>
-  <div class="b" style="font-family:'Fraunces',serif;font-size:19px">${p.name}</div>
-  <div class="muted">${cur?cur.name:"?"} → <b>${c.name}</b></div></div>
-  <div class="card" style="margin-top:10px">
+  const fitVerdict=fit.score>=65?{t:"İyi eşleşme — süre bulur, gelişir",tone:"success"}:
+    fit.score<38?{t:"Zayıf eşleşme — kulübede kalma riski",tone:"danger"}:{t:"Orta eşleşme — riskli değil ama uçurmaz",tone:"warning"};
+  let h=`<div class="card">
     <div class="nego-line"><span class="muted">Bonservis</span><span class="b">${fmtM(o.fee)}</span></div>
-    <div class="nego-line"><span class="muted">Oyuncu maaşı</span><span class="b">${fmtM(o.wage)}/hafta <span class="${o.wage>p.wage?'pos-delta':'neg-delta'}">(${o.wage>p.wage?"+":""}${Math.round((o.wage/p.wage-1)*100)}%)</span></span></div>
+    <div class="nego-line"><span class="muted">Oyuncu maaşı</span><span class="b">${fmtM(o.wage)}/hafta ${(w=>w.text?`<span class="${w.cls}">(${w.text})</span>`:"")(wageChangePresentation(p.wage,o.wage))}</span></div>
+    <div class="nego-line"><span class="muted">Ajans komisyonu (%${Math.round(p.agentCommission*100)})</span><span class="b" style="color:var(--success-ink)">${fmtM(o.comm)}</span></div>
+    <div class="nego-line"><span class="muted">Geçerlilik</span><span class="b">Hafta ${o.expires}</span></div>
+    <div class="tiny" style="margin-top:6px">Kulüp sabrı · ${pat} pazarlık turu kaldı</div>
+    <div class="patience"><div class="pf" style="width:${clamp(pat/3*100,5,100)}%"></div></div>
+    <div class="sumline" style="margin-top:6px"><span class="muted">Kariyer uyumu</span><span class="status-chip t-${fitVerdict.tone}">${fit.score}/100 · ${escapeHtml(fitVerdict.t)}</span></div>
+  </div>`;
+  /* transfer hazırlık durumu + sıradaki adım — asla daraltılmaz */
+  h+=`<div class="card"><div class="tiny b" style="margin-bottom:4px">TRANSFER HAZIRLIĞI · ${rd.doneCount}/${rd.totalSteps}</div>
+    <div class="sumline"><span>Paket</span><span class="badge ${rd.packageReady?'ok':'sad'}">${rd.packageReady?"✅ Hazır":"Pazarlık gerek"}</span></div>
+    <div class="sumline"><span>Kontrat</span><span class="badge ${rd.contractReady?'ok':'sad'}">${rd.contractReady?"✅ Anlaşıldı":"Görüşülmedi"}</span></div>
+    <div class="sumline"><span>Temsil</span><span class="badge ${rd.representationReady?'ok':'sad'}">${rd.representationReady?"✅ Geçerli":"Yok"}</span></div>
+    ${negoEligibilityBlock(o)}
+    <div class="tiny" style="margin-top:8px"><b>SIRADAKİ ADIM</b> · ${escapeHtml(rd.nextStep?rd.nextStep.label:"—")}</div>
+  </div>`;
+  if(rd.blockers.length) h+=`<div class="card urgent"><div class="tiny b">TAMAMLAMAYI ENGELLEYENLER</div>
+    ${rd.blockers.map(r=>`<div class="tiny">• ${escapeHtml(r)}</div>`).join("")}</div>`;
+  if(rd.warnings.length) h+=`<div class="card alt">${rd.warnings.map(w=>`<div class="tiny">⚠️ ${escapeHtml(w)}</div>`).join("")}</div>`;
+  h+=`<div class="btnrow">
+    <button class="btn ghost" ${pat<=0?"disabled":""} onclick="openNegoTable('${o.id}')">🪑 Paket Pazarlığı</button>
+    <button class="btn gold" onclick="openContractLayer('${o.id}')">📝 Kontratı Görüş</button>
+  </div>
+  <button class="btn block primary" style="margin-top:8px" ${rd.completionReady?"":"disabled"} onclick="signTransfer('${o.id}')">✍️ Transferi Tamamla${rd.completionReady?"":" ("+rd.blockers.length+" engel)"}</button>
+  <button class="btn block danger" style="margin-top:8px" onclick="doReject('${o.id}')">Reddet</button>
+  <button class="btn block ghost" style="margin-top:8px" onclick="negoSetMode('advanced','${o.id}','${section}')">⚙️ Gelişmiş Görünüm</button>`;
+  return h;
+}
+/* --- GELİŞMİŞ TEKLİF İNCELEMESİ --- mevcut tam işlevsellik aynen korunur. --- */
+function renderAdvancedOfferReview(o,ctx){
+  const p=ctx.p, c=ctx.c;
+  const fit=calculateCareerFit(p,c);
+  const pat=o.patience??3;
+  /* V11-E — tamamlama düğmesi Basit görünümle AYNI kanonik kapıyı kullanır: hiçbir durumda
+     "kayıt sorunu" rozeti gösterirken imza düğmesi etkin kalmaz. signTransfer zaten
+     engelliyordu; devre dışı durum artık dürüst. */
+  const rd=getNegotiationReadiness(o);
+  let h=`<div class="card" style="margin-top:10px">
+    <div class="nego-line"><span class="muted">Bonservis</span><span class="b">${fmtM(o.fee)}</span></div>
+    <div class="nego-line"><span class="muted">Oyuncu maaşı</span><span class="b">${fmtM(o.wage)}/hafta ${(w=>w.text?`<span class="${w.cls}">(${w.text})</span>`:"")(wageChangePresentation(p.wage,o.wage))}</span></div>
     <div class="nego-line"><span class="muted">Ajans komisyonu (%${Math.round(p.agentCommission*100)})</span><span class="b" style="color:var(--success-ink)">${fmtM(o.comm)}</span></div>
     ${o.signBonus?`<div class="nego-line"><span class="muted">İmza parası</span><span class="b">${fmtM(o.signBonus)}</span></div>`:""}
     ${o.sellOn?`<div class="nego-line"><span class="muted">Sonraki satıştan pay</span><span class="b" style="color:var(--premium-ink)">%${o.sellOn}</span></div>`:""}
@@ -4403,25 +4996,16 @@ function openOffer(oid,opts){ opts=opts||{}; const _sec=opts.section||"review";
     <div class="sumline"><span>1️⃣ Kulüpler arası paket</span><span class="badge ${o.pkgOk?'ok':'sad'}">${o.pkgOk?"✅ Hazır":"Pazarlık gerek"}</span></div>
     <div class="sumline"><span>2️⃣ Oyuncu kontratı ${o.contract?`<span class="tiny">(${o.contract.durationYears}y${o.contract.releaseClause?` · clause ${fmtM(o.contract.releaseClause)}`:""})</span>`:""}</span><span class="badge ${o.contractOk?'ok':'sad'}">${o.contractOk?"✅ Anlaşıldı":"Görüşülmedi"}</span></div>
     <div class="sumline"><span>3️⃣ Temsil yetkisi</span><span class="badge ${repValid(o.pid)?'ok':'sad'}">${repValid(o.pid)?"✅ Geçerli":"Yok"}</span></div>
-    ${(function(){ try{ const el=offerEligibility(o); const pv=el.permit.verdict;
-      let x=`<div class="sumline"><span>4️⃣ Uygunluk & Kayıt</span><span class="badge ${(pv!=="uygun-değil"&&el.reg.ok&&(pv!=="itiraz"||o._permitAppealed)&&!o._permitDenied)?"ok":"inj"}">${o._permitDenied?"❌ İzin reddedildi":pv==="uygun-değil"?"❌ İzin yok":pv==="itiraz"&&!o._permitAppealed?"⚠️ İtiraz gerekli":!el.reg.ok?"⚠️ Kayıt sorunu":"✅ Uygun"}</span></div>`;
-      if(el.reg&&!el.reg.ok){ x+=`<div class="tiny" style="color:var(--danger-ink)">${escapeHtml(el.reg.reason)}</div>`;
-      x+=`<button class="btn sm gold" style="margin-top:6px" onclick="openRegistrationSolutions('${o.id}')">🔁 Çözüm Seçenekleri</button>`; }
-      else if(el.reg&&el.reg.note) x+=`<div class="tiny">${escapeHtml(el.reg.note)}</div>`;
-      { const _ck=countryKnow((S.world.clubs[o.cid]||{}).countryId||"tr"); if((_ck.regulationKnowledge||0)<50) x+=`<div class=\"tiny\">ℹ️ Regülasyon bilgin düşük — değerlendirme tahminidir</div>`;
-        const _p2=S.world.players[o.pid]; const _tc=(S.world.clubs[o.cid]||{}).countryId;
-        if(_p2&&_tc&&_tc!==(_p2.countryId||_p2.nat)) x+=`<div class=\"tiny\">🌍 Uyum riski: ${_ck.cultureKnowledge>=60?((((COUNTRY_BY_ID[_tc]||{}).adapt||0.5)>0.55)?"yüksek":"orta/düşük"):"bilinmiyor (kültür bilgisi düşük)"}</div>`; }
-      if(pv==="itiraz"&&!o._permitAppealed&&!o._permitDenied) x+=`<button class="btn sm gold" style="margin-top:6px" onclick="openPermitAppealSheet('${o.id}')">⚖️ İtiraz Seçenekleri</button>`;
-      return x; }catch(e){ return ""; } })()}
+    ${negoEligibilityBlock(o)}
   </div>
   ${(typeof directorPanel==="function")?directorPanel(o.cid):""}
   <div class="btnrow">
     <button class="btn gold" onclick="openContractLayer('${o.id}')">📝 Kontrat & Madde</button>
     <button class="btn ghost" ${pat<=0?"disabled":""} onclick="openNegoTable('${o.id}')">🪑 Paket Pazarlığı</button>
   </div>
-  <button class="btn block primary" style="margin-top:8px" ${(o.pkgOk&&o.contractOk&&repValid(o.pid))?"":"disabled"} onclick="signTransfer('${o.id}')">✍️ Transferi Tamamla${(o.pkgOk&&o.contractOk&&repValid(o.pid))?"":" (3 katman gerekli)"}</button>
+  <button class="btn block primary" style="margin-top:8px" ${rd.completionReady?"":"disabled"} onclick="signTransfer('${o.id}')">✍️ Transferi Tamamla${rd.completionReady?"":` (${rd.blockers.length} engel)`}</button>
   <button class="btn block danger" style="margin-top:8px" onclick="doReject('${o.id}')">Reddet</button>`;
-  { const _u=negoSessionUI(oid); if(_u)_u.activeStep=_sec; showEntityPage("negotiation",oid, negoStepperHeader(oid,_sec)+h, {section:_sec}); }
+  return h;
 }
 function doAccept(oid){ const o=S.offers.find(x=>x.id===oid); if(!o)return;
   ensureOfferV6(o);
@@ -4449,14 +5033,34 @@ const AGENCY_SECTION_MAP={
   departman:"departmanlar",operasyon:"departmanlar",
   varlik:"finans",sponsor:"marka",
 };
+/* V11-E — YEDİ kanonik SEG.agency değeri aynen korunur; yalnız NAVİGASYON dört görsel
+   gruba indirilir. Grup seçimi o grubun ilk bölümüne gider; iki bölümlü gruplarda küçük
+   bir ikincil seçici çıkar. Derin bağlantılar (gotoAgency("operasyon"/"sponsor"/"varlik"…))
+   AGENCY_SECTION_MAP üzerinden aynı şekilde çözülür, ag*Tab fonksiyonları değişmez. */
+const AGENCY_SECTIONS=["genel","departmanlar","personel","finans","ofis","uzmanlik","marka"];
+const AGENCY_GROUPS=[
+  {id:"genel",label:"Genel",sections:[["genel","Genel"]]},
+  {id:"ekip",label:"Ekip",sections:[["departmanlar","Departmanlar"],["personel","Personel"]]},
+  {id:"finans",label:"Finans",sections:[["finans","Finans"],["ofis","Ofis"]]},
+  {id:"buyume",label:"Büyüme",sections:[["uzmanlik","Uzmanlık"],["marka","Marka"]]},
+];
+function agencyGroupOf(section){ return AGENCY_GROUPS.find(g=>g.sections.some(([id])=>id===section))||AGENCY_GROUPS[0]; }
+function agencyGroupBar(){
+  const grp=agencyGroupOf(SEG.agency);
+  let h=`<div class="seg" role="tablist" aria-label="ajans bölümleri">`+AGENCY_GROUPS.map(g=>
+    `<button role="tab" aria-selected="${g.id===grp.id}" class="${g.id===grp.id?'on':''}" onclick="setSeg('agency','${g.sections[0][0]}')">${g.label}</button>`).join("")+`</div>`;
+  if(grp.sections.length>1) h+=`<div class="seg subseg" role="tablist" aria-label="${escapeHtml(grp.label)} alt bölümleri">`+grp.sections.map(([id,l])=>
+    `<button role="tab" aria-selected="${SEG.agency===id}" class="${SEG.agency===id?'on':''}" onclick="setSeg('agency','${id}')">${l}</button>`).join("")+`</div>`;
+  return h;
+}
 function renderAgency(){
   if(AGENCY_SECTION_MAP[SEG.agency]) SEG.agency=AGENCY_SECTION_MAP[SEG.agency];
-  if(!["genel","departmanlar","personel","finans","ofis","uzmanlik","marka"].includes(SEG.agency)) SEG.agency="genel";
+  if(!AGENCY_SECTIONS.includes(SEG.agency)) SEG.agency="genel";
   const _tier=calculateAgencyTier();
   let h=`<div class="page-header"><div class="page-eyebrow">ŞİRKET YÖNETİMİ</div>
     <div class="page-title">Ajans</div>
     <div class="page-subtitle">${_tier.icon} ${_tier.name} · ${Object.values(S.departments||{}).filter(d=>d.unlocked).length} açık departman</div></div>`;
-  h+=segBar("agency",[["genel","Genel"],["departmanlar","Departmanlar"],["personel","Personel"],["finans","Finans"],["ofis","Ofis"],["uzmanlik","Uzmanlık"],["marka","Marka"]]);
+  h+=agencyGroupBar();
   if(SEG.agency==="departmanlar"){ $("scr-agency").innerHTML=h+agDepartmanlarTab(); mountCharts(); return; }
   if(SEG.agency==="personel"){ $("scr-agency").innerHTML=h+agPersonelTab(); mountCharts(); return; }
   if(SEG.agency==="finans"){ $("scr-agency").innerHTML=h+agFinansTab(); mountCharts(); return; }
@@ -5097,7 +5701,8 @@ function proposePlayer(cid){
   save(); closeSheet(); renderAll();
 }
 /* ---------- pipeline + kiralik takip ---------- */
-function renderPipeline(){
+/* V11-E — pipeline'ın TEK veri kaynağı; hem kompakt özet hem tam kanban bunu kullanır. */
+function pipelineModel(){
   const mp=myPlayers();
   const interest=[];
   for(const p of mp){ for(const [cid,v] of Object.entries(p.interest||{})){
@@ -5106,8 +5711,12 @@ function renderPipeline(){
   const offers=S.offers.filter(o=>(o.patience??3)>=3);
   const nego=S.offers.filter(o=>(o.patience??3)<3);
   const done=((S.history&&S.history.transferHistory)||[]).filter(t=>t.s===S.season).slice(0,5);
+  return {interest,offers,nego,done};
+}
+function renderPipeline(){
+  const {interest,offers,nego,done}=pipelineModel();
   const col=(title,cards)=>`<div class="kcol"><h4>${title} (${cards.length})</h4>${cards.join("")||'<div class="tiny" style="padding:8px 6px;color:var(--ink3)">boş</div>'}</div>`;
-  return `<h2 class="sec" style="margin-top:0">🔀 Transfer Pipeline</h2><div class="kanban">`+
+  return `<div class="kanban">`+
     col("İlgi",interest.slice(0,6).map(x=>`<div class="kcard" onclick="openPlayer('${x.p.id}')"><b>${x.p.name}</b><div class="tiny">${x.c.name} · ilgi ${Math.round(x.v)}</div></div>`))+
     col("Resmî Teklif",offers.map(o=>{const p=S.world.players[o.pid],c=S.world.clubs[o.cid];return `<div class="kcard" onclick="openOffer('${o.id}')"><b>${p.name}</b><div class="tiny">${c.name} · ${fmtM(o.fee)} · H${o.expires}</div></div>`;}))+
     col("Pazarlık",nego.map(o=>{const p=S.world.players[o.pid],c=S.world.clubs[o.cid];return `<div class="kcard" onclick="openNegoTable('${o.id}')"><b>${p.name}</b><div class="tiny">${c.name} · sabır ${o.patience}/3</div></div>`;}))+
@@ -6984,50 +7593,62 @@ function openContractLayer(oid, msg){
   const rl=playerRedLines(p);
   const heat=(load)=> load<0.6?"Rahat 🟢":load<1.8?"Gergin 🟡":"Riskli 🔴";
   const pLoad=contractDemandLoad(o,s), cLoad=clubContractLoad(o);
+  const advanced=getNegotiationMode()==="advanced";
+  /* Basit modda ikincil maddeler "Ek Maddeler" içinde; her iki mod da AYNI ctr* mutasyon
+     ve doğrulama fonksiyonlarını çağırır. */
+  const contractExtras=`<div class="nego-line"><span class="muted">Oynama garantisi</span>
+       <button class="btn sm ${c.playingTimePromise?'primary':'ghost'} negoctl" onclick="ctrToggle('${oid}','playingTimePromise')">${c.playingTimePromise?"Var ✅":"Yok"}</button></div>
+     <div class="nego-line"><span class="muted">Yıllık maaş artışı</span><span class="row" style="gap:6px">
+       <button class="btn sm ghost negoctl" style="padding:3px 10px" onclick="ctrAdj('${oid}','annualWageRise',-1)">−</button>
+       <b style="min-width:50px;text-align:center">%${c.annualWageRise}</b>
+       <button class="btn sm ghost negoctl" style="padding:3px 10px" onclick="ctrAdj('${oid}','annualWageRise',1)">+</button></span></div>
+     <div class="nego-line"><span class="muted">İmza parası</span><span class="row" style="gap:6px">
+       <button class="btn sm ghost negoctl" style="padding:3px 10px" onclick="ctrAdj('${oid}','signingBonus',-1)">−</button>
+       <b style="min-width:66px;text-align:center">${c.signingBonus?fmtM(c.signingBonus):"Yok"}</b>
+       <button class="btn sm ghost negoctl" style="padding:3px 10px" onclick="ctrAdj('${oid}','signingBonus',1)">+</button></span></div>`;
+  /* kırmızı çizgi uyarıları HER İKİ modda da açıkta kalır — engelleyici bilgi daraltılmaz */
+  const redLines=`${s.revealed.minWage?`<div class="tiny" style="color:var(--danger-ink)">🔴 Oyuncu en az ${fmtM(rl.minWage)} maaş istiyor</div>`:""}
+     ${s.revealed.release?`<div class="tiny" style="color:var(--danger-ink)">🔴 Release clause %${Math.round(rl.releaseMaxPct*100)}'ü geçmemeli</div>`:""}
+     ${s.revealed.duration?`<div class="tiny" style="color:var(--danger-ink)">🔴 En fazla ${rl.maxDuration} yıl istiyor</div>`:""}
+     ${rl.wantsRelease?`<div class="tiny">ℹ️ Bu oyuncu bir çıkış yolu (release clause) bekliyor.</div>`:""}`;
   let h=`<div class="grab"></div>
    <div style="text-align:center"><div class="tiny">KATMAN 2/3 · OYUNCU KONTRATI</div>
-    <div class="b" style="font-family:'Fraunces',serif;font-size:18px">${p.name} × ${club.name}</div>
+    <div class="b" style="font-family:'Fraunces',serif;font-size:18px">${escapeHtml(p.name)} × ${escapeHtml(club.name)}</div>
     <div class="tiny">${club.profile||""} · sabır O:${Math.max(0,s.playerPatience)} / A:${Math.max(0,s.familyPatience)}</div></div>
+   ${negoModeToggleRow(oid,"contract")}
    <div class="card alt" style="margin-top:8px">🗣️ ${escapeHtml(msg||`"Kontrat detaylarını konuşalım. Süre, maaş, çıkış yolu..."`)}</div>
    <div class="card">
      <div class="nego-line"><span class="muted">Haftalık maaş</span><span class="row" style="gap:6px">
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 10px" onclick="ctrAdj('${oid}','weeklyWage',-1)">−</button>
+       <button class="btn sm ghost negoctl" style="padding:3px 10px" onclick="ctrAdj('${oid}','weeklyWage',-1)">−</button>
        <b style="min-width:76px;text-align:center">${fmtM(c.weeklyWage)}</b>
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 10px" onclick="ctrAdj('${oid}','weeklyWage',1)">+</button></span></div>
+       <button class="btn sm ghost negoctl" style="padding:3px 10px" onclick="ctrAdj('${oid}','weeklyWage',1)">+</button></span></div>
      <div class="nego-line"><span class="muted">Kontrat süresi</span><span class="row" style="gap:5px">
-       ${[1,2,3,4,5].map(y=>`<button class="btn sm ${c.durationYears===y?'primary':'ghost'}" style="min-height:30px;padding:3px 8px" onclick="ctrSet('${oid}','durationYears',${y})">${y}y</button>`).join("")}</span></div>
+       ${[1,2,3,4,5].map(y=>`<button class="btn sm ${c.durationYears===y?'primary':'ghost'} negoctl" style="padding:3px 8px" onclick="ctrSet('${oid}','durationYears',${y})">${y}y</button>`).join("")}</span></div>
      <div class="nego-line" style="flex-wrap:wrap"><span class="muted">Serbest kalma (release)</span><span class="row" style="gap:5px;flex-wrap:wrap;justify-content:flex-end">
-       ${RELEASE_PRESETS.map(([lbl,pct])=>`<button class="btn sm ${c.releasePct===pct?'primary':'ghost'}" style="min-height:30px;padding:3px 8px" onclick="ctrRelease('${oid}',${pct})">${lbl}</button>`).join("")}</span></div>
+       ${RELEASE_PRESETS.map(([lbl,pct])=>`<button class="btn sm ${c.releasePct===pct?'primary':'ghost'} negoctl" style="padding:3px 8px" onclick="ctrRelease('${oid}',${pct})">${lbl}</button>`).join("")}</span></div>
      <div class="tiny" style="text-align:right;margin:-4px 0 4px">${c.releaseClause?fmtM(c.releaseClause):"maddesiz"}</div>
      <div class="nego-line"><span class="muted">Kadro rolü</span><span class="row" style="gap:5px">
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 9px" onclick="ctrRole('${oid}',-1)">◀</button>
+       <button class="btn sm ghost negoctl" style="padding:3px 9px" onclick="ctrRole('${oid}',-1)">◀</button>
        <b style="min-width:96px;text-align:center;font-size:12px">${c.squadRole}</b>
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 9px" onclick="ctrRole('${oid}',1)">▶</button></span></div>
-     <div class="nego-line"><span class="muted">Oynama garantisi</span>
-       <button class="btn sm ${c.playingTimePromise?'primary':'ghost'}" onclick="ctrToggle('${oid}','playingTimePromise')">${c.playingTimePromise?"Var ✅":"Yok"}</button></div>
-     <div class="nego-line"><span class="muted">Yıllık maaş artışı</span><span class="row" style="gap:6px">
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 10px" onclick="ctrAdj('${oid}','annualWageRise',-1)">−</button>
-       <b style="min-width:50px;text-align:center">%${c.annualWageRise}</b>
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 10px" onclick="ctrAdj('${oid}','annualWageRise',1)">+</button></span></div>
-     <div class="nego-line"><span class="muted">İmza parası</span><span class="row" style="gap:6px">
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 10px" onclick="ctrAdj('${oid}','signingBonus',-1)">−</button>
-       <b style="min-width:66px;text-align:center">${c.signingBonus?fmtM(c.signingBonus):"Yok"}</b>
-       <button class="btn sm ghost" style="min-height:30px;padding:3px 10px" onclick="ctrAdj('${oid}','signingBonus',1)">+</button></span></div>
+       <button class="btn sm ghost negoctl" style="padding:3px 9px" onclick="ctrRole('${oid}',1)">▶</button></span></div>
+     ${advanced?contractExtras:""}
    </div>
+   ${advanced?"":renderDisclosure({id:"nego.contractExtras",title:"Ek Maddeler",
+     summary:`garanti ${c.playingTimePromise?"var":"yok"} · artış %${c.annualWageRise} · imza ${c.signingBonus?fmtM(c.signingBonus):"yok"}`,
+     content:()=>`<div class="card" style="margin-bottom:0">${contractExtras}</div>`})}
    <div class="card alt">
      <div class="sumline"><span class="muted">Oyuncu/aile memnuniyeti</span><b>${heat(pLoad)}</b></div>
      <div class="sumline"><span class="muted">Kulüp direnci</span><b>${heat(cLoad)}</b></div>
-     ${s.revealed.minWage?`<div class="tiny" style="color:var(--danger-ink)">🔴 Oyuncu en az ${fmtM(rl.minWage)} maaş istiyor</div>`:""}
-     ${s.revealed.release?`<div class="tiny" style="color:var(--danger-ink)">🔴 Release clause %${Math.round(rl.releaseMaxPct*100)}'ü geçmemeli</div>`:""}
-     ${s.revealed.duration?`<div class="tiny" style="color:var(--danger-ink)">🔴 En fazla ${rl.maxDuration} yıl istiyor</div>`:""}
-     ${rl.wantsRelease?`<div class="tiny">ℹ️ Bu oyuncu bir çıkış yolu (release clause) bekliyor.</div>`:""}
+     ${redLines}
    </div>
    <button class="btn block primary" onclick="persuadePlayerContract('${oid}')">🗣️ Oyuncu & Kulübü İkna Et (1 tur)</button>
    <div class="btnrow">
      <button class="btn ${o.contractOk?'gold':'ghost'}" ${o.contractOk?"":"disabled"} onclick="openOffer('${oid}')">${o.contractOk?"✅ Katman tamam — özete dön":"Önce anlaş"}</button>
      <button class="btn ghost" onclick="openOffer('${oid}')">← Geri</button>
    </div>`;
-  { const _u=negoSessionUI(oid); if(_u)_u.activeStep="contract"; showEntityPage("negotiation",oid, negoStepperHeader(oid,"contract")+h, {section:"contract"}); return; }
+  { const _u=negoSessionUI(oid); if(_u)_u.activeStep="contract";
+    const head=advanced?negoStepperHeader(oid,"contract"):negoCompactStepper(oid,"contract");
+    showEntityPage("negotiation",oid, head+h, {section:"contract"}); return; }
 }
 function ctrAdj(oid,k,d){ const o=S.offers.find(x=>x.id===oid); if(!o)return; ensureOfferV6(o); const c=o.contract; const p=S.world.players[o.pid];
   if(k==="weeklyWage") c.weeklyWage=Math.max(100,Math.round((c.weeklyWage*(1+d*0.1))/100)*100);
@@ -9082,7 +9703,10 @@ function pushHistory(route){
   const h=S.uiState.entityHistory;
   const snap={screen:route.screen,entityType:route.entityType||null,entityId:route.entityId||null,section:route.section||null,
     filters:captureScreenFilters(route.screen),scroll:(window.scrollY||0)};
+  /* V11-E — aynı rota tepede duruyorsa yığın büyütülmez; ama girdi ATILMAZ, TAZELENİR.
+     Eskiden bayat filtre/scroll korunuyordu ve geri dönüşte eski filtreler yükleniyordu. */
   if(!h.length || routeKey(h[h.length-1])!==routeKey(snap)) h.push(snap);
+  else h[h.length-1]=snap;
   if(h.length>30) h.splice(0,h.length-30);
 }
 function popHistory(){ const h=(S.uiState&&S.uiState.entityHistory)||[]; return h.length?h.pop():null; }
@@ -9151,8 +9775,20 @@ function showEntityPage(type,id,html,opts){
   if(!opts.keepScroll){ if(opts.restore) restoreScroll(UI.route); else window.scrollTo(0,0); }
   try{ mountCharts(); }catch(e){}
 }
+/* V11-E düzeltme — pazarlık entity'sinin TEK bölüm-duyarlı render yolu.
+   Genel bir yeniden render (disclosure aç/kapa, geri, kayıt geri yükleme) artık kullanıcıyı
+   paket/kontrat alt görünümünden teklif özetine geri atmaz. Geçmişe ikinci bir kayıt
+   düşmez (showEntityPage aynı entity'de push etmez) ve özyinelemeli rota yoktur. */
+const NEGO_ROUTE_SECTIONS=["review","package","contract","representation","eligibility"];
+function renderNegotiationRoute(oid,section){
+  const sec=NEGO_ROUTE_SECTIONS.includes(section)?section:"review";
+  if(sec==="package") return openNegoTable(oid);
+  if(sec==="contract") return openContractLayer(oid);
+  return openOffer(oid,{section:sec});
+}
 const ENTITY_OPENERS={player:pid=>openPlayer(pid),country:cid=>openCountry(cid),league:lid=>openLeague(lid),
-  club:cid=>openClub(cid),rivalAgency:rid=>openRivalAgency(rid),negotiation:oid=>openOffer(oid),
+  club:cid=>openClub(cid),rivalAgency:rid=>openRivalAgency(rid),
+  negotiation:(oid,opts)=>renderNegotiationRoute(oid,opts&&opts.section),
   department:id=>openDepartmentEntity(id),finance:()=>openFinanceEntity(),
   competition:id=>openCompetition(id),scoutFind:id=>openScoutFind(id),match:id=>openMatch(id)};
 function openEntity(type,id,opts){ opts=opts||{};
@@ -9162,7 +9798,7 @@ function openEntity(type,id,opts){ opts=opts||{};
   if(!fn){ toast("Bilinmeyen ekran"); return; }
   if(!entityExists(type,id)){ toast("Kayıt bulunamadı ⚠️"); navigateTo("home"); return; }
   if((type==="club"&&typeof canViewClub==="function"&&!canViewClub(id))||(type==="player"&&typeof canViewPlayer==="function"&&!canViewPlayer(id))||(type==="league"&&typeof canViewLeague==="function"&&!canViewLeague(id))){ showEntityPage(type,id,lockedEntityPage(type,id)); return; }
-  fn(id);
+  fn(id,opts);   // V11-E — bölüm bilgisi opener'a geçer (pazarlık paket/kontrat rotaları için)
 }
 function entityExists(type,id){
   if(type==="player") return !!S.world.players[id];
@@ -9180,7 +9816,9 @@ function entityExists(type,id){
 }
 function renderEntity(){ const r=UI.route; if(!r||r.screen!=="entity") return;
   if(!ENTITY_OPENERS[r.entityType]||!entityExists(r.entityType,r.entityId)){ clearEntityScreen(); navigateTo(ROUTE_FALLBACKS[r.entityType]||"home"); return; }
-  UI._suppressPush=true; try{ ENTITY_OPENERS[r.entityType](r.entityId); }catch(e){ console.error(e); } UI._suppressPush=false; }
+  /* V11-E — rotanın BÖLÜMÜ de opener'a verilir; aksi halde her genel yeniden render
+     pazarlığı "review"a düşürürdü (geri, kayıt geri yükleme, disclosure aç/kapa). */
+  UI._suppressPush=true; try{ ENTITY_OPENERS[r.entityType](r.entityId,{section:r.section}); }catch(e){ console.error(e); } UI._suppressPush=false; }
 function goBack(){
   const sw=$("sheetwrap"); if(sw&&sw.classList&&sw.classList.contains("open")){ closeSheet(); return; }
   if(UI.menuOpen){ closeMainMenu(); return; }
@@ -9584,6 +10222,12 @@ function serializeSafeRoute(route){
 function setActiveRoute(route,options){
   options=options||{};
   UI.route=normalizeRoute(route);
+  /* V11-E — non-entity ekranlarda CANLI filtreler rotanın kendisine de yazılır. pushHistory
+     UI.route'u olduğu gibi kopyaladığı için, bu olmadan geçmiş kaydı filters:null taşıyor ve
+     goBack(prev.filters) hiçbir şey geri yükleyemiyordu. */
+  if(!UI.route.entityType&&UI.route.filters==null){
+    try{ UI.route.filters=captureScreenFilters(UI.route.screen); }catch(e){}
+  }
   try{ if(S){ S.routeState=serializeSafeRoute(UI.route); persistScreenFilters(); } }catch(e){}
   try{ if(options.pushBrowser) syncBrowserHistory(options.replace); }catch(e){}
 }
@@ -11166,7 +11810,7 @@ function negoQuickBar(oid){
   const est=o.fee*(1+0.05); const hint=negoAcceptHint(o);
   return `<div class="card alt" style="padding:9px 12px">
     <div class="row" style="gap:6px;flex-wrap:wrap">${[["Minimum",0],["Makul",1],["Güçlü",2],["Agresif",3]].map(([l,v])=>
-      `<button class="btn sm ${o.ask.fee===v?'primary':'ghost'}" onclick="negoPreset('${oid}',${v})">${l}</button>`).join("")}</div>
+      `<button class="btn sm ${o.ask.fee===v?'primary':'ghost'} negoctl" aria-pressed="${o.ask.fee===v?"true":"false"}" onclick="negoPreset('${oid}',${v})">${l}</button>`).join("")}</div>
     <div class="tiny" style="margin-top:6px">Kulübün beklediği aralık: <b>${fmtM(Math.round(est*(1-spread)))} – ${fmtM(Math.round(est*(1+spread)))}</b>${know<40?" (bilgi düşük — aralık geniş)":""}</div>
     <div class="tiny">Kabul ihtimali: <b style="color:${hint[1]}">${hint[0]}</b> · direktör: ${directorKnown(c.id)?escapeHtml((DIRECTOR_PERSONALITIES.find(x=>x.id===getDirector(c.id).personality)||{}).label||""):"bilinmiyor"}</div>
   </div>`;
