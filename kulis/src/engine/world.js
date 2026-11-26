@@ -94,7 +94,7 @@ function genSquad(S, club, A) {
       } else {
         age = chance(S, G.youthBenchShare) ? rint(S, 17, 21) : rint(S, 22, 33);
       }
-      const ca = caFor(S, A, age, starter && age >= 22 ? true : starter && age < 22 ? true : false) - (starter && age < 22 ? 2 : 0);
+      const ca = caFor(S, A, age, starter) - (starter && age < 22 ? 2 : 0);
       genPlayer(S, { clubId: club.id, leagueId: club.leagueId, age, pos, ca });
     }
   }

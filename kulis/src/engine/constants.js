@@ -118,7 +118,7 @@ export const BAL = {
     discountFactor: 0.6,
     gapMean: { 16: 21, 17: 20, 18: 19, 19: 15, 20: 12, 21: 9, 22: 7, 23: 5, 24: 4, 25: 3, 26: 2, 27: 1 },
     gapSdFactor: 0.55, gemChance: 0.035, gemExtra: [14, 28], paCap: 97, caMin: 22, caMax: 95,
-    youthDrop: 14, youthSd: 4, youthAge: [16, 18],
+    youthDrop: 22, youthSd: 4, youthAge: [16, 18],
     wageSpread: 0.18, contractMax: 4,
     foreignMixTR: 0.22,
   },
@@ -176,7 +176,7 @@ export const BAL = {
     retire: { startAge: 33, base: 0.12, step: 0.16, force: 38, gkBonus: 2 },
     renewChance: 0.85, renewYears: [1, 4], youthContract: [2, 4], wageRenewFloor: 0.9,
     newsMax: 80, promotion: 2, clubFormDrift: 0.4,
-    formReset: 0.4,
+    formReset: 0.4, cullGap: 8, cullChance: 0.6,
   },
 
   rivals: [
