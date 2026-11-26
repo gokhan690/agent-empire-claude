@@ -187,7 +187,151 @@ export const BAL = {
   ],
   rivalCommission: [5, 10],
 
+  // ---- market (phase 2b) ----
+  market: {
+    need: { gap: [1, 3.5, 7] },
+    interest: {
+      create: 35, pull: 0.45, noise: 2, decay: 12, drop: 6, perPlayer: 5, boostDecay: 0.6, open: 60,
+      needW: 18, fitBase: 18, fitK: 2.2, fitMin: -30, fitMax: 26, formW: 1.2, hypeDiv: 10, trustDiv: 12,
+      ageYoung: 6, ageMid: 4, age31: -8, age33: -16, budgetMinRatio: 0.8, budgetRich: 2, budgetBonus: 4, unaffordableCap: 20,
+      renewalFrom: 3, freeFrom: 6, renewalBase: 45, renewalStarter: 70, renewalRank: 1,
+      freeAgentBase: 20,
+    },
+    ai: { perClubMax: 2, needFactor: 0.3, noiseSd: 0.5, monthFactor: { 0: 1, 1: 1, 6: 0.7 }, valueBudgetShare: 0.5, newsMinValue: 2000000, newsMax: 5, feeLo: 0.9, feeHi: 1.1, caWindow: [-4, 8], contract: [2, 4] },
+    pitch: { base: 4, perNeed: 4, fitMin: -4, fitMax: 8, fitW: 0.8, hypeDiv: 25, min: 3, max: 25, repeatMult: 0.5 },
+    lunch: { cashBase: 1500, cashPerPrestige: 1500, trust: 10, trustL2: 15, band: 0.25 },
+    media: { cashBase: 3000, valueShare: 0.004, min: 3000, max: 25000, hype: 15, yildizMorale: 8, sadikMorale: -5 },
+    deal: {
+      feeFactorBase: 0.95, feeFactorNeed: 0.05, repDiv: 200000, repMax: 4,
+      oldClubTrust: -4, oldClubTrustFree: -20, newClubTrust: 6, renewTrust: 4, releaseMult: 1.5,
+      minutesMorale: 30, benchHirsliMorale: -6, benchHirsliLoyalty: -8, dreamMorale: 8, dreamLoyalty: 6, moveLoyalty: 4, renewLoyalty: 8,
+      feeNoticeLoyalty: -5,
+    },
+    freeAgent: { chance: 0.5, minGap: 8, minAge: 30 },
+  },
+  neg: {
+    minLevel: 60,
+    gen: { base: 1.05, need: 0.05, level: 0.0025, budget: 0.06, min: 0.85, max: 1.35 },
+    fee: { valueShare: 0.08, valueDamp: 40000000, wageShare: 0.09, freeShare: 0.10, renewShare: 0.06 },
+    freeSaved: 0.30, saveFactor: 0.9,
+    years: { default: 3, old: 2, oldAge: 31, young: 4, youngAge: 21, renew: 3 },
+    bonusMonths: { transfer: 2, free: 6, renewal: 1.5 },
+    clause: { minutes: 0.08, release: 0.05 },
+    maxWageMult: 4, maxBonusMonths: 24, maxFeeShare: 0.6,
+    tell: [0.05, 0.12, 0.22, 0.35],
+    creep: { base: 0.80, step: 0.05 },
+    insult: 1.35,
+    sat: {
+      base: 38, wageFair: 15, wageSlope: 75, wageMin: -30, wageMax: 28, paraci: 1.3,
+      bonusSlope: 50, bonusMax: 8, paraciBonus: 1.5,
+      minutesW: 20, hirsliMinutes: 1.5, profMinutes: 0.7,
+      prestigeW: 3, hirsliPrestige: 1.6, sadikMove: -6,
+      dream: { top_league: 10, big_wage: 10, champion: 6, star: 5, hometown: 6 },
+      family: { away: -8, home: 4 }, yildiz: 4, release: 3,
+      ok: 50, lean: 40, leanLoyalty: -8,
+    },
+    koz: { rakip: 0.12, formda: 0.08, taraftar: 0.04, sozlesme: 0.06, dostluk: 0.08, songun: 0.10, blof: 0.10,
+      rakipMin: 50, formMin: 7.2, formApps: 3, hypeMin: 60, trustMin: 60, songunNeed: 2, handMax: 4, handMaxL3: 5 },
+    bluff: { base: 0.15, info: 0.08, table: 0.05, min: 0.05, max: 0.6, patience: -2, trust: -15, rep: -2 },
+    leave: { trust: -10, cooldown: 3 },
+    table: { patience: 1, kurnazTrust: 60, kurnazTable: 2, bandTable: 4, band: 0.15 },
+    counterW: {
+      durust: { wage: 0.4, bonus: 0.2, fee: 0.4 },
+      kurnaz: { wage: 0.2, bonus: 0.2, fee: 0.6 },
+      cimri: { wage: 0.3, bonus: 0.4, fee: 0.3 },
+      sabirsiz: { wage: 0.5, bonus: 0.1, fee: 0.4 },
+      gosterisci: { wage: 0.2, bonus: 0.1, fee: 0.7 },
+    },
+  },
+  deadline: {
+    hours: [18, 23], maxCalls: 8, minLevel: 2, kBoost: [0, 0.10, 0.17, 0.25], patiencePenalty: 1,
+    callLen: [1, 3], missedInterest: -30, hotLevel: 60,
+  },
+
   limits: { newsMax: 80, ledgerMax: 24, careerMax: 12 },
 };
 
 export const DEADLINE_MONTHS = MONTHS.map((m, i) => (m.deadline ? i : -1)).filter(i => i >= 0);
+
+// ---- Phase 2a (agency systems) balance numbers: scouting, recruiting, promises, upgrades, rivals, objectives ----
+Object.assign(BAL, {
+  scout: {
+    travel: { 1: 2500, 2: 5000, 3: 9000, 4: 15000, 5: 24000 }, // € per trip by league prestige
+    count: 3, startKnow: 10, gemChance: 0.12, gemMinGap: 14,
+    qBase: { 1: 46, 2: 54, 3: 60, 4: 66, 5: 70 }, qRep: 0.15, qSd: 7,   // target level of offered prospects
+    watchKnow: 30, traitKnow: 60, dreamKnow: 85, shortlistMax: 40,
+  },
+  recruit: {
+    repW: 1.4, knowW: 0.15, base: 6, mahalleYouth: 12, expiring: 4,
+    thrBase: 15, thrFrom: 40, thrSlope: 1.45, thrRival: 18, thrHype: 0.04,
+    maxPromises: 3, commission: [5, 10], commissionStep: 5, contractYears: 2,
+    promiseAdd: 14, promiseFit: 1.6, promiseOffFit: 0.7,
+    fit: { minutes: ['hirsli', 'yildiz', 'profesyonel'], transfer_up: ['hirsli', 'yildiz'], wage: ['paraci'], stay: ['sadik', 'ailebabasi'], visit: ['ailebabasi', 'yildiz', 'sadik'] },
+    startLoyalty: 55, startMorale: 62, startKnow: 60,
+  },
+  clientDrift: {
+    minExp: { hirsli: 0.7, yildiz: 0.6, profesyonel: 0.5, ailebabasi: 0.5, paraci: 0.45, sadik: 0.35 },
+    moraleBase: 60, moraleRegress: 0.1, moraleForm: 0.4, moraleMinK: 14, moraleMinMin: -6, moraleMinMax: 3,
+    loyMinK: 8, loyBase: -0.5, sadikDecay: 0.5, network2Decay: 0.65, visitGrace: 3, visitDecay: 0.3, visitDecayMax: 1.5,
+    wageLow: 0.88, wageHigh: 1.1, injuredMorale: -2,
+    leaveLoyalty: 10, renewLoyalty: 55, repBonusCashK: 1.0, hometownShare: 0.55, championApps: 8,
+    dreamLoyalty: 30, dreamRep: 4, dreamMorale: 15,
+  },
+  promise: {
+    kept: { loyalty: 15, rep: 2, morale: 5 }, broken: { loyalty: -25, rep: -3, morale: -10 },
+    minutesShare: 0.5, minWindow: 4, walkoutLoyalty: 25, wageMult: 1.25, wageFairMult: 1.15, keepMonths: 24,
+  },
+  upgrade: {
+    cost: { scout: [40000, 120000, 350000, 900000], table: [40000, 120000, 350000, 900000], network: [50000, 150000, 400000, 1000000] },
+    names: { scout: 'Gözlem', table: 'Masa', network: 'Ağ' },
+    scoutPassiveKnow: 10, heatSlow: 0.7, lunchTrust: 15, loyaltyDecayMult: 0.65,
+    text: {
+      scout: ['Geziler 4 aday gösterir', 'Yeni keşiflerde başlangıç bilgisi +15', 'Her ay pasif olarak bir yeni aday keşfedilir', 'Takip listendeki oyuncuların rakip ilgisi %30 yavaş artar'],
+      table: ['Masada +1 sabır', 'Kurnaz müdürlerin tepkileri gerçeği gösterir', 'Blöf riski -%10, elinde 5 Koz', 'Masa açılışında tavan bandı (±%15) görünür'],
+      network: ['+1 enerji', 'Öğle yemeği +15 güven, bağlılık daha yavaş düşer', '+1 enerji', 'Son Gün\'de saat başı iki eylem'],
+    },
+  },
+  rivalAI: {
+    heatBase: 3, heatObv: 9, heatHype: 0.03, heatObvFrom: 45, heatObvSpan: 35, akademisyenU21: 1.4,
+    bgSign: 0.7, bgSample: 6, bgLose: 0.35, minPortfolio: 40, commission: [5, 10],
+    repPull: 0.05, repNoise: 0.4, repMin: 5, repMax: 95, cashFloor: 20000, upkeepBase: 3000, upkeepRep: 120, incomeShare: 0.02, cashGrowth: 0.25, cashPull: 0.08,
+    poachLoyalty: 35, poachChance: 0.55, poachCooldown: 4, poachBonusK: 2, poachBonusMin: 4000, poachBonusMax: 60000,
+    poachPromiseLoyalty: 22, poachBonusLoyalty: 25, poachMaxPending: 3,
+  },
+  objective: {
+    reward: { safe: { rep: 2, cash: 10000 }, balanced: { rep: 4, cash: 25000 }, bold: { rep: 7, cash: 60000 } },
+    cashSeasonGrowth: 0.25, failRepPenalty: 0,
+  },
+});
+
+// ---- Phase 2c (narrative): inbox deck, legacy score, endings ----
+Object.assign(BAL, {
+  events: {
+    perMonth: { 2: 35, 3: 45, 4: 20 },   // cards generated per month (weights)
+    inboxCap: 8,                          // hard cap on cards waiting in the Gündem
+    playerCooldown: 2,                    // months before the same player gets another random card
+    kindPenalty: 0.4,                     // weight multiplier for a kind already drawn this month
+    tutorialCards: 1,                     // max random cards per month while tutorial cards are active
+    heavyFromSeason: 2,                   // `heavy` (high-stakes) cards never appear in season 1
+    loanDefaultDays: 3,
+  },
+  // legacy score = Σ of the terms below (see ending.legacyScore)
+  legacy: {
+    commissionDiv: 10000,                 // + commission earned / 10K
+    deal: 30,                             // + per completed transfer
+    dream: 200,                           // + per fulfilled client dream
+    kept: 35, broken: -60,                // promises
+    peakValueDiv: 1000000, peakValueW: 25, peakCount: 5, // + 25 per €1M of the 5 most valuable client peaks
+    champion: 150,                        // + per league title won by a client's club (client with ≥ 8 apps)
+    rank: { 1: 600, 2: 350, 3: 200, 4: 80, 5: 0 },
+    rep: 4,                               // + rep · 4
+    seasonSurvived: 20,
+  },
+  ending: {
+    efsane: { rank: 1, min: 2200 },
+    buyuk: { rank: 2, min: 1300 },
+    saygin: { rank: 3, min: 700 },
+    epilogueMax: 8,
+    minApps: 8,
+  },
+});
