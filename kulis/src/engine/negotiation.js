@@ -181,18 +181,22 @@ function shapeCounter(n, pkg, T) {
   const R = Math.max(0, total - T / rate);
   const cut = { wage: 0, bonus: 0, fee: 0 };
   const keys = ['wage', 'bonus', 'fee'];
-  for (let pass = 0; pass < 4; pass++) {
+  // a counter never squeezes the agent fee below a small floor (unless the player's own offer already asked for less): the cut falls on wage/bonus instead
+  const FF = BAL.neg.feeFloor;
+  const feeKeep = pkg.fee <= 0 ? 0 : Math.min(pkg.fee, Math.ceil(Math.max(FF.share * T, FF.min) / 100) * 100);
+  const room = k => comp[k] - cut[k] - (k === 'fee' ? feeKeep : 0);
+  for (let pass = 0; pass < 6; pass++) {
     const rem = R - cut.wage - cut.bonus - cut.fee;
-    const caps = keys.filter(k => comp[k] - cut[k] > 1);
+    const caps = keys.filter(k => room(k) > 1);
     const ws = caps.reduce((s, k) => s + W[k], 0);
     if (rem < 1 || !caps.length || ws <= 0) break;
-    for (const k of caps) cut[k] += Math.min(comp[k] - cut[k], rem * W[k] / ws);
+    for (const k of caps) cut[k] += Math.min(room(k), rem * W[k] / ws);
   }
   const out = {
     wage: Math.max(BAL.wage.min, Math.floor((comp.wage - cut.wage) / (12 * pkg.years) / 100) * 100),
     years: pkg.years,
     bonus: Math.max(0, floorTidy(comp.bonus - cut.bonus)),
-    fee: Math.max(0, floorTidy(comp.fee - cut.fee)),
+    fee: Math.max(feeKeep, floorTidy(comp.fee - cut.fee)),
     clauses: { minutes: !!c.minutes, release: !!c.release },
   };
   return out;
@@ -248,7 +252,7 @@ export function openTable(S, a, opts = {}) {
   const cp = ceilingParts(S, p, club, kind, it.level, fair, tf);
   let K = cp.K * (1 + (opts.kBoost || 0));
   const tut = S.flags.tutorial;
-  if (tut && typeof tut === 'object' && !tut.done && tut.target && tut.target.playerId === p.id && tut.target.clubId === club.id) K *= 1 + N.tutorialK; // the first Masa is meant to be won
+  if (tut && typeof tut === 'object' && !tut.done && tut.target && tut.target.playerId === p.id && tut.target.clubId === club.id) { K *= 1 + N.tutorialK; K = Math.max(K, market.packageCost(fair) * N.tutorial.minHeadroom); } // the first Masa is meant to be won
   const persona = club.director.persona;
   let patience = (BAL.persona[persona] || BAL.persona.durust).patience;
   const fx = upgradeEffects(S);

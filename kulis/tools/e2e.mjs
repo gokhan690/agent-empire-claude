@@ -54,7 +54,7 @@ async function dealAtMasa(P, tag) {
     if (ov === 'İmza töreni' || (await has(page, /Anlaşma imzalanıyor/))) return true;
     if (ov !== 'Pazarlık masası') return false;
     const lean = page.getByRole('button', { name: /^İkna et \(bağlılık/ }).filter({ visible: true }).first();
-    if (await lean.count()) { await lean.click({ timeout: 2000 }).catch(() => {}); await sleep(900); continue; }
+    if (await lean.count()) { P.leaned = true; await lean.click({ timeout: 2000 }).catch(() => {}); await sleep(900); continue; }
     const acc = page.getByRole('button', { name: /^Kabul et$/ }).filter({ visible: true }).first();
     if (process.env.E2E_DEBUG) console.log('   acc', await acc.count(), (await acc.count()) ? await acc.isEnabled() : null);
     if ((await acc.count()) && (await acc.isEnabled())) { await acc.click({ timeout: 2000 }).catch(() => {}); await sleep(900); continue; }
@@ -171,6 +171,7 @@ ok((await overlayName(page)) === 'Pazarlık masası', 'Masa overlay open');
 ok((await hscroll(page)) <= 0, 'masa: no horizontal scroll');
 const deal = await dealAtMasa(A, 'a3');
 ok(deal, 'deal closed at the Masa');
+ok(!A.leaned, 'tutorial first deal needs no "İkna et" (suitor is a real step forward)');
 if (!deal) { await A.shot('xx-a3-stuck'); }
 await page.locator('.cer').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
 await sleep(5200);

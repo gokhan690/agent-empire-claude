@@ -376,3 +376,64 @@ test('bots: sharp/passive/fuzz play a few seasons without exceptions; passive is
   assert.deepEqual(p.exceptions, []);
   assert.ok(p.rows.length >= 1, 'passive survives season 1');
 });
+
+test('tutorial suitor is a real step forward: client plays >= 55%, fair package is accepted without persuasion, fee > 0', () => {
+  for (const seed of [1, 2, 3, 5, 9, 11, 15, 17, 23, 31, 42, 77]) {
+    const S = newGame({ seed });
+    const w = S.inbox.find(c => c.key === 'tut_welcome'); act(S, 'answerInbox', { inboxId: w.id, optionId: w.options[0].id });
+    const gem = mine(S).sort((a, b) => a.age - b.age)[0];
+    act(S, 'visitClient', { playerId: gem.id });
+    act(S, 'scoutTrip', { leagueId: 'tr2', focus: 'u21' });
+    act(S, 'clubLunch', { clubId: Object.values(S.clubs).find(c => c.leagueId === 'tr1').id });
+    const it = sel.interestList(S).find(i => i.negotiable && i.clubId === S.flags.tutorial.target.clubId);
+    assert.ok(it, 'seed ' + seed + ': suitor exists');
+    assert.ok(it.expectedMinutes >= BAL.neg.tutorial.minMinutes, 'seed ' + seed + ' minutes ' + it.expectedMinutes);
+    assert.ok(act(S, 'openNegotiation', { interestId: it.id }).ok);
+    const n = sel.negotiationView(S);
+    assert.ok(n.fair.fee > 0, 'seed ' + seed + ' fee');
+    const pv = act(S, 'negPreview', { package: n.fair }).preview;
+    assert.ok(pv.satisfaction >= BAL.neg.sat.ok + 5, 'seed ' + seed + ' satisfaction ' + pv.satisfaction);
+    const r = act(S, 'negPropose', { package: n.fair });
+    assert.ok(r.ok, r.error);
+    assert.equal(r.outcome, 'accepted', 'seed ' + seed + ' accepted at the suggested package without İkna et');
+    assert.ok(S.deals[S.deals.length - 1].fee > 0, 'seed ' + seed + ' fee paid');
+  }
+});
+
+test('zero clients: warning card every month, career ends ("yalniz") after BAL.econ.noClientMonthsEnd month ends; recovery resets', () => {
+  const S = newGame({ seed: 8 });
+  S.flags.tutorial.done = true; S.inbox = [];
+  assert.equal(S.agency.noClientMonths || 0, 0);
+  for (const p of mine(S)) act(S, 'releaseClient', { playerId: p.id });
+  assert.equal(mine(S).length, 0);
+  const N = BAL.econ.noClientMonthsEnd;
+  assert.equal(N, 3);
+  let r;
+  for (let i = 1; i < N; i++) {
+    S.agency.cash = 5e6;
+    r = advance(S);
+    if (r.phase === 'deadline') { act(S, 'deadlineFinish'); r = advance(S); }
+    assert.ok(r.ok && !r.ending, 'month ' + i + ' still running');
+    assert.ok(S.inbox.some(c => c.key === 'no_clients' && c.kind === 'ajans'), 'warning card in month ' + i);
+    assert.equal(S.agency.noClientMonths, i);
+    const card = S.inbox.find(c => c.key === 'no_clients');
+    assert.ok(act(S, 'answerInbox', { inboxId: card.id, optionId: card.options[0].id }).ok);
+  }
+  // recovery resets the counter
+  const q = Object.values(S.players).find(x => !x.agentId && x.age <= 22); q.agentId = 'you'; q.rep = { commissionPct: 7, endSeason: S.time.season + 2 }; q.loyalty = 80;
+  S.agency.cash = 5e6; r = advance(S);
+  if (r.phase === 'deadline') { act(S, 'deadlineFinish'); r = advance(S); }
+  assert.equal(S.agency.noClientMonths, 0);
+  assert.ok(!r.ending);
+  // lose him again: ends on the Nth month end
+  q.agentId = null;
+  for (let i = 1; i <= N; i++) {
+    S.agency.cash = 5e6; S.inbox = S.inbox.filter(c => c.key !== 'no_clients');
+    r = advance(S);
+    if (r.phase === 'deadline') { act(S, 'deadlineFinish'); r = advance(S); }
+    if (i < N) assert.ok(!r.ending, 'not yet at ' + i);
+  }
+  assert.ok(r.ending && r.ending.kind === 'yalniz', 'career ends with yalniz');
+  assert.equal(S.time.phase, 'over');
+  assertClean(S);
+});

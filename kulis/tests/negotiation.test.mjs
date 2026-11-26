@@ -217,8 +217,10 @@ test('counter-package is shaped by the director persona (kurnaz squeezes the fee
     out[persona] = { c: r.counter.package, pkg };
   }
   const feeCut = o => 1 - o.c.fee / o.pkg.fee, bonusCut = o => 1 - o.c.bonus / o.pkg.bonus;
-  assert.ok(feeCut(out.kurnaz) > bonusCut(out.kurnaz));
-  assert.ok(bonusCut(out.cimri) > feeCut(out.cimri) * 0.99 || bonusCut(out.cimri) >= 0.5);
+  // the fee floor keeps both from zero, but kurnaz still squeezes the fee harder than cimri does (cimri squeezes the bonus first)
+  assert.ok(feeCut(out.kurnaz) > feeCut(out.cimri));
+  assert.ok(feeCut(out.kurnaz) > 0.5 && out.kurnaz.c.fee > 0);
+  assert.ok(bonusCut(out.cimri) >= feeCut(out.cimri));
   });
 });
 
@@ -777,4 +779,26 @@ test('counters carry noise (not exactly K·(0.80+0.05·round)) but stay below K'
     ratios.push(r.counter.cost / k - (0.80 + 0.05 * round));
   }
   assert.ok(ratios.some(x => Math.abs(x) > 0.004), 'noise present: ' + ratios);
+});
+
+test('counter-offers never zero the agent fee (floor = max(3% of the counter, €1.500) or the player\'s own lower ask)', () => {
+  for (const persona of ['gosterisci', 'kurnaz', 'durust', 'cimri', 'sabirsiz']) {
+    const { S } = table({ seed: 5, persona });
+    const n = S.negotiation;
+    const fee = n.fair.fee;
+    // greedy package: far above the ceiling so the club has to cut hard; fee-heavy personas would take it all from the fee
+    const pkg = { ...n.fair, wage: n.fair.wage * 2, bonus: n.fair.bonus * 3, fee };
+    const r = act(S, 'negPropose', { package: pkg });
+    assert.ok(r.ok, r.error);
+    if (r.outcome !== 'countered') continue;
+    const cp = r.counter.package;
+    const floor = Math.min(fee, Math.ceil(BAL.neg.feeFloor.min / 100) * 100);
+    assert.ok(cp.fee >= floor, persona + ': fee ' + cp.fee + ' >= floor ' + floor);
+    assert.ok(cp.fee > 0, persona);
+  }
+  // the player asked for zero himself: the counter may keep it at zero
+  const { S } = table({ seed: 5, persona: 'gosterisci' });
+  const n = S.negotiation;
+  const r = act(S, 'negPropose', { package: { ...n.fair, wage: n.fair.wage * 2, bonus: n.fair.bonus * 3, fee: 0 } });
+  if (r.outcome === 'countered') assert.equal(r.counter.package.fee, 0);
 });

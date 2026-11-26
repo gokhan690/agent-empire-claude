@@ -5,6 +5,8 @@
 import { BAL } from './constants.js';
 import { myClients } from './selectors.js';
 import { applyEffects } from './effects.js';
+import { projectMinutes } from './selection.js';
+import { fairPackage, satisfaction } from './negotiation.js';
 import * as events from './events.js';
 
 export const STEPS = ['welcome', 'visit', 'scout', 'market', 'interest', 'promises', 'ranking'];
@@ -41,22 +43,33 @@ function show(S) {
   return card ? [{ type: 'inboxNew', cardId: card.id, key, title: card.title }] : [];
 }
 
-/** Pick the first suitor: a club with a durust director in reach of the client; make sure it exists. */
+/**
+ * Pick the first suitor: a club that is a real step forward for the client (he starts there: expected minutes >= BAL.neg.tutorial.minMinutes,
+ * best client satisfaction at the fair package), in reach of his league, with an honest (durust) director. Deterministic (no RNG).
+ */
 function makeInterest(S) {
   const t = T(S);
-  const p = (t.gem && S.players[t.gem] && S.players[t.gem].agentId === 'you') ? S.players[t.gem] : myClients(S)[0];
-  if (!p) return false;
-  const own = S.clubs[p.clubId];
-  const cp = S.leagues[own.leagueId].prestige;
-  let best = null, bestScore = 1e9;
-  for (const cid in S.clubs) {
-    const c = S.clubs[cid];
-    if (cid === p.clubId) continue;
-    const pr = S.leagues[c.leagueId].prestige;
-    if (pr < cp || pr > cp + 1) continue;
-    const score = (c.director.persona === 'durust' ? 0 : 100) + (pr === cp ? 0 : 5) + Math.abs(c.id.charCodeAt(0) % 7 - 3);
-    if (score < bestScore) { best = c; bestScore = score; }
+  const gem = (t.gem && S.players[t.gem] && S.players[t.gem].agentId === 'you') ? S.players[t.gem] : myClients(S)[0];
+  if (!gem) return false;
+  const TU = BAL.neg.tutorial;
+  let best = null, bestP = null, bestScore = -1e9;
+  // the highlighted gem first; another client only when no club in reach would play the gem enough
+  for (const p of [gem, ...myClients(S).filter(q => q.id !== gem.id)]) {
+    const cp = S.leagues[S.clubs[p.clubId].leagueId].prestige;
+    for (const cid of Object.keys(S.clubs).sort()) {
+      const c = S.clubs[cid];
+      if (cid === p.clubId) continue;
+      const pr = S.leagues[c.leagueId].prestige;
+      if (pr < cp || pr > cp + 1) continue;
+      const m = projectMinutes(S, p, cid);
+      const fair = fairPackage(S, p, c, 'transfer');
+      const sat = satisfaction(S, p, c, 'transfer', fair).value;
+      // clubs where he would not play are a last resort (the minutes term dominates until the threshold is met)
+      const score = (m >= TU.minMinutes ? 1000 : m * 100) + sat + (c.director.persona === 'durust' ? 3 : 0) + (p.id === gem.id ? 40 : 0);
+      if (score > bestScore) { best = c; bestP = p; bestScore = score; }
+    }
   }
+  const p = bestP;
   if (!best) return false;
   if (best.director.persona !== 'durust') best.director.persona = 'durust';
   best.trust = Math.max(best.trust, 35);

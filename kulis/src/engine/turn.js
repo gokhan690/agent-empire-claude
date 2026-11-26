@@ -70,6 +70,16 @@ export function advanceMonth(S) {
   report.events.push(...events.monthly(S));
   report.events.push(...tutorial.monthly(S));
   report.events.push(...objectives.check(S));
+  // 10b. zero-client grace: warning card each month, career ends after BAL.econ.noClientMonthsEnd month ends in a row
+  if (myClients(S).length === 0) {
+    S.agency.noClientMonths = (S.agency.noClientMonths || 0) + 1;
+    if (S.agency.noClientMonths >= BAL.econ.noClientMonthsEnd && !(month === 11 && season >= 2)) { // June of season 2+ keeps its own season-end check below
+      report.ending = ending.build(S, 'yalniz');
+      finish(S, report, before);
+      return report;
+    }
+    report.events.push(...noClientWarning(S));
+  } else S.agency.noClientMonths = 0;
   // 11. season rollover
   if (month === 11) {
     clientRows(S, report, before); // before endSeason resets stats / retires players
@@ -91,6 +101,20 @@ export function advanceMonth(S) {
   S.agency.energyMax = energyMaxFor(S);
   S.agency.energy = S.agency.energyMax;
   return report;
+}
+
+function noClientWarning(S) {
+  const left = Math.max(0, BAL.econ.noClientMonthsEnd - S.agency.noClientMonths);
+  S.inbox = S.inbox.filter(c => c.key !== 'no_clients');
+  const card = events.addCard(S, {
+    key: 'no_clients', kind: 'ajans', title: 'Hiç müşterin kalmadı', from: 'Rıza Abi', expiresIn: 1,
+    body: left > 0
+      ? `Ajansın şu an tek bir oyuncuyu bile temsil etmiyor. Böyle giderse ${left} ay içinde kapıya kilit vurulur. Bir keşif gezisine çık, yetenek bul, ya da bir oyuncuyu ikna et.`
+      : 'Ajansın hâlâ tek bir oyuncuyu bile temsil etmiyor.',
+    options: [{ id: 'tamam', label: 'Tamam', hint: 'Müşteri bulmalısın', cost: { energy: 0, cash: 0 }, risk: null, effects: [] }],
+    defaultOption: 'tamam',
+  });
+  return [{ type: 'inboxNew', cardId: card.id, key: card.key, title: card.title }];
 }
 
 function finish(S, report, before) {

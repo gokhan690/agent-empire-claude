@@ -57,7 +57,7 @@ system is not in this document, do not add it.
 - A turn: (1) read the **Gündem** (inbox cards), (2) spend **Enerji** on actions, (3) press
   **"Ayı Oynat"** → matches are simulated, world moves, report is shown.
 - Lose: cash < 0 for 3 consecutive month-ends → bankruptcy (one bank-loan lifeline is offered the
-  first time cash goes negative). Zero clients at a season end (from season 2 on) → career over.
+  first time cash goes negative). Zero clients at a season end (from season 2 on) → career over; zero clients for 3 month-ends in a row (`BAL.econ.noClientMonthsEnd`, any season) → career over too, with an inbox warning card (`no_clients`) each of those months.
 - End: after June of the last season → final ranking among 5 agencies, legacy score, epilogues.
   Then the player may continue in endless mode.
 
@@ -262,7 +262,8 @@ One onboarding screen: agent name, agency name, archetype — `mahalle` (Mahalle
 all club trust +15, rep +8), `hukukcu` (Hukukçu: +1 patience, client-noticed fee threshold 15%).
 Start: cash €60K, rep 12, 3 clients in Türkiye (1 gem aged 17 with a wide band, 2 journeymen
 CA 55–60), office upkeep €4K/month. The first months are a **playable tutorial** driven by scripted
-inbox cards (first visit, first scout trip, first negotiation) — no wall of text.
+inbox cards (first visit, first scout trip, first negotiation) — no wall of text. The guaranteed first suitor is chosen deterministically as the club where the client would play most (≥55% expected minutes, best satisfaction at the fair package) and its first Masa ceiling is at least 1.08× the fair package, so the first deal is winnable without "İkna et".
+Counter-offers never squeeze your fee below `BAL.neg.feeFloor` (max(3% of the counter, €1.500), or your own lower ask).
 
 ---
 

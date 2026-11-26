@@ -176,6 +176,7 @@ export const BAL = {
     // event / loyalty-bonus prices scale with how rich the agency is: ×clamp(1 + (cash − from) / per, 1, max)
     wealth: { from: 400000, per: 400000, max: 10 },
     negMonthsBankrupt: 3, ledgerMax: 24,
+    noClientMonthsEnd: 3, // consecutive month ends with zero clients before the career ends ("yalniz"); each of those months shows a warning card
     loan: { amount: 80000, rate: 0.15, months: 12 },
   },
   rep: { decay: 78, floor: 0.12 },
@@ -222,7 +223,9 @@ export const BAL = {
     minLevel: 60,
     gen: { base: 0.81, renewal: -0.06, need: 0.05, level: 0.0025, budget: 0.06, noise: 0.07, min: 0.72, max: 1.30 },
     fee: { valueShare: 0.08, valueDamp: 40000000, wageShare: 0.09, freeShare: 0.10, renewShare: 0.06 },
-    tutorialK: 0.12, freeSaved: 0.30, saveFactor: 0.9,
+    feeFloor: { share: 0.03, min: 1500 }, // counter-offers keep at least max(3% of the counter cost, €1.500) as your fee (or your own lower ask)
+    tutorialK: 0.12, tutorial: { minMinutes: 0.55, minHeadroom: 1.08 }, // first suitor: client plays >=55%; the first Masa's ceiling is at least 1.08x the fair package
+     freeSaved: 0.30, saveFactor: 0.9,
     years: { default: 3, old: 2, oldAge: 31, young: 4, youngAge: 21, renew: 3 },
     bonusMonths: { transfer: 2, free: 6, renewal: 1.5 },
     clause: { minutes: 0.08, release: 0.05 },
