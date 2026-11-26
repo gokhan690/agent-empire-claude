@@ -51,7 +51,7 @@ for (const seed of [1, 2, 3, 4, 5, 6]) {
       assert.ok(r.finance && Number.isFinite(r.finance.net));
     });
     assert.equal(S.time.phase, 'over');
-    assert.ok(['efsane', 'buyuk', 'saygin', 'siradan'].includes(S.ending.kind), S.ending.kind);
+    assert.ok(['efsane', 'buyuk', 'saygin', 'siradan', 'yalniz'].includes(S.ending.kind), S.ending.kind);
     assert.equal(S.history.length, 8);
     assert.equal(S.leagues.tr1.champions.length, 8);
     assert.ok(S.ledger.length <= 24 && S.news.length <= 80);

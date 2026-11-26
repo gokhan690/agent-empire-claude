@@ -67,7 +67,9 @@ export function renderCtx(S, c) {
     const v = c[k];
     if (k.length > 2 && k.endsWith('Id') && typeof v === 'string') {
       const base = k.slice(0, -2);
-      const p = S.players[v], cl = S.clubs[v], rv = S.rivals.find(r => r.id === v);
+      // club and player ids can collide ('pmk'): the key name decides what an id refers to
+      const as = /player|prospect|other/i.test(k) ? 'p' : /rival/i.test(k) ? 'r' : 'c';
+      const p = as === 'p' ? S.players[v] : null, cl = as === 'c' ? S.clubs[v] : null, rv = as === 'r' ? S.rivals.find(r => r.id === v) : null;
       if (p) { R[base] = p.name; R[base + 'Age'] = p.age; R[base + 'Club'] = S.clubs[p.clubId] ? S.clubs[p.clubId].name : ''; }
       else if (cl) { R[base] = cl.name; R[base + 'Dir'] = cl.director.name; }
       else if (rv) { R[base] = rv.name; R[base + 'Agency'] = rv.agency; }
@@ -383,8 +385,8 @@ export function answerInbox(S, a = {}) {
   const opt = card.options.find(o => o.id === a.optionId);
   if (!opt) return { ok: false, error: 'Geçersiz seçenek' };
   const cost = opt.cost || {};
-  if ((cost.energy || 0) > S.agency.energy) return { ok: false, error: 'Yeterli enerjin yok' };
-  if ((cost.cash || 0) > S.agency.cash) return { ok: false, error: 'Yeterli paran yok' };
+  if ((cost.energy || 0) > 0 && cost.energy > S.agency.energy) return { ok: false, error: 'Yeterli enerjin yok' };
+  if ((cost.cash || 0) > 0 && cost.cash > S.agency.cash) return { ok: false, error: 'Yeterli paran yok' };
   // resolve first (a failing `run` must not cost anything), then pay
   const snapshotRng = S.rng;
   const r = resolveOption(S, card, opt, true);

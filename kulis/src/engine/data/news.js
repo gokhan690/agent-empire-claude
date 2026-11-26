@@ -17,7 +17,7 @@ function N(c) {
     club: c.club || c.to || c.toClub || 'Kulüp',
     league: c.league || 'ligi',
     agency: c.agency || c.rival || 'Rakip ajans',
-    goals: c.goals,
+    goals: c.goals ?? 'bir sürü',
     award: c.award || 'sezonun ödülü',
     objective: c.objective || c.text || 'sezon hedefi',
     dur: c.months ? c.months + ' ay' : 'bir süre',

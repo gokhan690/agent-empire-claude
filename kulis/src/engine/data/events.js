@@ -183,7 +183,7 @@ add({
 
 add({
   key: 'nightlife', kind: 'medya', weight: 7, cooldownMonths: 5, clientOnly: true, defaultOption: 'ride',
-  when: (S, X) => X.clients.filter(p => p.hype >= 25 && (p.age <= 24 || p.trait === 'yildiz' || p.trait === 'hirsli')).map(p => ({ playerId: p.id, clubId: p.clubId, amount: clamp(tidy(p.value * 0.003), 3000, 12000) })),
+  when: (S, X) => X.clients.filter(p => p.hype >= 25 && (p.age <= 24 || p.trait === 'yildiz' || p.trait === 'hirsli')).map(p => ({ playerId: p.id, clubId: p.clubId, amount: clamp(tidy(p.value * 0.002), 2500, 9000) })),
   from: 'Magazin muhabiri',
   title: '{player} gece hayatında yakalandı',
   body: `Bir tabloid, {player:gen} fotoğraflarını yayımladı: gece yarısı, bir kulüpte, yanında şüpheli bir kalabalık. Telefonlar durmuyor; kulüp de haberi aldı.`,
@@ -232,7 +232,7 @@ add({
   body: `{player}, maaşının emsallerinin altında olduğunu düşünüyor: "Ayda {amount} hak ediyorum." Paracı bir yanı var ama haksız da sayılmaz.`,
   options: [
     { id: 'promise', label: 'Söz ver: yeni maaş', hint: 'Tutamazsan bağlılık −25, itibar −3.',
-      effects: (S, c) => [{ loyalty: 8, morale: 3, promise: { type: 'wage', target: c.amount, text: 'Aylık {amount} maaş', ...due(S, 6) } }], resultText: `"Yıl bitmeden maaşın {amount} olacak" dedin. Gözleri parladı.` },
+      effects: (S, c) => [{ loyalty: 8, morale: 3, promise: { type: 'wage', target: c.amount, text: 'Aylık {amount} maaş', ...due(S, 6) } }], resultText: `"Altı ay içinde maaşın {amount} olacak" dedin. Gözleri parladı.` },
     { id: 'club', label: 'Kulüple görüş', hint: 'Yenileme masası açılabilir.', cost: { energy: 1 }, risk: { pct: 50, text: 'Kulüp kapıyı kapatabilir.' },
       effects: (S, c) => [{ loyalty: 5, trust: 1, interest: { playerId: c.playerId, clubId: c.clubId, level: 62, kind: 'renewal' } }], altEffects: [{ trust: -4, loyalty: -3 }],
       resultText: `{club} yenileme için masaya oturmaya razı. Piyasa sekmesine bak.`, altResultText: `{club} yönetimi "bütçemiz belli" dedi ve konuyu kapattı.` },
@@ -510,7 +510,7 @@ add({
   title: 'Genç turnuvadan ipucu',
   body: `{scout} aradı: "Gençler turnuvasında {player} diye bir çocuk gördüm, {club} altyapısından. Adını şimdiden yaz." Başkaları da duymuş olabilir; gecikme.`,
   options: [
-    { id: 'go', label: 'Turnuvaya git', hint: 'Yakından izle: bilgi +35.', cost: (S, c) => ({ energy: 1, cash: c.amount }), effects: [{ scout: 35 }], resultText: `Çocuğun ilk yarıda iki dripling'ini kayda aldın. Dosyası açıldı.` },
+    { id: 'go', label: 'Turnuvaya git', hint: 'Yakından izle: bilgi +35.', cost: (S, c) => ({ energy: 1, cash: c.amount }), effects: [{ scout: 35 }], resultText: `Çocuğun ilk yarıda iki çalımını kayda aldın. Dosyası açıldı.` },
     { id: 'video', label: 'Kayıt iste', hint: 'Bilgi +15.', effects: [{ scout: 15 }], resultText: `İzci birkaç dakikalık görüntü yolladı. Fena değil.` },
     { id: 'pass', label: 'Geç', hint: 'Başkası bulur.', effects: [], resultText: `İzci omuz silkti: "Sonra pişman olma."` },
   ],
@@ -597,7 +597,7 @@ add({
     return [...ids].filter(id => S.clubs[id] && S.clubs[id].trust >= 20 && S.clubs[id].trust <= 65).map(id => ({ clubId: id, amount: 1500 }));
   },
   from: '{club} · {director}',
-  title: '{club} başkanı yemeğe çağırıyor',
+  title: '{director} seni yemeğe çağırıyor',
   body: `{director} seni bir akşam yemeğine davet etti: "Tanışalım, yarın öbür gün iş yaparız." Samimi mi, yoksa bilgi mi topluyor? Bilmek zor; ama masaya oturmadan kimse bilemez.`,
   options: [
     { id: 'go', label: 'Yemeğe git', hint: 'Güven için en iyi yatırım.', cost: (S, c) => ({ energy: 1, cash: c.amount }), risk: { pct: 20, text: 'Sohbet boş geçebilir.' }, effects: [{ trust: 12 }], altEffects: [{ trust: 3 }], resultText: `Dört saat futboldan, iki saat işten konuştunuz. Güven yerleşti.`, altResultText: `Adam hep kendinden konuştu. Biraz ilerleme, çok sıkıntı.` },
@@ -654,7 +654,7 @@ add({
   title: '{player} son büyük sözleşmesini istiyor',
   body: `{age} yaşındaki {player}: "Bu belki son büyük sözleşmem. Kısa yıllar, dolu maaş." Kulüpler yaşlı oyuncuya temkinli bakıyor; ama kalkacak yeri de yok.`,
   options: [
-    { id: 'promise', label: 'Söz ver: yeni maaş', hint: 'Tutamazsan bağlılık −25, itibar −3.', effects: (S, c) => [{ loyalty: 8, morale: 3, promise: { type: 'wage', target: c.amount, text: 'Aylık {amount} maaş', ...due(S, 6) } }], resultText: `"Bu yıl bitmeden" dedin. {player} bir omuz silkme ile teşekkür etti.` },
+    { id: 'promise', label: 'Söz ver: yeni maaş', hint: 'Tutamazsan bağlılık −25, itibar −3.', effects: (S, c) => [{ loyalty: 8, morale: 3, promise: { type: 'wage', target: c.amount, text: 'Aylık {amount} maaş', ...due(S, 6) } }], resultText: `"Altı ay içinde" dedin. {player} bir omuz silkmeyle teşekkür etti.` },
     { id: 'talk', label: 'Dürüstçe konuş', hint: 'Gerçekçi beklenti.', cost: { energy: 1 }, effects: [{ loyalty: 4, morale: 1 }], resultText: `Baş başa, çay içerek konuştunuz. Hayal ile hesap arasındaki mesafeyi gördü.` },
     { id: 'plan', label: 'Emeklilik sonrasını konuş', hint: 'Menajerlikten yardım.', effects: [{ loyalty: 2 }], resultText: `"Sonrası için hep yanındayım" dedin. Gülümsedi.` },
   ],
