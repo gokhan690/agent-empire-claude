@@ -1,0 +1,36 @@
+/* KULİS design tokens — "gece maçı" (night match). Everything visual derives from these. */
+:root {
+  /* palette */
+  --bg: #0A0F0C; --surface: #121A15; --raised: #1A2620; --line: #26352D;
+  --text: #EEF4EF; --muted: #8DA397;
+  --lime: #3DDC84; --gold: #F5C451; --danger: #FF5D5D; --info: #5AB0FF; --rival: #B48CFF;
+  --lime-soft: rgba(61, 220, 132, .14); --gold-soft: rgba(245, 196, 81, .14); --danger-soft: rgba(255, 93, 93, .14);
+  --info-soft: rgba(90, 176, 255, .14); --rival-soft: rgba(180, 140, 255, .14);
+  --ink: #06100A;                       /* text on lime/gold fills */
+  --chalk: rgba(238, 244, 239, .16);    /* chalk-line colour */
+  --chalk-strong: rgba(238, 244, 239, .34);
+  --flood: rgba(255, 244, 214, .10);    /* floodlight warmth */
+
+  /* type */
+  --font-display: 'Barlow Condensed', 'Oswald', 'Roboto Condensed', 'Arial Narrow', 'Helvetica Neue', Impact, sans-serif;
+  --font-text: 'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --fs-xs: 12px; --fs-sm: 13.5px; --fs-md: 15.5px; --fs-lg: 18px; --fs-xl: 24px; --fs-2xl: 32px; --fs-3xl: 46px; --fs-4xl: 68px;
+  --lh-tight: 1.05; --lh-snug: 1.3; --lh-body: 1.5;
+
+  /* spacing / radius / shadow */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-xl: 26px; --r-pill: 999px;
+  --sh-1: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 6px 18px rgba(0, 0, 0, .35);
+  --sh-2: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 14px 40px rgba(0, 0, 0, .5);
+  --glow-lime: 0 0 0 1px rgba(61, 220, 132, .5), 0 0 22px rgba(61, 220, 132, .35);
+  --glow-gold: 0 0 20px rgba(245, 196, 81, .35);
+
+  /* motion */
+  --dur-1: 120ms; --dur-2: 220ms; --dur-3: 380ms; --dur-4: 650ms;
+  --ease: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+
+  /* layout */
+  --col: 560px; --gutter: 16px; --tap: 44px; --nav-h: 66px;
+  --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
+  --z-top: 50; --z-nav: 60; --z-overlay: 100; --z-sheet: 120; --z-toast: 200;
+}
