@@ -166,7 +166,7 @@ export function addCard(S, card) {
 export function spawn(S, key, cand = {}, over = {}) {
   const tpl = TEMPLATES[key];
   if (!tpl) return null;
-  const c = JSON.parse(JSON.stringify(cand));
+  const c = { ...(tpl.vars ? tpl.vars(S) : {}), ...JSON.parse(JSON.stringify(cand)) };
   const R = renderCtx(S, c);
   return addCard(S, {
     key, kind: tpl.kind, title: tplText(tpl.title, R, S), body: tplText(tpl.body, R, S), from: tplText(tpl.from, R, S),
@@ -312,7 +312,7 @@ export function monthly(S) {
   const cap = BAL.events.inboxCap;
 
   // 2. loan offer from the bank (once per offer)
-  if (S.flags.loanOfferPending && !F.loanCardShown && !keys.has('loan_offer') && S.inbox.length < cap + 1) {
+  if (S.flags.loanOfferPending && !F.loanCardShown && !keys.has('loan_offer') && S.inbox.length < cap) {
     F.loanCardShown = true;
     const card = spawn(S, 'loan_offer', {});
     if (card) { keys.add('loan_offer'); events.push({ type: 'inboxNew', cardId: card.id, key: card.key, title: card.title }); }
@@ -321,7 +321,7 @@ export function monthly(S) {
   // 3. queued follow-ups that are due
   F.evQueue = F.evQueue.filter(q => {
     if (q.due > abs + 1) return true;
-    if (S.inbox.length >= cap + 2) return true;
+    if (S.inbox.length >= cap) return true;
     const card = spawn(S, q.key, q.ctx);
     if (card) { keys.add(card.key); events.push({ type: 'inboxNew', cardId: card.id, key: card.key, title: card.title }); if (card.must) hasMust = true; }
     return false;

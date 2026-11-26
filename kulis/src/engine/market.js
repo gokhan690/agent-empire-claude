@@ -358,7 +358,7 @@ export function pitchPreview(S, a) {
 
 /**
  * Pitch a client to a club: 1 energy (during Son Gün: the hour's action instead), raises that club's interest
- * by the previewed amount (half of it sticks as a slowly fading boost).
+ * by the previewed amount (the gain sticks as a slowly fading boost, capped).
  * @param {object} S
  * @param {{playerId:string, clubId:string}} a
  * @returns {Result}
@@ -378,7 +378,7 @@ export function pitchPlayer(S, a) {
   if (!ex) { ex = { id: uid(S, 'i'), playerId: p.id, clubId: club.id, level: 0, kind: kindFor(S, p, club), cooldown: 0, boost: 0 }; S.interests.push(ex); }
   const before = ex.level;
   ex.level = clamp(ex.level + delta, 0, 100);
-  ex.boost = (ex.boost || 0) + Math.round(delta / 2);
+  ex.boost = Math.min(BAL.market.interest.boostMax, (ex.boost || 0) + delta);
   ex.pitchedAt = S.time.season * 12 + S.time.month;
   ex.kind = kindFor(S, p, club);
   if (!dl) spendEnergy(S, 1);

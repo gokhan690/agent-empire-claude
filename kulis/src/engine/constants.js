@@ -191,13 +191,13 @@ export const BAL = {
   market: {
     need: { gap: [1, 3.5, 7] },
     interest: {
-      create: 35, pull: 0.45, noise: 2, decay: 12, drop: 6, perPlayer: 5, boostDecay: 0.6, open: 60,
-      needW: 18, fitBase: 18, fitK: 2.2, fitMin: -30, fitMax: 26, formW: 1.2, hypeDiv: 10, trustDiv: 12,
+      create: 35, pull: 0.45, noise: 2, decay: 12, drop: 6, perPlayer: 5, boostDecay: 0.75, boostMax: 30, open: 60,
+      needW: 18, fitBase: 20, fitK: 2.2, fitMin: -30, fitMax: 26, formW: 1.2, hypeDiv: 10, trustDiv: 12,
       ageYoung: 6, ageMid: 4, age31: -8, age33: -16, budgetMinRatio: 0.8, budgetRich: 2, budgetBonus: 4, unaffordableCap: 20,
       renewalFrom: 3, freeFrom: 6, renewalBase: 45, renewalStarter: 70, renewalRank: 1,
       freeAgentBase: 20,
     },
-    ai: { perClubMax: 2, needFactor: 0.3, noiseSd: 0.5, monthFactor: { 0: 1, 1: 1, 6: 0.7 }, valueBudgetShare: 0.5, newsMinValue: 2000000, newsMax: 5, feeLo: 0.9, feeHi: 1.1, caWindow: [-4, 8], contract: [2, 4] },
+    ai: { perClubMax: 2, needFactor: 0.3, noiseSd: 0.5, monthFactor: { 0: 1, 1: 1, 6: 0.7 }, valueBudgetShare: 0.5, newsMinValue: 2000000, newsMax: 5, feeLo: 0.9, feeHi: 1.1, caWindow: [-4, 4], contract: [2, 4] },
     pitch: { base: 4, perNeed: 4, fitMin: -4, fitMax: 8, fitW: 0.8, hypeDiv: 25, min: 3, max: 25, repeatMult: 0.5 },
     lunch: { cashBase: 1500, cashPerPrestige: 1500, trust: 10, trustL2: 15, band: 0.25 },
     media: { cashBase: 3000, valueShare: 0.004, min: 3000, max: 25000, hype: 15, yildizMorale: 8, sadikMorale: -5 },
@@ -207,7 +207,7 @@ export const BAL = {
       minutesMorale: 30, benchHirsliMorale: -6, benchHirsliLoyalty: -8, dreamMorale: 8, dreamLoyalty: 6, moveLoyalty: 4, renewLoyalty: 8,
       feeNoticeLoyalty: -5,
     },
-    freeAgent: { chance: 0.5, minGap: 8, minAge: 30 },
+    freeAgent: { chance: 0, minGap: 8, minAge: 30 },
   },
   neg: {
     minLevel: 60,

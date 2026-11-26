@@ -11,7 +11,7 @@ import { avgRecent, interestOpenReason, negotiationView } from './selectors.js';
 import { spendEnergy } from './economy.js';
 import * as market from './market.js';
 import { useAction } from './deadline.js';
-import { tellLine } from './data/tells.js';
+import { tellLine, directorLine } from './data/tells.js';
 
 /** @typedef {{ok:true,events:object[],[k:string]:any}|{ok:false,error:string}} Result */
 
@@ -155,9 +155,12 @@ export function tellLevel(gap) {
   return gap <= T[0] ? 0 : gap <= T[1] ? 1 : gap <= T[2] ? 2 : gap <= T[3] ? 3 : 4;
 }
 const FALLBACK = ['Neredeyse tamam.', 'Biraz fazla istiyorsun.', 'Bu rakamlar bizi zorlar.', 'Çok uzaksın.', 'Bu bir hakaret!'];
-function tellFor(club, level) {
+function say(club, kind, n) {
+  try { return directorLine(club.director.persona, kind, n) || ''; } catch (e) { return ''; }
+}
+function tellFor(club, level, n = 0) {
   let t = null;
-  try { t = tellLine(club.director.persona, level); } catch (e) { t = null; }
+  try { t = tellLine(club.director.persona, level, n); } catch (e) { t = null; }
   return { level, line: (t && t.line) || FALLBACK[level], face: (t && t.face) || ['calm', 'calm', 'frown', 'angry', 'furious'][level] };
 }
 
@@ -372,13 +375,13 @@ export function propose(S, a) {
     const scale = f => { H.K *= f; if (n.ceilingBand) { n.ceilingBand.lo = Math.round(n.ceilingBand.lo * f); n.ceilingBand.hi = Math.round(n.ceilingBand.hi * f); } };
     if (card.id === 'blof') {
       if (chance(S, card.risk / 100)) {
-        kozRes.caught = true;
+        kozRes.caught = true; kozRes.line = say(club, 'bluffCaught', n.round);
         n.patience += BAL.neg.bluff.patience;
         club.trust = clamp(club.trust + BAL.neg.bluff.trust, 0, 100);
         S.agency.rep = clamp(S.agency.rep + BAL.neg.bluff.rep, 0, 100);
         S.agency.stats.bluffsCaught++;
         events.push({ type: 'bluffCaught', clubId: club.id, trust: club.trust });
-      } else scale(1 + card.kPct);
+      } else { scale(1 + card.kPct); kozRes.line = say(club, 'bluffWorked', n.round); }
     } else {
       if (card.kPct) scale(1 + card.kPct);
       if (card.patience) { n.patience += card.patience; n.patienceMax = Math.max(n.patienceMax, n.patience); }
@@ -388,7 +391,7 @@ export function propose(S, a) {
       n.log.push({ round: n.round, cost: packageCost(pkg), koz: card.id, outcome: 'left' });
       const ev = leave(S, n);
       events.push(ev);
-      return { ok: true, outcome: 'left', round: n.round, patience: 0, koz: kozRes, events };
+      return { ok: true, outcome: 'left', round: n.round, patience: 0, koz: kozRes, line: say(club, 'walkout', n.round), events };
     }
   }
   const C = packageCost(pkg);
@@ -399,7 +402,7 @@ export function propose(S, a) {
   if (C <= K) {
     n.log.push({ round: n.round + 1, cost: C, koz: card ? card.id : null, outcome: 'accepted' });
     const st = clientStep(S, n, pkg, sat);
-    if (st.done) { const r = st.result; return { ...r, outcome: 'accepted', round: n.round, koz: kozRes, events: [...events, ...r.events] }; }
+    if (st.done) { const r = st.result; return { ...r, outcome: 'accepted', round: n.round, koz: kozRes, line: say(club, 'accept', n.round), events: [...events, ...r.events] }; }
     n.counter = null;
     return { ok: true, outcome: 'hesitates', round: n.round, patience: n.patience, satisfaction: sat.value, canLean: true, koz: kozRes, events };
   }
@@ -413,19 +416,19 @@ export function propose(S, a) {
   const T = BAL.neg.table;
   const honest = club.trust >= T.kurnazTrust || S.agency.upgrades.table >= T.kurnazTable;
   const shown = H.persona === 'kurnaz' && !honest ? Math.min(4, trueLevel + 1) : trueLevel;
-  const tell = tellFor(club, shown);
+  const tell = tellFor(club, shown, n.round);
   n.lastTell = tell;
   n.log.push({ round: n.round, cost: C, koz: card ? card.id : null, outcome: 'refused', tell: shown });
   events.push({ type: 'tell', level: shown, face: tell.face, line: tell.line, insult });
   if (n.patience <= 0) {
     events.push(leave(S, n));
-    return { ok: true, outcome: 'left', round: n.round, patience: 0, tell, insult, koz: kozRes, events };
+    return { ok: true, outcome: 'left', round: n.round, patience: 0, tell, insult, koz: kozRes, line: say(club, 'walkout', n.round), events };
   }
   const target = Math.min(K, K * (BAL.neg.creep.base + BAL.neg.creep.step * n.round));
   const cp = shapeCounter(n, pkg, target);
   const cs = satisfaction(S, p, club, n.kind, cp);
   n.counter = { package: cp, cost: packageCost(cp), satisfaction: cs.value, clientOk: cs.value >= BAL.neg.sat.ok, clientLean: cs.value >= BAL.neg.sat.lean && cs.value < BAL.neg.sat.ok };
-  return { ok: true, outcome: 'countered', round: n.round, patience: n.patience, patienceMax: n.patienceMax, tell, counter: n.counter, insult, koz: kozRes, events };
+  return { ok: true, outcome: 'countered', round: n.round, patience: n.patience, patienceMax: n.patienceMax, tell, counter: n.counter, insult, koz: kozRes, line: say(club, insult ? 'insult' : 'counter', n.round), events };
 }
 
 /**
@@ -444,7 +447,7 @@ export function acceptCounter(S) {
   n.package = pkg;
   n.log.push({ round: n.round, cost: n.counter.cost, koz: null, outcome: 'counterAccepted' });
   const st = clientStep(S, n, pkg, sat);
-  if (st.done) return { ...st.result, outcome: 'accepted', round: n.round };
+  if (st.done) return { ...st.result, outcome: 'accepted', round: n.round, line: say(club, 'accept', n.round) };
   return { ok: true, outcome: 'hesitates', round: n.round, patience: n.patience, satisfaction: sat.value, canLean: true, events: [] };
 }
 
