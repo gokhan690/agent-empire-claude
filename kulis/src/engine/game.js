@@ -58,6 +58,8 @@ const ROUTES = {
   takeLoan: (S) => takeLoan(S),
   continueEndless: (S) => ending.continueEndless(S),
 };
+/** Action ids whose result is read-only data: act() returns `{ok:true, preview: data}`. */
+const PREVIEWS = new Set(['tripPreview', 'recruitPreview', 'pitchPreview', 'negPreview', 'upgradePreview']);
 export const ACTION_IDS = Object.keys(ROUTES);
 
 /**
@@ -71,7 +73,8 @@ export function act(S, actionId, payload = {}) {
   const fn = ROUTES[actionId];
   if (!fn) return { ok: false, error: 'Bilinmeyen eylem' };
   if (S.time.phase === 'over' && actionId !== 'continueEndless') return { ok: false, error: 'Kariyer sona erdi' };
-  const res = fn(S, payload);
+  let res = fn(S, payload);
+  if (PREVIEWS.has(actionId) && res && res.ok === undefined) return { ok: true, preview: res };
   if (res && res.ok) tutorial.onAction(S, actionId, res);
   return res;
 }

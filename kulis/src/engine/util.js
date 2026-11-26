@@ -3,9 +3,9 @@
 /** Clamp v into [a,b]. */
 export function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 /** Round to 1 decimal. */
-export function r1(v) { return Math.round(v * 10) / 10; }
+export function r1(v) { return Math.round(v * 10) / 10 + 0; }
 /** Round to 2 decimals. */
-export function r2(v) { return Math.round(v * 100) / 100; }
+export function r2(v) { return Math.round(v * 100) / 100 + 0; }
 /** Sum of numbers. */
 export function sum(arr) { let s = 0; for (let i = 0; i < arr.length; i++) s += arr[i]; return s; }
 /** Mean of numbers (0 for empty). */

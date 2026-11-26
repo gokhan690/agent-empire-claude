@@ -20,7 +20,9 @@ function packPlayer(p) {
   const s = p.st;
   o.st = [s.apps, s.mins, s.goals, s.assists, s.ratingSum, s.last, s.m, s.sh];
   o.dream = [p.dream.type, p.dream.target, p.dream.done ? 1 : 0];
-  return o;
+  const c = {};
+  for (const k of Object.keys(o).sort()) c[k] = o[k]; // canonical key order
+  return c;
 }
 function unpackPlayer(o) {
   const p = { ...o };

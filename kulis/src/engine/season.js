@@ -2,7 +2,7 @@
 // youth intake, squad balancing, finance refresh, new fixtures. Keeps the world alive for 8+ seasons.
 import { BAL, POS_ORDER } from './constants.js';
 import { rint, chance, gauss, pickBy, pickWeighted } from './rng.js';
-import { clamp, tidy } from './util.js';
+import { clamp, r1 } from './util.js';
 import { makeName } from './data/names.js';
 import { fairWage, refreshValues } from './valuation.js';
 import { squadIndex, clubStrength } from './selection.js';
@@ -189,7 +189,7 @@ export function endSeason(S) {
     const p = S.players[id];
     const sh = p.st.sh;
     p.st = { apps: 0, mins: 0, goals: 0, assists: 0, ratingSum: 0, last: [], m: 0, sh };
-    p.form = Math.round(p.form * R.formReset * 10) / 10;
+    p.form = r1(p.form * R.formReset);
     if (p.injured > 2) p.injured -= 2; else p.injured = 0;
   }
   for (const lid in S.leagues) resetLeague(S, S.leagues[lid]);

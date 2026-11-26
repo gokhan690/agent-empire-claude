@@ -72,9 +72,10 @@ export function advanceMonth(S) {
   report.events.push(...objectives.check(S));
   // 11. season rollover
   if (month === 11) {
+    clientRows(S, report, before); // before endSeason resets stats / retires players
     report.seasonEnd = endSeason(S);
     report.events.push(...report.seasonEnd.clientEvents);
-    finish(S, report, before);
+    report.news = S.news.filter(n => n.season === season && n.month === month);
     if (season >= 2 && myClients(S).length === 0) { report.ending = ending.build(S, 'musterisiz'); return report; }
     if (season >= S.meta.careerSeasons) {
       S.time.season++; S.time.month = 0;
@@ -94,6 +95,11 @@ export function advanceMonth(S) {
 
 function finish(S, report, before) {
   const { season, month } = report;
+  clientRows(S, report, before);
+  report.news = S.news.filter(n => n.season === season && n.month === month);
+}
+
+function clientRows(S, report, before) {
   for (const [id, b] of before) {
     const p = S.players[id];
     if (!p || p.agentId !== 'you') continue;
@@ -104,5 +110,4 @@ function finish(S, report, before) {
       rating: dApps ? Math.round((s.ratingSum - b.rs) / dApps * 10) / 10 : 0, caDelta: p.ca - b.ca, valueDelta: p.value - b.value,
     });
   }
-  report.news = S.news.filter(n => n.season === season && n.month === month);
 }
