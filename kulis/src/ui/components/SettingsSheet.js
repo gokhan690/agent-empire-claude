@@ -1,4 +1,4 @@
-import { html, useRef } from '../lib.js';
+import { html, useRef, useState } from '../lib.js';
 import { Sheet } from './Sheet.js';
 import { Button } from './Button.js';
 import { toast } from './Toast.js';
@@ -14,6 +14,8 @@ export default function SettingsSheet({ close }) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([txt], { type: 'application/json' }));
     a.download = 'kulis-kayit.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    // Some hosts block downloads; the clipboard copy is the fallback.
+    try { navigator.clipboard.writeText(txt).then(() => toast.success('Kayıt indirildi ve panoya kopyalandı'), () => {}); } catch { /* ignore */ }
   };
   const imp = async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -22,14 +24,15 @@ export default function SettingsSheet({ close }) {
     else toast.error(r.error);
     e.target.value = '';
   };
-  const reset = () => { if (confirm('Tüm ilerleme silinsin ve yeni oyun başlasın mı?')) { store.reset(); close(); } };
+  const [sure, setSure] = useState(false);
+  const reset = () => { if (!sure) return setSure(true); store.reset(); close(); };
   return html`<${Sheet} title="Ayarlar" onClose=${close}>
     <div class="stack">
       <${Button} variant="ghost" block icon=${audio.muted ? 'soundOff' : 'soundOn'} onClick=${() => { audio.toggle(); store.notify(); }} sfx=${false}>Ses: ${audio.muted ? 'Kapalı' : 'Açık'}</${Button}>
       <${Button} variant="ghost" block icon="download" onClick=${exp}>Kaydı dışa aktar</${Button}>
       <${Button} variant="ghost" block icon="upload" onClick=${() => file.current.click()}>Kaydı içe aktar</${Button}>
       <input ref=${file} type="file" accept="application/json,.json" hidden onChange=${imp} />
-      <${Button} variant="danger" block icon="close" onClick=${reset}>Yeni oyun (kaydı sil)</${Button}>
+      <${Button} variant="danger" block icon="close" onClick=${reset}>${sure ? 'Emin misin? Tüm ilerleme silinir — tekrar dokun' : 'Yeni oyun (kaydı sil)'}</${Button}>
     </div>
   </${Sheet}>`;
 }

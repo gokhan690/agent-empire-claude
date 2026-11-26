@@ -44,7 +44,7 @@ export function TopBar({ cash, rep, energy, energyMax = 4, season, month, onSett
 /** <BottomNav route onNavigate badges=${{hub: 3, market: 1}} /> */
 export function BottomNav({ route, onNavigate, badges = {} }) {
   return html`<nav class="bottomnav" aria-label="Ana menü">
-    ${NAV_TABS.map((t) => html`<a href=${'#/' + t.id} class=${cx('bottomnav__tab', route === t.id && 'is-active')} aria-current=${route === t.id ? 'page' : undefined}
+    ${NAV_TABS.map((t) => html`<a href=${'#' + t.id} class=${cx('bottomnav__tab', route === t.id && 'is-active')} aria-current=${route === t.id ? 'page' : undefined}
       onClick=${(e) => { e.preventDefault(); if (route !== t.id) audio.play('page'); onNavigate(t.id); }}>
       <span class="bottomnav__ico"><${Icon} name=${t.icon} size=${23} />${badges[t.id] ? html`<em class="bottomnav__badge">${badges[t.id] > 9 ? '9+' : badges[t.id]}</em>` : null}</span>
       <span class="bottomnav__lbl">${t.label}</span>

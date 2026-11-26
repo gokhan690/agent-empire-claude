@@ -15,5 +15,5 @@ export function useRoute(fallback = 'hub') {
   }, [fallback]);
   return r;
 }
-export function navigate(name) { if (location.hash !== '#/' + name) location.hash = '#/' + name; }
+export function navigate(name) { if (parse() !== name) location.hash = '#' + name; }
 export const currentRoute = parse;
