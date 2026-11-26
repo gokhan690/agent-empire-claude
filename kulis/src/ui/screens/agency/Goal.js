@@ -1,4 +1,4 @@
-import { html, Card, Button, Badge, Meter, Money, SectionTitle, EmptyState, Icon, store, audio, confetti } from '../../ui-kit.js';
+import { html, fmtMoney, Card, Button, Badge, Meter, Money, SectionTitle, EmptyState, Icon, store, audio, confetti } from '../../ui-kit.js';
 import * as sel from '../../../engine/selectors.js';
 import { burstFrom } from './common.js';
 
@@ -37,7 +37,7 @@ export default function Goal({ S, hub }) {
   return html`<div class="stack agency-sec">
     ${a ? html`<${Card} chalk glow tone=${a.failed ? 'danger' : 'lime'} eyebrow=${`Bu sezonun hedefi · ${(TIER[a.tier] || {}).label || ''}`} title=${a.title}>
       <p class="muted small">${a.text}</p>
-      <${Meter} size="lg" value=${a.progress} max=${a.target || 1} tone=${a.failed ? 'danger' : a.pct >= 1 ? 'gold' : 'lime'} valueText=${a.kind === 'rank' ? (a.pct >= 1 ? 'Hedefte' : 'Peşindesin') : `${Math.round(a.progress).toLocaleString('tr-TR')} / ${Math.round(a.target).toLocaleString('tr-TR')}`} label="İlerleme" />
+      <${Meter} size="lg" value=${a.progress} max=${a.target || 1} tone=${a.failed ? 'danger' : a.pct >= 1 ? 'gold' : 'lime'} valueText=${a.kind === 'rank' ? (a.pct >= 1 ? 'Hedefte' : 'Peşindesin') : (['commission', 'cash', 'portfolio'].includes(a.kind) ? `${fmtMoney(a.progress)} / ${fmtMoney(a.target)}` : `${Math.round(a.progress)} / ${Math.round(a.target)}`)} label="İlerleme" />
       <div class="row row--between agency-offer__foot"><${Reward} r=${a.reward} />${a.failed ? html`<${Badge} tone="danger">Kaçtı</${Badge}>` : a.endOnly ? html`<${Badge} tone="muted" icon="clock">Sezon sonunda belli olur</${Badge}>` : null}</div>
     </${Card}>` : v.offered.length ? html`<${SectionTitle}>Yeni sezon, yeni hedef</${SectionTitle}>
       <p class="muted small">Sezon başında üç hedef önerilir; birini seç. Tamamlarsan nakit ve itibar ödülü gelir. Seçmezsen sezon hedefsiz geçer.</p>

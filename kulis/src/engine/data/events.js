@@ -852,22 +852,22 @@ tut({
 });
 tut({
   key: 'tut_visit', title: 'Önce cevherini ziyaret et',
-  body: `{player} senin en büyük kozun, ama henüz yolun başında ve yalnız. Oyuncular sekmesinden "Ziyaret Et"e bas: moral ve bağlılık yükselir, ne istediğini öğrenirsin. Bir enerji.`,
+  body: `{player} senin en büyük kozun, ama henüz yolun başında ve yalnız. Oyuncular sekmesinde kartına dokun, "Ziyaret et"e bas: moral ve bağlılık yükselir, ne istediğini öğrenirsin. Bir enerji.`,
   options: [{ id: 'ok', label: 'Tamam', hint: 'Ziyareti yapınca kart kalkar.', effects: [], resultText: '' }],
 });
 tut({
   key: 'tut_scout', title: 'İlk keşif gezisi',
-  body: `Yeni müşteri, yeni gelir. Keşif sekmesinden bir lig seç ve "Keşif Gezisi"ne çık: yetenekli üç isim ortaya çıkar. Rakipler de izliyor; ısı çubuğuna dikkat et. Bir enerji ve yol parası.`,
+  body: `Yeni müşteri, yeni gelir. Keşif sekmesinde bir odak ve bir lig seç, "geziye çık"a bas: yetenekli üç isim ortaya çıkar. Rakipler de izliyor; ısı çubuğuna dikkat et. Bir enerji ve yol parası.`,
   options: [{ id: 'ok', label: 'Tamam', hint: 'Geziyi yapınca kart kalkar.', effects: [], resultText: '' }],
 });
 tut({
   key: 'tut_market', title: 'Kulüplerin kapısını çal',
-  body: `Teklif gelsin istiyorsan kulüplerle ilişkin olmalı. Piyasa sekmesinden bir kulüple yemek ye: güven ve bilgi kazanırsın. Ya da bir oyuncunu kulübe öner. Bir enerji.`,
+  body: `Teklif gelsin istiyorsan kulüplerle ilişkin olmalı. Piyasa sekmesinde Kulüpler'den birini seç ve "Yemeğe çık"a bas: güven ve bilgi kazanırsın. Ya da oyuncunun kartından "Kulübe öner" de. Bir enerji.`,
   options: [{ id: 'ok', label: 'Tamam', hint: 'Yemek ya da öneriyi yapınca kart kalkar.', effects: [], resultText: '' }],
 });
 tut({
   key: 'tut_interest', title: 'İlk ilgi geldi!',
-  body: `{club} kulübü {player} ile ilgileniyor. Piyasa sekmesinde teklifi aç ve masaya otur. Direktör {director} dürüst biri: yüzü ne düşündüğünü gösterir. Yüzünü oku, rakamı ona göre ayarla.`,
+  body: `{club} kulübü {player} ile ilgileniyor. Piyasa sekmesinde Teklifler'e bak ve "Masaya otur"a bas. Direktör {director} dürüst biri: yüzü ne düşündüğünü gösterir. Yüzünü oku, rakamı ona göre ayarla.`,
   options: [{ id: 'ok', label: 'Tamam', hint: 'Masayı açınca kart kalkar.', effects: [], resultText: '' }],
 });
 tut({

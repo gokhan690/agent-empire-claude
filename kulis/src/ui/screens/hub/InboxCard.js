@@ -1,10 +1,10 @@
 // Inbox (Gündem) card: shows every option's honest consequences BEFORE choosing, then a result state.
-import { html, cx, fmtMoney, useEffect, useState, Card, Badge, Avatar, Crest, Icon, Button, audio, haptics, store, navigate } from '../../ui-kit.js';
+import { html, cx, fmtMoney, openSheet, useEffect, useState, Card, Badge, Avatar, Crest, Icon, Button, audio, haptics, store, navigate } from '../../ui-kit.js';
 import * as sel from '../../../engine/selectors.js';
 
 const KIND = { sakatlik: 'Sakatlık', form: 'Form', dakika: 'Dakika', sahne: 'Sahne', aile: 'Aile', medya: 'Medya', kulup: 'Kulüp', maas: 'Maaş', transfer: 'Transfer', rakip: 'Rakip', sponsor: 'Sponsor', ajans: 'Ajans', para: 'Para', kesif: 'Keşif', banka: 'Banka', rehber: 'Rehber' };
 const GUIDE = {
-  tut_visit: ['players', 'Oyunculara git'], tut_scout: ['scout', 'Keşfe git'], tut_market: ['market', 'Piyasaya git'],
+  tut_visit: ['players', 'Oyuncunu aç', 'sheet'], tut_scout: ['scout', 'Keşfe git'], tut_market: ['market', 'Piyasaya git'],
   tut_interest: ['market', 'Teklifleri aç'], tut_promises: ['players', 'Oyunculara git'], tut_ranking: ['agency', 'Ajansa git'],
 };
 const TONE = { rakip: 'rival', banka: 'gold', para: 'gold', sponsor: 'gold' };
@@ -92,7 +92,7 @@ export default function InboxCard({ card, res, onAnswer, onGone }) {
         <${Button} variant="ghost" size="sm" onClick=${done}>Tamam</${Button}>
       </div>`
     : html`<p class="inbox__body">${card.body}</p>
-      ${g ? html`<${Button} variant="gold" size="sm" icon="arrowRight" onClick=${() => navigate(g[0])}>${g[1]}</${Button}>` : null}
+      ${g ? html`<${Button} variant="gold" size="sm" icon="arrowRight" onClick=${() => { if (g[2] === 'sheet' && card.playerId && S.players[card.playerId]) openSheet('PlayerSheet', { playerId: card.playerId }); else navigate(g[0]); }}>${g[1]}</${Button}>` : null}
       <div class="inbox__opts">${card.options.map((o) => html`<${Option} o=${o} S=${S} onPick=${(opt) => onAnswer(card, opt)} />`)}</div>
       ${def ? html`<div class="small muted hub-def"><${Icon} name="clock" size=${13} /> Yanıtlamazsan: ${def.label}</div>` : null}`}
   </${Card}>`;

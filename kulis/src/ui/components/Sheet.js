@@ -4,6 +4,12 @@ import { audio } from '../fx/audio.js';
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
+let scrollLocks = 0;
+/** Ref-counted body scroll lock (sheets can sit above overlays: the last one to close unlocks). */
+function useScrollLock() {
+  useEffect(() => { scrollLocks++; document.body.classList.add('no-scroll'); return () => { scrollLocks = Math.max(0, scrollLocks - 1); if (!scrollLocks) document.body.classList.remove('no-scroll'); }; }, []);
+}
+
 /** Traps Tab focus inside `ref`, focuses first focusable on mount, restores focus on unmount, calls onEsc on Escape. */
 export function useFocusTrap(ref, onEsc) {
   const esc = useRef(onEsc); esc.current = onEsc;
@@ -15,6 +21,9 @@ export function useFocusTrap(ref, onEsc) {
       (first || el).focus({ preventScroll: true });
     }
     const onKey = (e) => {
+      // an overlay stands back while a sheet is open above it (the sheet owns Esc/Tab then)
+      if (el && !el.classList.contains('sheet-wrap') && document.querySelector('.sheet-wrap')) return;
+      if (el && el.classList.contains('sheet-wrap')) { const all = document.querySelectorAll('.sheet-wrap'); if (all[all.length - 1] !== el) return; } // only the top sheet reacts
       if (e.key === 'Escape' && esc.current) { e.stopPropagation(); esc.current(); return; }
       if (e.key !== 'Tab' || !el) return;
       const list = [...el.querySelectorAll(FOCUSABLE)].filter((n) => n.offsetParent !== null);
@@ -42,7 +51,7 @@ export function Sheet({ title, onClose, tall, class: cls, children, footer }) {
     setTimeout(() => onClose && onClose(), 200);
   }, [closing, onClose]);
   useFocusTrap(ref, close);
-  useEffect(() => { document.body.classList.add('no-scroll'); return () => document.body.classList.remove('no-scroll'); }, []);
+  useScrollLock();
 
   const down = (e) => { drag.current = { y: e.clientY, t: performance.now() }; e.currentTarget.setPointerCapture(e.pointerId); panel.current.style.transition = 'none'; };
   const move = (e) => { if (!drag.current) return; const dy = Math.max(0, e.clientY - drag.current.y); panel.current.style.transform = `translateY(${dy}px)`; };
@@ -73,6 +82,6 @@ export function Sheet({ title, onClose, tall, class: cls, children, footer }) {
 export function Overlay({ onClose, label, tone, class: cls, children }) {
   const ref = useRef();
   useFocusTrap(ref, onClose);
-  useEffect(() => { document.body.classList.add('no-scroll'); return () => document.body.classList.remove('no-scroll'); }, []);
+  useScrollLock();
   return html`<div class=${cx('overlay', tone && `overlay--${tone}`, cls)} role="dialog" aria-modal="true" aria-label=${label} ref=${ref} tabindex="-1">${children}</div>`;
 }

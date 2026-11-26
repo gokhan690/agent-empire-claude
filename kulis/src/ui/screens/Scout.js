@@ -45,7 +45,7 @@ function Reveal({ S, ids, onClose }) {
     <div class="scout-reveal__head"><div><div class="eyebrow gold">Gezi raporu</div><h3 class="t-display">${rows.length} yeni yetenek</h3></div>
       <button type="button" class="iconbtn" aria-label="Raporu kapat" onClick=${onClose}><${Icon} name="close" size=${20} /></button></div>
     <div class="scout-reveal__grid">${rows.map((r, i) => html`<${FlipCard} key=${r.id} r=${r} S=${S} delay=${500 + i * 650} />`)}</div>
-    <p class="muted small">Hepsi Radarım'a eklendi. Isısı en yüksek olanı önce izle; rakipler de bakıyor.</p>
+    <p class="muted small">Hepsi Radarım'a eklendi. Bir oyuncuya dokun: izle, takibe al ya da <b>İmzalanabilir</b> yazıyorsa imza teklifi ver. Isısı en yüksek olanı önce izle; rakipler de bakıyor.</p>
   </section>`;
 }
 function basicRow(S, id) {
@@ -65,7 +65,7 @@ function Trip({ S }) {
   const key = leagueIds.join() + focus;
   useEffect(() => {
     const out = {};
-    for (const id of leagueIds) { const r = store.act('tripPreview', { leagueId: id, focus }); out[id] = r && r.ok ? r.preview : null; }
+    for (const id of leagueIds) { const r = store.preview('tripPreview', { leagueId: id, focus }); out[id] = r && r.ok ? r.preview : null; }
     setPv(out);
   }, [key]);
   const sel1 = acts.find((a) => a.payload.leagueId === lg);

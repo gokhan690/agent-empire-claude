@@ -259,7 +259,7 @@ export default function PlayerSheet({ close, playerId, recruit }) {
   else {
     body = html`<div class="psheet">
       <${Header} vm=${vm} />
-      ${quote ? html`<blockquote class="psheet-quote"><${Icon} name="phone" size=${18} /><p>“${quote}”</p><footer>— ${vm.name}</footer></blockquote>` : null}
+      ${quote ? html`<blockquote class="psheet-quote"><${Icon} name="phone" size=${18} /><p>“${String(quote).replace(/^["“”']+|["“”']+$/g, "")}”</p><footer>— ${vm.name}</footer></blockquote>` : null}
       <${ActionBar} S=${S} vm=${vm} onRecruit=${() => setMode('recruit')} onPitch=${() => setMode('pitch')} onRelease=${() => setConfirmRel(true)} onQuote=${setQuote} />
       ${confirmRel ? html`<div class="psheet-confirm"><b>${vm.name} ile yolları ayırmak istediğine emin misin?</b><p class="muted small">Geri alınamaz; verdiğin sözler boşa düşer.</p>
         <div class="row"><${Button} variant="ghost" onClick=${() => setConfirmRel(false)}>Vazgeç</${Button}><${Button} variant="danger" class="grow" onClick=${release}>Evet, ayrıl</${Button}></div></div>` : null}

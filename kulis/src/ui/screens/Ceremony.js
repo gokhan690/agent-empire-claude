@@ -51,6 +51,11 @@ export default function Ceremony({ close, deal }) {
     return () => T.forEach(clearTimeout);
   }, []);
   const skip = () => setStep(5);
+  useEffect(() => { // keep the newest reveal in view
+    if (step < 3) return undefined;
+    const t = setTimeout(() => { try { const o = document.querySelector('.overlay'); if (o) o.scrollTo({ top: o.scrollHeight, behavior: 'smooth' }); } catch {} }, 120);
+    return () => clearTimeout(t);
+  }, [step]);
   const commission = useCount(d.commission || 0, { delay: 0, duration: 1100, on: step >= 4 });
   const rep = useCount(d.repGain || 0, { duration: 900, on: step >= 4 });
   const coinFired = useRef(false);

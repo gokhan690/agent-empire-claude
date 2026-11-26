@@ -100,3 +100,7 @@
 .hub-adv .btn--gold.btn--lg { box-shadow: 0 10px 34px rgba(0,0,0,.55), 0 0 0 1px rgba(245,196,81,.6), 0 6px 26px rgba(245,196,81,.3); }
 .hub-adv .btn.is-off { box-shadow: none; }
 .hub-confirm__lead { font-size: var(--fs-lg); }
+.hub-offer { text-align: left; width: 100%; align-items: stretch; cursor: pointer; }
+.hub-offer .row--between { width: 100%; }
+.hub-offer__pick { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 32px; font: 700 15px/1 var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--lime); }
+.hub-grid { padding-bottom: var(--s4); }

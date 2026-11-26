@@ -16,6 +16,8 @@ Sheets (`PlayerSheet ClubSheet`, plus built-in `Settings`) get `{close, ...yourP
 ## Store (`store.js`)
 - `store.S` engine state (null until a game exists; mutated in place). `useStore(s => s.S.agency.cash)` re-renders on change; call it at the top of the component, e.g. `const S = useStore(s => s.S)`.
 - `store.act(id, payload)` → engine Result; autosaves, toasts the error on `ok:false` (do not toast it again). `store.advance({silent?})` → MonthReport; by default opens overlay `Deadline` (report.phase==='deadline') else `Playback {report}`.
+- `store.preview(id, payload)` → engine Result for any `*Preview` action: no save, no notify, no toast. Use it for sliders/previews (`store.act` routes `*Preview` ids here too).
+- `store.restore()` after load/import puts the player back: Ending > open Masa > Son Gün > unseen season-end review (a `kulis-ui-v1` marker next to the save). `openOverlay` closes open sheets.
 - `store.newGame(opts)`, `load() hasSave() exportJSON() importJSON(txt) reset()`, `store.onEvents(fn)` (engine `events` after each successful act/advance; returns unsubscribe), `store.notify()`.
 - Overlay manager: `store.ui.openOverlay(name, props)`, `closeOverlay()`, `openSheet(name, props)`, `closeSheet()`, `closeAllSheets()` (also exported as `openOverlay` … from ui-kit). Names = keys of `OVERLAYS` / `SHEETS` in app.js; to add one, create the file + add one line there.
 - Router: `navigate('market')`, `useRoute()`; routes `hub players scout market agency gallery`.
@@ -42,3 +44,6 @@ Sheets (`PlayerSheet ClubSheet`, plus built-in `Settings`) get `{close, ...yourP
 - Numbers/headlines: add class `num` (condensed, tabular). Headline = `t-display`. Touch targets ≥ 44px. Keep content ≤ 560px; use `.cols-2` for ≥ 900px two-column layouts.
 - Respect reduced motion (global rule already shortens animations; don't rely on animation for meaning). Turkish uppercase works because `<html lang="tr">`.
 - Dev vs build: index.html lists every CSS file; build.mjs inlines them in that order. Add new CSS files to index.html only if you must.
+
+## QA tools
+`node build.mjs && node tools/e2e.mjs` — real-click playthrough of `dist/kulis.html` (onboarding, tutorial, Masa, Son Gün, season end, endings, reload restores); `node tools/audit.mjs` — layout audit at 390/1280. Screenshots in `dist/shots/e2e-*.png`.

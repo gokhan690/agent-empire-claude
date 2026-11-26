@@ -90,7 +90,7 @@ export default function Onboarding({ close }) {
     audio.play('sign'); haptics.success();
     close(); navigate('hub');
   };
-  const cont = () => { const r = store.load(); if (!r.ok) { toast.error(r.error); return; } audio.play('confirm'); close(); navigate('hub'); };
+  const cont = () => { const r = store.load(); if (!r.ok) { toast.error(r.error); return; } audio.play('confirm'); close(); navigate('hub'); store.restore(); };
   return html`<${Overlay} label="KULİS" tone="night" class="onboarding">
     ${step === 'title' ? html`<${Title} hasSave=${hasSave} onNew=${() => { audio.play('whoosh'); setStep('setup'); }} onContinue=${cont} />`
       : html`<${Setup} onBack=${() => setStep('title')} onStart=${go} />`}

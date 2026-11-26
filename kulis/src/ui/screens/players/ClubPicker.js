@@ -13,7 +13,7 @@ export function usePitch(S, playerId, enabled, onDone) {
     if (!enabled) return;
     const ids = S.leagues[lg].clubIds.filter((c) => c !== (p && p.clubId));
     const out = ids.map((cid) => {
-      const r = store.act('pitchPreview', { playerId, clubId: cid });
+      const r = store.preview('pitchPreview', { playerId, clubId: cid });
       const pv = r && r.ok ? r.preview : { error: 'Hesaplanamadı', delta: 0, levelBefore: 0, levelAfter: 0, energy: 1, cash: 0 };
       return { club: S.clubs[cid], pv };
     });

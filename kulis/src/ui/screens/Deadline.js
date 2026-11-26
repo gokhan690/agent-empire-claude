@@ -74,7 +74,7 @@ function PitchSheet({ close }) {
   const [pv, setPv] = useState(null);
   useEffect(() => {
     if (!pid || !cid) { setPv(null); return; }
-    const r = store.act('pitchPreview', { playerId: pid, clubId: cid });
+    const r = store.preview('pitchPreview', { playerId: pid, clubId: cid });
     if (r.ok) setPv(r.preview);
   }, [pid, cid]);
   const cur = clients.find((c) => c.id === pid);
@@ -133,6 +133,7 @@ export default function Deadline({ close }) {
   const missed = dl.calls.filter((c) => !c.taken).length;
   const dealLog = dl.log.filter((l) => l.kind === 'deal');
   const ringing = live.length;
+  const shut = sel.interestList(S).filter((i) => !i.negotiable && i.level >= 60);
   return html`<${Overlay} label="Son Gün" tone=${dl.hour >= 22 || ended ? 'danger' : undefined} onClose=${close}>
     <div class=${cx('dl', `is-h${ended ? 24 : dl.hour}`)}>
       <header class="dl__top">
@@ -151,13 +152,16 @@ export default function Deadline({ close }) {
         ${visible.length ? html`<div class="dlcalls">${visible.map((c) => html`<${CallCard} key=${c.id} c=${c} S=${S} hour=${dl.hour} ended=${ended} canAct=${canAct} onTake=${take} />`)}</div>`
           : html`<div class="dlquiet"><${Icon} name="phone" size=${22} /> Telefon sessiz. Yeni aramalar sonraki saatlerde gelebilir.</div>`}
 
-        ${dl.interests.length ? html`<${SectionTitle}>Açık ilgiler</${SectionTitle}>
+        ${dl.interests.length || shut.length ? html`<${SectionTitle}>Açık ilgiler</${SectionTitle}>
           <div class="dlints">${dl.interests.map((i) => {
             const club = S.clubs[i.clubId];
             return html`<div class="dlint" key=${i.id}><${Crest} colors=${club.colors} pattern=${club.crest} size=${34} />
               <div class="dlint__t"><b>${i.playerName}</b><span>${club.name} · ${KIND_LABEL[i.kind]} · ${i.fitWord} · orada %${Math.round(i.expectedMinutes * 100)}</span><div class="dlint__lvl"><i style=${{ width: i.level + '%' }}></i><u style=${{ left: '60%' }}></u></div></div>
               <${Button} size="sm" variant="ghost" disabled=${!canAct} onClick=${() => openI(i)}>Masaya otur</${Button}></div>`;
-          })}</div>` : null}`}
+          })}
+            ${shut.map((i) => { const club = S.clubs[i.clubId];
+              return html`<div class="dlint is-shut" key=${i.id}><${Crest} colors=${club.colors} pattern=${club.crest} size=${34} />
+                <div class="dlint__t"><b>${i.playerName}</b><span>${club.name} · ${KIND_LABEL[i.kind]}</span><span class="dlint__why"><${Icon} name="lock" size=${13} /> ${i.reason}</span></div></div>`; })}</div>` : null}`}
 
       <${SectionTitle}>Telefon kaydı</${SectionTitle}>
       <ol class="dllog">${[...dl.log].reverse().map((l, i) => html`<li key=${i} class=${`is-${l.kind}`}><b class="num">${pad(Math.min(l.hour, 24) % 24)}:00</b><span>${l.text}</span></li>`)}</ol>

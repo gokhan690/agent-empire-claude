@@ -27,6 +27,8 @@ function Lunch({ S, cv, fresh, setFresh }) {
     setFresh(true);
   };
   const budget = cv.budgetHint;
+  const la = sel.availableActions(S, { clubId: cv.id }).find((x) => x.id === 'clubLunch');
+  const lunchOff = la && !la.ok;
   return html`<section class="club-sec">
     <${SectionTitle}>Direktör</${SectionTitle}>
     <div class=${cx('club-card club-dir', fresh && 'is-fresh')}>
@@ -40,7 +42,8 @@ function Lunch({ S, cv, fresh, setFresh }) {
         </div>
         <p class="muted small">Bu bilgiler Temmuz'da sıfırlanır; her sezon yeniden yemeğe çıkman gerekir.</p>
       </div>` : html`<div class="club-locked"><${Icon} name="lock" size=${22} /><div><b>Yemek yemeden bilemezsin.</b><p class="muted small">İhtiyaçlar, direktörün kişiliği ve bütçe tahmini yemekte ortaya çıkar.</p></div></div>`}
-      <${Button} block variant=${cv.lunchKnown ? 'ghost' : 'primary'} icon="handshake" energy=${1} cash=${L.cash} onClick=${go}>${cv.lunchKnown ? 'Tekrar yemeğe çık' : 'Yemeğe çık'} · güven +${L.gain}</${Button}>
+      <${Button} block variant=${cv.lunchKnown ? 'ghost' : 'primary'} icon="handshake" energy=${1} cash=${L.cash} disabled=${lunchOff} onClick=${go}>${cv.lunchKnown ? 'Tekrar yemeğe çık' : 'Yemeğe çık'} · güven +${L.gain}</${Button}>
+      ${lunchOff && la.reason ? html`<div class="small danger club-why"><${Icon} name="lock" size=${13} /> ${la.reason}</div>` : null}
     </div>
   </section>`;
 }

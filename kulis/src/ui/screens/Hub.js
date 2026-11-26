@@ -6,6 +6,7 @@ import InboxCard from './hub/InboxCard.js';
 
 const TIER = { safe: ['Güvenli', 'lime'], balanced: ['Dengeli', 'info'], bold: ['Cesur', 'gold'] };
 const rewardText = (r) => [r && r.cash ? fmtMoney(r.cash) : null, r && r.rep ? `+${r.rep} itibar` : null].filter(Boolean).join(' · ');
+const MONEY_KINDS = new Set(['commission', 'cash', 'portfolio']);
 const ALERT_ICON = { loyalty: 'heart', injury: 'alert', contract: 'clock', repContract: 'pen' };
 
 function Headline({ h }) {
@@ -28,27 +29,30 @@ function Headline({ h }) {
   </${Card}>`;
 }
 
-function Objective({ h }) {
+function ObjectiveOffers({ h }) {
   const off = h.objectivesOffered || [];
-  if (!h.objective && off.length) {
-    return html`<div class="hub-obj stack">
-      <${SectionTitle}>Sezon hedefini seç</${SectionTitle}>
-      <p class="small muted">Sezon sonunda ödül alırsın; zor hedef daha çok kazandırır.</p>
-      <div class="hub-obj__list">${off.map((o) => {
-        const [tl, tone] = TIER[o.tier] || ['Hedef', 'muted'];
-        return html`<${Card} class="hub-offer"><div class="row row--between"><${Badge} tone=${tone}>${tl}</${Badge}><span class="gold num">${rewardText(o.reward)}</span></div>
-          <h4 class="hub-offer__t">${o.title}</h4><p class="small muted">${o.text}</p>
-          <${Button} size="sm" variant="ghost" block icon="target" onClick=${() => store.act('chooseObjective', { objectiveId: o.id })}>Bu hedefi seç</${Button}></${Card}>`;
-      })}</div>
-    </div>`;
-  }
+  if (h.objective || !off.length) return null;
+  return html`<div class="hub-obj stack">
+    <${SectionTitle}>Sezon hedefini seç</${SectionTitle}>
+    <p class="small muted">Bir hedefe dokun. Sezon sonunda ödül alırsın; zor hedef daha çok kazandırır. Seçmeden de oynayabilirsin.</p>
+    <div class="hub-obj__list">${off.map((o) => {
+      const [tl, tone] = TIER[o.tier] || ['Hedef', 'muted'];
+      return html`<${Card} class="hub-offer" onClick=${() => store.act('chooseObjective', { objectiveId: o.id })} aria-label=${`${tl} hedef: ${o.title}. Seç`}>
+        <div class="row row--between"><${Badge} tone=${tone}>${tl}</${Badge}><span class="gold num">${rewardText(o.reward)}</span></div>
+        <h4 class="hub-offer__t">${o.title}</h4><p class="small muted">${o.text}</p>
+        <span class="hub-offer__pick"><${Icon} name="target" size=${15} /> Bu hedefi seç</span></${Card}>`;
+    })}</div>
+  </div>`;
+}
+
+function Objective({ h }) {
   const o = h.objective && sel.objectiveView(store.S).active;
   if (!o) return null;
   const pct = Math.round((o.pct || 0) * 100);
   return html`<${Card} tone=${o.failed ? 'danger' : 'gold'} class="hub-obj-active">
     <div class="row row--between"><span class="eyebrow">Sezon hedefi</span>${o.failed ? html`<${Badge} tone="danger" icon="alert">Kaçtı</${Badge}>` : html`<span class="gold num small">Ödül ${rewardText(o.reward)}</span>`}</div>
     <h4 class="hub-offer__t">${o.title}</h4>
-    <${Meter} label=${o.endOnly ? 'Sezon sonunda değerlendirilir' : 'İlerleme'} value=${pct} tone=${o.failed ? 'danger' : 'gold'} size="sm" valueText=${o.endOnly ? `${pct}%` : `${o.progress} / ${o.target}`} hint=${o.text} />
+    <${Meter} label=${o.endOnly ? 'Sezon sonunda değerlendirilir' : 'İlerleme'} value=${pct} tone=${o.failed ? 'danger' : 'gold'} size="sm" valueText=${o.endOnly ? (o.kind === 'rank' ? (pct >= 100 ? 'Hedefte' : 'Peşindesin') : `${pct}%`) : MONEY_KINDS.has(o.kind) ? `${fmtMoney(o.progress)} / ${fmtMoney(o.target)}` : `${o.progress} / ${o.target}`} hint=${o.text} />
   </${Card}>`;
 }
 
@@ -97,7 +101,7 @@ function QuickActions({ S, h }) {
     <${SectionTitle}>Bu ay ne yapabilirim?</${SectionTitle}>
     ${h.energy <= 0 ? html`<div class="small muted hub-noenergy"><${Icon} name="bolt" size=${14} /> Enerjin bitti; kalanlar bedava işler. Ayı oynatabilirsin.</div>` : null}
     <div class="hub-tiles">
-      <${Tile} icon="heart" title="Oyuncularını ziyaret et" sub=${visitable.length ? `${visitable.length} müşteri bekliyor · moral +10, bağlılık +8` : 'Bu ay hepsini ziyaret ettin'} energy=${visitable.length ? 1 : 0} off=${!visitable.length} onClick=${() => navigate('players')} />
+      <${Tile} icon="heart" title="Oyuncularını ziyaret et" sub=${visitable.length ? `${visitable.length} müşteri bekliyor · moral +10, bağlılık +8` : sel.clientList(S).length ? 'Bu ay hepsini ziyaret ettin' : 'Henüz müşterin yok'} energy=${visitable.length ? 1 : 0} off=${!visitable.length} onClick=${() => navigate('players')} />
       <${Tile} icon="eye" title="Keşfe çık" sub=${cheap ? `${cheap.label.replace('Gözlem gezisi: ', '')} · 3 yeni aday` : (trips[0] && trips[0].reason) || 'Şimdilik keşfe çıkamazsın'} energy=${cheap ? 1 : 0} cash=${cheap ? cheap.cost.cash : 0} off=${!cheap} onClick=${() => navigate('scout')} />
       <${Tile} icon="swap" title="Teklifler" tone=${h.openInterests ? 'lime' : undefined} count=${h.openInterests} sub=${h.openInterests ? `${h.openInterests} kulüp masaya hazır` : 'Hazır teklif yok · kulüplere oyuncunu öner'} off=${!h.openInterests} onClick=${() => navigate('market')} />
       <${Tile} icon="building" title="Ofisi büyüt" sub=${upg ? `Yükseltme alabilirsin · ${fmtMoney(upg.cost.cash)}` : 'Yükseltme için para biriktir'} off=${!upg} onClick=${() => navigate('agency')} />
@@ -107,7 +111,11 @@ function QuickActions({ S, h }) {
 
 function Clients({ S }) {
   const rows = sel.clientList(S);
-  if (!rows.length) return null;
+  if (!rows.length) return html`<${Card} tone="danger" class="hub-noclients" role="alert">
+    <div class="t-display hub-neg__t">Hiç müşterin kalmadı</div>
+    <p class="small">${S.time.season >= 2 ? 'Sezon sonunda hâlâ müşterin yoksa kariyerin biter.' : 'Müşterisiz komisyon da gelmez.'} Keşfe çık, oyuncuyu izle, imza teklifi ver.</p>
+    <${Button} block icon="eye" onClick=${() => navigate('scout')}>Keşfe git</${Button}>
+  </${Card}>`;
   const warn = (c) => (c.loyalty < 35 || c.morale < 35 ? 'danger' : c.loyalty < 50 || c.morale < 45 ? 'gold' : null);
   return html`<div class="stack">
     <${SectionTitle} right=${html`<span class="muted small">${rows.length} müşteri</span>`}>Müşterilerin</${SectionTitle}>
@@ -189,6 +197,7 @@ export default function Hub() {
         <${SectionTitle} right=${must ? html`<${Badge} tone="danger" icon="alert">${must} zorunlu</${Badge}>` : html`<span class="muted small">${inbox.items.length} kart</span>`}>Gündem</${SectionTitle}>
         ${inbox.items.length ? inbox.items.map((x) => html`<${InboxCard} key=${x.card.id} card=${x.card} res=${x.res} onAnswer=${inbox.answer} onGone=${inbox.gone} />`)
           : html`<${Card}><${EmptyState} icon="inbox" title="Gündem boş" body="Bu ay yanıt bekleyen bir şey yok. Enerjini keşfe veya müşteri ziyaretine harca." /></${Card}>`}
+        <${ObjectiveOffers} h=${h} />
       </div>
       <div class="hub-side stack"><${QuickActions} S=${S} h=${h} /><${Clients} S=${S} /></div>
     </div>

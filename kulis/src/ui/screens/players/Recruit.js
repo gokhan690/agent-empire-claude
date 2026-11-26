@@ -11,7 +11,7 @@ export function useRecruit(id, enabled, onSigned) {
   const key = chosen.join(',');
   useEffect(() => {
     if (!enabled) return;
-    const r = store.act('recruitPreview', { playerId: id, promises: chosen.map((type) => ({ type })) });
+    const r = store.preview('recruitPreview', { playerId: id, promises: chosen.map((type) => ({ type })) });
     setPv(r && r.ok ? r.preview : null);
   }, [enabled, key]);
   const toggle = (type) => {
@@ -73,15 +73,17 @@ export function RecruitBody({ rec, vm }) {
       <p class="muted small">Her söz puanını artırır ama gerçek bir yükümlülüktür. En fazla 3 söz verebilirsin.</p>
       ${pv.promiseOptions.map((o) => {
         const on = chosen.includes(o.type);
-        const locked = !on && chosen.length >= 3;
-        return html`<button type="button" class=${cx('recruit-prom', on && 'is-on', locked && 'is-locked')} aria-pressed=${on ? 'true' : 'false'} disabled=${locked} onClick=${() => { audio.play(on ? 'click' : 'confirm'); toggle(o.type); }}>
+        const blocked = !!o.blocked;
+        const locked = (!on && chosen.length >= 3) || blocked;
+        return html`<button type="button" class=${cx('recruit-prom', on && 'is-on', locked && 'is-locked', blocked && 'is-blocked')} aria-pressed=${on ? 'true' : 'false'} disabled=${locked} onClick=${() => { audio.play(on ? 'click' : 'confirm'); toggle(o.type); }}>
           <span class="recruit-prom__box" aria-hidden="true">${on ? html`<${Icon} name="check" size=${16} strokeWidth=${3} />` : null}</span>
           <span class="recruit-prom__main">
-            <span class="recruit-prom__top"><b>${o.label}</b>${o.fit ? html`<${Badge} tone="lime">Ona uygun</${Badge}>` : null}</span>
+            <span class="recruit-prom__top"><b>${o.label}</b>${o.fit && !blocked ? html`<${Badge} tone="lime">Ona uygun</${Badge}>` : null}${blocked ? html`<${Badge} tone="danger" icon="lock">Verilemez</${Badge}>` : null}</span>
             <span class="recruit-prom__text">${o.text}</span>
             <span class="recruit-prom__due"><${Icon} name="calendar" size=${12} /> Vade: ${dueText(o.due)}</span>
+            ${o.warning ? html`<span class=${cx('recruit-prom__warn', blocked ? 'is-block' : 'is-warn')}><${Icon} name=${blocked ? 'lock' : 'alert'} size=${13} /> ${o.warning}</span>` : null}
           </span>
-          <span class=${cx('recruit-prom__add num', o.fit && 'is-fit')}>+${o.add}</span>
+          <span class=${cx('recruit-prom__add num', o.fit && 'is-fit')}>${blocked ? '—' : '+' + o.add}</span>
         </button>`;
       })}
     </section>
@@ -96,12 +98,14 @@ export function RecruitBody({ rec, vm }) {
 export function RecruitFooter({ rec, onBack }) {
   const { pv, fail, busy, shake, sign } = rec;
   const ok = pv && !pv.error && pv.canSign;
+  const noEnergy = store.S && store.S.agency.energy < 1;
   return html`<div class="recruit-foot">
     ${fail ? html`<div class="recruit-fail" key=${shake}><${Icon} name="alert" size=${16} /> ${fail}</div>` : null}
     <div class="recruit-foot__row">
       <${Button} variant="ghost" onClick=${onBack}>Vazgeç</${Button}>
-      <${Button} variant=${ok ? 'gold' : 'ghost'} size="lg" icon="pen" class="grow" energy=${1} loading=${busy} disabled=${!pv || !!pv.error} onClick=${sign}>${ok ? 'İmzala' : 'Yine de dene'}</${Button}>
+      <${Button} variant=${ok ? 'gold' : 'ghost'} size="lg" icon="pen" class="grow" energy=${1} loading=${busy} disabled=${!pv || !!pv.error || noEnergy} onClick=${sign}>${ok ? 'İmzala' : 'Yine de dene'}</${Button}>
     </div>
+    ${noEnergy ? html`<div class="small danger recruit-foot__hint"><${Icon} name="bolt" size=${13} /> Enerjin yok: ayı oynatınca enerji yenilenir.</div>` : null}
     ${pv && !pv.error && !pv.canSign ? html`<div class="muted small recruit-foot__hint">Puan yetmezse bir şey harcamazsın; ama bir söz daha eklemek ya da oyuncuyu izlemek işe yarar.</div>` : null}
   </div>`;
 }

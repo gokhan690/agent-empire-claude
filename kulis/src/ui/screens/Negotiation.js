@@ -65,7 +65,7 @@ export default function Negotiation({ close }) {
   useEffect(() => { if (!live || !live.pending) setEditHes(false); }, [live ? !!live.pending : false]);
   useEffect(() => {
     if (!n || end || !pkg) return undefined;
-    const t = setTimeout(() => { const r = store.act('negPreview', { package: pkg, koz }); if (r && r.ok) setPrev(r.preview); }, 140);
+    const t = setTimeout(() => { const r = store.preview('negPreview', { package: pkg, koz }); if (r && r.ok) setPrev(r.preview); }, 140);
     return () => clearTimeout(t);
   }, [pkg, koz, n ? n.id : '', !!end]);
 
@@ -119,7 +119,7 @@ export default function Negotiation({ close }) {
     }
     if (r.outcome === 'left') {
       setEnd({ type: 'left', events: r.events || [], koz: kr || null, trust: (r.events || []).map((e) => e.trust).filter((x) => x != null).pop() });
-      setView({ face: 'stand', line: r.line || 'Bu kadar yeter.', level: 4, sub: r.tell ? r.tell.line : null });
+      setView({ face: 'stand', line: r.line || 'Bu kadar yeter.', level: 4, sub: null });
       setStamp({ tone: 'danger', title: 'MASADAN KALKTI', key: Math.random() });
       audio.play('badnews'); haptics.heavy(); setShake((x) => x + 1);
       setTimeout(() => setLeaving(true), 900);
@@ -244,6 +244,11 @@ export default function Negotiation({ close }) {
             <${Satisfaction} prev=${prev} word=${word} />
             ${prev && prev.expectedMinutes != null ? html`<p class="tsum__min small muted"><${Icon} name="ball" size=${13} /> Orada tahmini forma süresi: <b class="num">%${Math.round(prev.expectedMinutes * 100)}</b></p>` : null}
             <${FeeShare} prev=${prev} threshold=${th} />
+            ${prev && prev.promiseChecks && prev.promiseChecks.length ? html`<div class="tprom" aria-label="Verdiğin sözler">
+              <div class="eyebrow">Verdiğin sözler</div>
+              <ul>${prev.promiseChecks.map((c) => html`<li key=${c.id} class=${c.ok ? 'is-ok' : 'is-bad'}><${Icon} name=${c.ok ? 'check' : 'alert'} size=${15} strokeWidth=${2.6} />
+                <span><b>${c.text}</b>${c.note ? html`<small>${c.note}</small>` : null}<em>${c.ok ? 'Bu paketle tutulur' : 'Tutulmaz. Bozulan söz: bağlılık −25, itibar −3'}</em></span></li>`)}</ul>
+            </div>` : null}
           </section>
 
           <section class="thandwrap">

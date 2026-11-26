@@ -111,7 +111,7 @@ function Table({ S, lg, setLg }) {
 export default function Market() {
   const st = useStore();
   const S = st.S;
-  const [seg, setSeg] = useState('offers');
+  const [seg, setSeg] = useState(() => (S && sel.hubSummary(S).tutorialStep === 'market' ? 'clubs' : 'offers'));
   const first = S ? sel.myClients(S).map((p) => p.clubId).filter(Boolean)[0] : null;
   const [lg, setLg] = useState(first && S ? S.clubs[first].leagueId : 'tr1');
   if (!S) return html`<${EmptyState} icon="swap" title="Piyasa" body="Önce bir oyun başlat." />`;

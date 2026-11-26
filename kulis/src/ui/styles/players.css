@@ -179,3 +179,7 @@
 .psheet-stat b > *, .players-sum b > * { font: inherit; }
 .players-foot { display: flex; justify-content: center; }
 .players-club--btn { min-height: var(--tap); margin: -8px 0; }
+.recruit-prom.is-blocked { opacity: 1; border-style: dashed; } .recruit-prom.is-blocked .recruit-prom__box, .recruit-prom.is-blocked .recruit-prom__text, .recruit-prom.is-blocked .recruit-prom__due, .recruit-prom.is-blocked .recruit-prom__top b, .recruit-prom.is-blocked .recruit-prom__add { opacity: .5; }
+.recruit-prom__warn { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.35; font-weight: 600; } .recruit-prom__warn svg { flex: none; margin-top: 1px; }
+.recruit-prom__warn.is-warn { color: var(--gold); } .recruit-prom__warn.is-block { color: var(--danger); }
+.club-why { display: flex; gap: 6px; align-items: center; margin-top: 6px; }

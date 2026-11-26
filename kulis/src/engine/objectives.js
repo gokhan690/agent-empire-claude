@@ -119,7 +119,7 @@ export const TEMPLATES = {
     make(S, tier) {
       const r = rankOf(S);
       const tr = r <= 1 ? 1 : tier === 'bold' ? Math.max(1, r - 2) : tier === 'balanced' ? r - 1 : r;
-      if (tier === 'safe' && r > 4) return { target: 2, title: 'Sıralamada sonuncu olma', text: 'Sezonu ajans sıralamasında en az 4. sırada bitir.', rankTarget: 4 };
+      if (tier === 'safe' && r > 4) return { target: 2, title: 'Ajans sıralamasında 4. sıraya çık', text: 'Sezon sonunda beş ajans arasında en az 4. sırada ol; sonuncu bitirme.', rankTarget: 4 };
       return { target: 6 - tr, title: tr === 1 ? 'Ajans sıralamasında 1. ol' : `Ajans sıralamasında ${tr}. sıraya çık`, text: `Sezon sonunda beş ajans arasında en az ${tr}. sırada ol.`, rankTarget: tr };
     },
     progress: (S, o) => 6 - rankOf(S),

@@ -235,3 +235,5 @@ button.card { font: inherit; }
 .gal-cell span { font-size: 11px; color: var(--muted); word-break: break-all; }
 .gal-icons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; } .gal-icons .gal-cell { color: var(--text); }
 @media (min-width: 900px) { .gal-icons { grid-template-columns: repeat(8, 1fr); } .gal-swatches { grid-template-columns: repeat(11, 1fr); } }
+.tabs__tab { white-space: nowrap; min-width: 0; }
+.tabs--segmented .tabs__tab { padding: 0 6px; letter-spacing: .05em; font-size: 15px; }

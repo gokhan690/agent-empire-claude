@@ -18,7 +18,7 @@ export default function SettingsSheet({ close }) {
   const imp = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     const r = store.importJSON(await f.text());
-    if (r.ok) { toast.success('Kayıt yüklendi'); close(); }
+    if (r.ok) { toast.success('Kayıt yüklendi'); close(); store.restore(); }
     else toast.error(r.error);
     e.target.value = '';
   };
