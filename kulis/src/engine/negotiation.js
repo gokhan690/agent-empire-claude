@@ -71,7 +71,7 @@ function tableSquad(S, n) {
 /** The wage the client asks for at this club. */
 export function demandWage(S, p, club, kind) {
   const W0 = fairWage(S, p, club.leagueId);
-  const tm = p.trait === 'paraci' ? 1.15 : 1;
+  const tm = (p.trait === 'paraci' ? 1.15 : 1) * BAL.neg.sat.demandMult;
   if (kind === 'renewal') return Math.max(W0 * tm, p.wage);
   return Math.max(r100(W0 * tm), r100(p.wage * 0.95));
 }

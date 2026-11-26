@@ -51,6 +51,8 @@ export default function Negotiation({ close }) {
   const patRef = useRef(live ? live.patience : 0);
   const timer = useRef(null);
   const builderRef = useRef(null);
+  const rootRef = useRef(null);
+  const toTop = () => { try { const o = rootRef.current && rootRef.current.closest('.overlay'); if (o) o.scrollTo({ top: 0, behavior: 'smooth' }); } catch {} };
   const pkgRef = useRef(pkg); pkgRef.current = pkg;
 
   useEffect(() => { if (!n) afterTable(); return () => clearTimeout(timer.current); }, []);
@@ -102,7 +104,7 @@ export default function Negotiation({ close }) {
     timer.current = setTimeout(() => openOverlay('Ceremony', { deal }), 1400);
   };
   const handle = (r) => {
-    setBusy(false);
+    setBusy(false); toTop();
     const kr = r.koz;
     if (kr) {
       if (kr.caught) { setStamp({ tone: 'danger', title: 'BLÖF YAKALANDI', text: (kr.line ? kr.line + ' ' : '') + 'Güven −15, itibar −2, sabır −2.', key: Math.random(), big: true }); audio.play('badnews'); haptics.heavy(); setShake((x) => x + 1); }
@@ -140,7 +142,7 @@ export default function Negotiation({ close }) {
     handle(r);
   };
   const acceptCounter = () => { if (busy) return; setBusy(true); const r = store.act('negAcceptCounter'); if (!r.ok) { setBusy(false); return; } handle(r); };
-  const lean = () => { if (busy) return; setBusy(true); const r = store.act('negLeanOnClient'); if (!r.ok) { setBusy(false); return; } finishDeal(r); };
+  const lean = () => { if (busy) return; setBusy(true); const r = store.act('negLeanOnClient'); if (!r.ok) { setBusy(false); return; } toTop(); finishDeal(r); };
   const workOn = () => {
     if (!live || !live.counter) return;
     setPkg(clonePkg(live.counter.package)); setRefusal(null); setFlash((x) => x + 1); audio.play('page');
@@ -153,7 +155,7 @@ export default function Negotiation({ close }) {
 
   // ------------------------------------------------------------ render
   return html`<${Overlay} label="Pazarlık masası" tone=${leftInfo ? 'danger' : undefined} onClose=${ended ? undefined : () => setConfirm(true)}>
-    <div class=${cx('table', leftInfo && 'is-left')}>
+    <div class=${cx('table', leftInfo && 'is-left')} ref=${rootRef}>
       <header class="table__top">
         <div><div class="eyebrow">Masa · ${n.kindLabel}</div></div>
         ${n.deadline ? html`<${Badge} tone="danger" icon="clock">Son Gün</${Badge}>` : null}
@@ -190,7 +192,6 @@ export default function Negotiation({ close }) {
               <li>${cd} ay boyunca ${pl.name} için bu kulüpte masa kuramazsın.</li>
               ${leftInfo.koz && leftInfo.koz.caught ? html`<li>İtibar <b class="danger">−2</b>.</li>` : null}
             </ul>
-            <${Button} variant="ghost" block onClick=${afterTable}>Tamam</${Button}>
           </section>` : null}
 
           ${live && live.counter && !pending && !ended ? html`<${Counter} counter=${live.counter} mine=${live.package} word=${sel.satWord(live.counter.satisfaction)} busy=${busy} onAccept=${acceptCounter} onWork=${workOn} />` : null}

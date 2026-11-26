@@ -152,7 +152,10 @@ function build(S, report) {
     if (pr.type === 'walkout') k.push({ icon: 'alert', tone: 'danger', head: 'Küstü.', text: pr.text || 'Bir müşterin tutulmayan söz yüzünden gitti.' });
     else k.push(pr.status === 'kept' ? { icon: 'check', tone: 'lime', head: 'Söz tutuldu:', text: `${pName(pr.playerId)} — ${pr.text}` } : { icon: 'alert', tone: 'danger', head: 'Söz bozuldu:', text: `${pName(pr.playerId)} — ${pr.text}` });
   }
-  for (const rm of report.rivalMoves || []) k.push({ icon: 'shield', tone: rm.poached ? 'danger' : 'rival', head: rm.poached ? 'Rakip kaptı:' : 'Rakip hamlesi:', text: rm.text });
+  const rms = (report.rivalMoves || []).filter((r) => r.poached || r.approach || mine.has(r.playerId));
+  const rmOther = (report.rivalMoves || []).filter((r) => !rms.includes(r))[0];
+  if (rmOther) rms.push(rmOther);
+  for (const rm of rms) k.push({ icon: 'shield', tone: rm.poached ? 'danger' : 'rival', head: rm.poached ? 'Rakip kaptı:' : 'Rakip hamlesi:', text: rm.text });
   const newCards = (report.events || []).filter((e) => e.type === 'inboxNew').length;
   const rivalTexts = new Set((report.rivalMoves || []).map((r) => r.text));
   const news = (report.news || []).filter((n) => !rivalTexts.has(n.text)).sort((a, b) => (mine.has(b.playerId) ? 1 : 0) - (mine.has(a.playerId) ? 1 : 0)).slice(0, 4);

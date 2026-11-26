@@ -220,10 +220,10 @@ export const BAL = {
     clause: { minutes: 0.08, release: 0.05 },
     maxWageMult: 4, maxBonusMonths: 24, maxFeeShare: 0.6,
     tell: [0.05, 0.12, 0.22, 0.35],
-    creep: { base: 0.80, step: 0.05, noise: 0.03 },
+    creep: { base: 0.80, step: 0.05, noise: 0.04 },
     insult: 1.35,
     sat: {
-      base: 32, wageFair: 15, wageSlope: 75, wageMin: -30, wageMax: 28, paraci: 1.3,
+      demandMult: 1.04, base: 32, wageFair: 15, wageSlope: 75, wageMin: -30, wageMax: 28, paraci: 1.3,
       bonusSlope: 50, bonusMax: 8, paraciBonus: 1.5,
       minutesW: 20, hirsliMinutes: 1.5, profMinutes: 0.7,
       prestigeW: 3, hirsliPrestige: 1.6, sadikMove: -6,
@@ -245,7 +245,7 @@ export const BAL = {
     },
   },
   deadline: {
-    hours: [18, 23], maxCalls: 8, minLevel: 2, kBoost: [0, 0.10, 0.17, 0.25], patiencePenalty: 1,
+    hours: [18, 23], maxCalls: 8, minLevel: 2, kBoost: [0, 0.05, 0.09, 0.13], patiencePenalty: 1,
     callLen: [1, 3], missedInterest: -30, hotLevel: 60,
   },
 

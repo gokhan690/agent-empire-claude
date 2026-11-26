@@ -195,21 +195,22 @@ function playTable(ctx, style) {
     const nw = needWage(ctx, v, bonus, years, false, 52);
     if (nw === null) { ctx.do('negWalkAway'); result = 'lost'; why = 'client:unreachable'; }
     else {
-      const FSMAX = 0.115;
+      const FSMAX = 0.115, FSWANT = 0.08, FSMIN = 0.025; // fee share: cap (client notices above it), what is worth the energy, what is barely worth it
       const base = nw * 12 * years + bonus; // the cheapest package the client signs (no fee)
+      const wantT = base / (1 - FSWANT), minT = base / (1 - FSMIN);
       let Kcur = F * 0.95;                  // prior: the suggested package sits a bit above the ceiling
-      let counterOk = null;
       for (let round = 0; round < 9 && !result; round++) {
         v = sel.negotiationView(S);
         if (!v) break;
         rounds = Math.max(rounds, v.round + 1);
+        const spare = () => v.hand.some(h => !h.used && !used.has(h.id) && h.kPct > 0);
         let koz = null;
-        if (round >= 1 || Kcur * 0.98 < base * 1.01) koz = chooseKoz(v, 'sharp', used);
+        if (round >= 1 && Kcur * 0.99 < wantT) koz = chooseKoz(v, 'sharp', used);
         if (koz) { used.add(koz); const c = v.hand.find(h => h.id === koz); if (c && c.kPct) Kcur *= 1 + c.kPct; }
-        let Tt = Kcur * 0.98;
-        if (Tt < base * 1.003) {
-          if (Kcur < base * 0.985 && !v.hand.some(h => !h.used && h.kPct > 0)) { result = 'lost'; why = 'nofee'; ctx.do('negWalkAway'); break; }
-          Tt = base * 1.003;
+        let Tt = Kcur * 0.99;
+        if (Tt < minT) {
+          if (!spare() && round >= 1) { result = 'lost'; why = 'nofee'; ctx.do('negWalkAway'); break; }
+          Tt = Math.max(Tt, minT * 1.002);
         }
         const fee = Math.min(v.limits.fee[1], Math.max(0, tidy(Math.min(Tt - base, Tt * FSMAX))));
         const wage = Math.max(nw, Math.floor((Tt - bonus - fee) / (12 * years) / 100) * 100);
@@ -229,7 +230,7 @@ function playTable(ctx, style) {
           const a = ctx.do('negAcceptCounter');
           if (a.ok && a.outcome === 'accepted') { result = 'accepted'; break; }
         }
-        if (Kcur < base * 0.97 && !v.hand.some(h => !h.used && h.kPct > 0 && !used.has(h.id))) { result = 'lost'; why = 'nofee'; ctx.do('negWalkAway'); break; }
+        if (Kcur * 1.01 < minT && !v.hand.some(h => !h.used && h.kPct > 0 && !used.has(h.id))) { result = 'lost'; why = 'nofee'; ctx.do('negWalkAway'); break; }
       }
     }
   } else {

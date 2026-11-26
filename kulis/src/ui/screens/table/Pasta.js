@@ -15,8 +15,9 @@ export function Pasta({ pkg, fair, counter, lastCost, band, prev }) {
   const P = pkgParts(pkg);
   const fairCost = pkgParts(fair).cost;
   const scale = Math.max(P.cost, counter ? counter.cost : 0, band ? band.hi : 0, lastCost || 0, fairCost * 1.3) * 1.06;
-  const w = (v) => Math.max(0, (v / scale) * 100) + '%';
-  const left = (v) => Math.min(99.5, (v / scale) * 100) + '%';
+  const scaleW = Math.max(scale, P.cost / 0.78);
+  const w = (v) => Math.max(0, (v / scaleW) * 100) + '%';
+  const left = (v) => Math.min(99.5, (v / scaleW) * 100) + '%';
   const seg = [
     { k: 'wage', label: 'Oyuncu maaşı', v: P.wage, cls: 'is-wage' },
     { k: 'bonus', label: 'İmza primi', v: P.bonus, cls: 'is-bonus' },
@@ -34,7 +35,7 @@ export function Pasta({ pkg, fair, counter, lastCost, band, prev }) {
         ${seg.map((s) => html`<i class=${cx('tpasta__seg', s.cls)} style=${{ width: w(s.v) }} title=${`${s.label}: ${eur(s.v)}`}></i>`)}
       </div>
       <div class="tpasta__unseen" style=${{ left: w(P.cost) }}><span>tavan ?</span></div>
-      ${band ? html`<div class="tpasta__band" style=${{ left: left(band.lo), width: Math.max(2, ((band.hi - band.lo) / scale) * 100) + '%' }}><span>ipucu</span></div>` : null}
+      ${band ? html`<div class="tpasta__band" style=${{ left: left(band.lo), width: Math.max(2, ((band.hi - band.lo) / scaleW) * 100) + '%' }}><span>ipucu</span></div>` : null}
       ${counter ? html`<div class="tpasta__tick is-counter" style=${{ left: left(counter.cost) }}><em>onun teklifi</em></div>` : null}
       ${lastCost ? html`<div class="tpasta__tick is-last" style=${{ left: left(lastCost) }}><em>son teklifin</em></div>` : null}
     </div>

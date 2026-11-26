@@ -42,23 +42,29 @@ async function run(tag, vp) {
   await page.click('.hub-card .opt >> nth=0'); await page.waitForTimeout(700);
   await shot(page, `hub-result-${tag}`);
   await page.waitForTimeout(5000);
-  // play a few months, answering must-cards by clicking the first option
-  for (let i = 0; i < 6; i++) {
-    for (let k = 0; k < 6; k++) { const must = await page.$('.hub-card--must:not(.is-result) .opt:not(.is-off)'); if (!must) break; await must.click(); await page.waitForTimeout(300); }
+  // play months; answer must-cards with the first affordable option
+  const st = (fn) => page.evaluate(async (src) => { const { store } = await import('/src/ui/store.js'); return (new Function('store', 'return (' + src + ')(store)'))(store); }, fn.toString());
+  for (let i = 0; i < 9; i++) {
+    for (let k = 0; k < 8; k++) { const must = await page.$('.hub-card--must:not(.is-result) .opt:not(.is-off)'); if (!must) break; await must.click(); await page.waitForTimeout(250); }
     await page.waitForTimeout(500);
     if (i === 2) { await full(page, `hub-mid-full-${tag}`); await shot(page, `hub-mid-${tag}`); }
     const btn = await page.$('.hub-adv .btn:not(.is-off)');
     if (!btn) { await shot(page, `hub-blocked-${tag}`); break; }
     await btn.click(); await page.waitForTimeout(900);
-    const sheet = await page.$('.sheet'); if (sheet) { await shot(page, `hub-confirm-${tag}`); await page.click('text=Yine de oynat'); await page.waitForTimeout(300); }
-    if (i === 1 || i === 3) {
-      await page.waitForTimeout(1500); await shot(page, `playback-a-${i}-${tag}`);
-      await page.waitForTimeout(1500); await shot(page, `playback-b-${i}-${tag}`);
-      await page.waitForTimeout(6000); await full(page, `playback-end-${i}-${tag}`);
-    } else { await page.click('text=Atla').catch(() => {}); await page.waitForTimeout(500); }
-    if (!(await page.$('.playback-foot'))) { await shot(page, `deadline-${i}-${tag}`); break; }
+    if (await page.$('.sheet')) { if (i === 0) await shot(page, `hub-confirm-${tag}`); await page.click('.sheet__foot .btn'); await page.waitForTimeout(500); }
+    if (!(await page.$('.playback'))) { // Son Gün (other agent's overlay): finish it quickly
+      await shot(page, `deadline-${i}-${tag}`);
+      await st((store) => { store.act('deadlineFinish'); store.ui.closeOverlay(); store.advance(); });
+      await page.waitForTimeout(500);
+    }
+    if (i === 1 || i === 3 || i === 4) {
+      await page.waitForTimeout(1200); await shot(page, `playback-a-${i}-${tag}`);
+      await page.waitForTimeout(1800); await shot(page, `playback-b-${i}-${tag}`);
+      await page.waitForTimeout(6500); await shot(page, `playback-end-${i}-${tag}`);
+    } else { await page.click('text=Atla').catch(() => {}); await page.waitForTimeout(500); if (i === 2) await shot(page, `playback-skip-${i}-${tag}`); }
+    if (!(await page.$('.playback-foot.is-on'))) { await shot(page, `pb-stuck-${i}-${tag}`); break; }
     await page.click('.playback-foot .btn'); await page.waitForTimeout(700);
-    const dl = await page.$('.overlay'); if (dl) { await shot(page, `overlay-${i}-${tag}`); break; }
+    if (await page.$('.overlay')) { await shot(page, `overlay-${i}-${tag}`); break; }
   }
   await ctx.close();
 }
