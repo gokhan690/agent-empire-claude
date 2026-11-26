@@ -31,6 +31,14 @@ function table(o = {}) {
   if (open) { const r = act(S, 'openNegotiation', { interestId: 'iT' }); assert.ok(r.ok, r.error); }
   return { S, p, club: S.clubs[clubId], it };
 }
+/** Run `fn` with the hidden-quantity noise switched off (exact arithmetic assertions); restores the numbers afterwards. */
+function noiseless(fn) {
+  const saved = { creep: BAL.neg.creep.noise, p: Object.fromEntries(Object.keys(BAL.persona).filter(k => BAL.persona[k].noise !== undefined).map(k => [k, BAL.persona[k].noise])) };
+  BAL.neg.creep.noise = 0;
+  for (const k in saved.p) BAL.persona[k].noise = 0;
+  BAL.neg.gen.noise = 0;
+  try { return fn(); } finally { BAL.neg.creep.noise = saved.creep; for (const k in saved.p) BAL.persona[k].noise = saved.p[k]; BAL.neg.gen.noise = 0.07; }
+}
 const K = S => S.negotiation.hidden.K;
 function setK(S, k) { S.negotiation.hidden.K = k; S.negotiation.hidden.K0 = k; }
 /** fair package with the fee adjusted so that cost == target (fee ≥ 0). */
@@ -129,6 +137,7 @@ test('kurnaz shows tells one level angrier unless trust ≥ 60 or table L2', () 
 });
 
 test('other personas tell the truth; persona changes K and patience (cimri K−8%/6, sabirsiz K+8%/3)', () => {
+  noiseless(() => {
   const ks = {};
   for (const persona of ['durust', 'cimri', 'sabirsiz', 'kurnaz', 'gosterisci']) {
     const { S } = table({ persona, hype: 20 });
@@ -147,6 +156,7 @@ test('other personas tell the truth; persona changes K and patience (cimri K−8
     const r = act(S, 'negPropose', { package: costing(S, k * 1.15) });
     assert.equal(r.tell.level, 2, persona);
   }
+  });
 });
 
 test('patience upgrades and archetype: table L1 +1, hukukcu +1', () => {
@@ -156,6 +166,7 @@ test('patience upgrades and archetype: table L1 +1, hukukcu +1', () => {
 });
 
 test('counter creep: cost = K·(0.80 + 0.05·round), never above K; rounds drain patience; director leaves at 0', () => {
+  noiseless(() => {
   const { S, club, it } = table({ persona: 'cimri' }); // patience 6
   const k = cost({ ...S.negotiation.fair, fee: 0 }) + 30000; setK(S, k);
   const trust = club.trust;
@@ -177,6 +188,7 @@ test('counter creep: cost = K·(0.80 + 0.05·round), never above K; rounds drain
   assert.equal(club.trust, trust + BAL.neg.leave.trust);
   assert.equal(it.cooldown, BAL.neg.leave.cooldown);
   assert.match(act(S, 'openNegotiation', { interestId: 'iT' }).error, /küs/);
+  });
 });
 
 test('insult (> 1.35·K) costs 2 patience and flags hakaret with the harshest tell', () => {
@@ -194,6 +206,7 @@ test('insult (> 1.35·K) costs 2 patience and flags hakaret with the harshest te
 });
 
 test('counter-package is shaped by the director persona (kurnaz squeezes the fee, cimri the bonus)', () => {
+  noiseless(() => {
   const out = {};
   for (const persona of ['kurnaz', 'cimri']) {
     const { S } = table({ persona, tableLvl: 2 });
@@ -206,9 +219,11 @@ test('counter-package is shaped by the director persona (kurnaz squeezes the fee
   const feeCut = o => 1 - o.c.fee / o.pkg.fee, bonusCut = o => 1 - o.c.bonus / o.pkg.bonus;
   assert.ok(feeCut(out.kurnaz) > bonusCut(out.kurnaz));
   assert.ok(bonusCut(out.cimri) > feeCut(out.cimri) * 0.99 || bonusCut(out.cimri) >= 0.5);
+  });
 });
 
 test('acceptCounter: executes when the client agrees; error without a counter', () => {
+  noiseless(() => {
   const { S, p, club } = table();
   assert.equal(act(S, 'negAcceptCounter').ok, false);
   const k = cost({ ...S.negotiation.fair, fee: 0 }) + 20000; setK(S, k);
@@ -219,6 +234,7 @@ test('acceptCounter: executes when the client agrees; error without a counter', 
   assert.ok(r.ok, r.error);
   assert.equal(r.outcome === 'accepted' || r.outcome === 'hesitates', true);
   if (r.outcome === 'accepted') { assert.equal(p.clubId, club.id); assert.equal(p.wage, c.package.wage); }
+  });
 });
 
 test('walkAway: no penalty, closes the table', () => {
@@ -706,4 +722,59 @@ test('scripted agent: sensible negotiation over 8 seasons × 2 seeds (no NaN, no
     assert.equal(S.negotiation, null);
     assert.equal(S.agency.stats.deals >= stats.deals, true);
   }
+});
+
+// ------------------------------------------------------------------ round 2: a tighter Masa
+/** A table at a realistic club (budget of a Süper Lig side, interest 65) instead of the generous fixture above. */
+function realistic(seed) {
+  const { S, club } = table({ seed, open: false, level: 65 });
+  club.budget = BAL.clubBudgetByPrestige[2];
+  const r = act(S, 'openNegotiation', { interestId: 'iT' });
+  assert.ok(r.ok, r.error);
+  const p = S.players[S.negotiation.playerId];
+  return { S, p, club };
+}
+
+test('the suggested package usually sits above the ceiling; the ceiling varies per persona (noise) and is inferable', () => {
+  const ratios = [];
+  for (let seed = 1; seed <= 40; seed++) {
+    const { S } = realistic(seed);
+    ratios.push(K(S) / neg.packageCost(S.negotiation.fair));
+  }
+  ratios.sort((a, b) => a - b);
+  const med = ratios[20];
+  assert.ok(med > 0.8 && med < 1.0, 'median K/F ' + med);
+  assert.ok(ratios.filter(r => r < 1).length >= 26, 'fair is above K in most tables');
+  assert.ok(ratios[35] - ratios[4] > 0.12, 'there is real spread');
+  assert.ok(BAL.persona.sabirsiz.noise > BAL.persona.durust.noise && BAL.persona.kurnaz.noise > BAL.persona.durust.noise);
+});
+
+test('the client minimum is close to the ceiling: accepting the default is not a win, a Koz or a smaller fee is', () => {
+  let tight = 0, n = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const { S, p, club } = realistic(seed);
+    const f = S.negotiation.fair;
+    // smallest wage (no fee) the client signs at
+    let lo = BAL.wage.min, hi = S.negotiation.limits.wage[1];
+    const sat = w => neg.satisfaction(S, p, club, 'transfer', { wage: w, years: f.years, bonus: f.bonus, fee: 0, clauses: { minutes: false, release: false } }).value;
+    if (sat(hi) < 50) continue;
+    for (let i = 0; i < 16; i++) { const mid = Math.round((lo + hi) / 2 / 100) * 100; if (sat(mid) >= 50) hi = mid; else lo = mid; }
+    const M = cost({ wage: hi, years: f.years, bonus: f.bonus, fee: 0, clauses: { minutes: false, release: false } });
+    n++;
+    if (K(S) - M < 0.12 * cost(f)) tight++;
+  }
+  assert.ok(n >= 20 && tight / n >= 0.6, 'margin for the fee is narrow in most tables: ' + tight + '/' + n);
+});
+
+test('counters carry noise (not exactly K·(0.80+0.05·round)) but stay below K', () => {
+  const { S } = table({ persona: 'cimri' });
+  const k = cost({ ...S.negotiation.fair, fee: 0 }) + 30000; setK(S, k);
+  const ratios = [];
+  for (let round = 1; round <= 5; round++) {
+    const r = act(S, 'negPropose', { package: costing(S, k * 1.3) });
+    assert.equal(r.outcome, 'countered');
+    assert.ok(r.counter.cost <= k);
+    ratios.push(r.counter.cost / k - (0.80 + 0.05 * round));
+  }
+  assert.ok(ratios.some(x => Math.abs(x) > 0.004), 'noise present: ' + ratios);
 });

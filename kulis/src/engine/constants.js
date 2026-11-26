@@ -122,7 +122,7 @@ export const BAL = {
     wageSpread: 0.18, contractMax: 4,
     foreignMixTR: 0.22,
   },
-  rivalShare: 0.25,
+  rivalShare: 0.16, rivalEliteShare: 0.05, // share of players who start with a rival agent (stars: far fewer)
 
   // development
   dev: {
@@ -137,6 +137,7 @@ export const BAL = {
     declinePerYear: { 30: 0.8, 31: 1.2, 32: 1.8, 33: 2.4, 34: 3.0, 35: 3.5 },
     shSmooth: 0.6,
     formDecay: 0.85,
+    driftGain: 1.6, driftMin: 0.05, driftBoost: 0.8, driftBoostMax: 0.9, // league-strength regulator: growth rate ×(1 − gain·drift) when a league's average XI is above its start level
     hypeStep: 0.15, hypeBase: 1.2, hypeBaseFrom: 60, hypeBaseMax: 60, hypeForm: 2,
   },
   // matches
@@ -166,25 +167,32 @@ export const BAL = {
 
   // economy
   econ: {
-    upkeepUpgrade: [0, 1500, 3500, 7000, 12000],
+    upkeepUpgrade: [0, 1200, 2600, 5000, 9000],
+    // office upkeep also grows with the roster (staff) and with reputation tier (bigger office, travel, entertaining)
+    staff: { free: 5, perClient: 600, valueFrom: 5000000, valueShare: 0.0015 }, // per client above 3, plus a share of each client's market value above €5M per month (agents, lawyers, analysts)
+    repTier: [[20, 1500], [35, 4500], [50, 24000], [65, 70000], [80, 130000]],
+    // action costs (lunch, media, scouting trips) scale with the agency: 1 + perClient·(clients above 3) + perRep·(rep above start)/100
+    scale: { perClient: 0.04, perRep: 1.0 },
+    // event / loyalty-bonus prices scale with how rich the agency is: ×clamp(1 + (cash − from) / per, 1, max)
+    wealth: { from: 400000, per: 400000, max: 10 },
     negMonthsBankrupt: 3, ledgerMax: 24,
     loan: { amount: 80000, rate: 0.15, months: 12 },
   },
-  rep: { decay: 100, floor: 0.15 },
-  rank: { clientW: 70000, cashW: 0.5, repW: 50000, topClients: 10 },
+  rep: { decay: 78, floor: 0.12 },
+  rank: { clientW: 80000, cashW: 0.3, repW: 50000, topClients: 10 },
 
   season: {
     retire: { startAge: 33, base: 0.12, step: 0.16, force: 38, gkBonus: 2 },
     renewChance: 0.85, renewYears: [1, 4], youthContract: [2, 4], wageRenewFloor: 0.9,
     newsMax: 80, promotion: 2, clubFormDrift: 0.4, youthAnchor: 0.75,
-    formReset: 0.4, cullGap: 8, cullChance: 0.6,
+    formReset: 0.4, cullGap: 8, cullChance: 0.6, moveShift: 0.6, moveShiftMax: 5,
   },
 
   rivals: [
-    { id: 'r1', name: 'Sedat Korkmaz', agency: 'Korkmaz Spor Menajerlik', persona: 'kopekbaligi', rep: 28, cash: 220000, color: '#E0624A' },
-    { id: 'r2', name: 'Dr. Ayşe Tuna', agency: 'Tuna Akademi', persona: 'akademisyen', rep: 24, cash: 160000, color: '#B48CFF' },
-    { id: 'r3', name: 'Hasan Usta', agency: 'Usta & Oğulları', persona: 'eskidost', rep: 34, cash: 260000, color: '#5AB0FF' },
-    { id: 'r4', name: 'Orhan Berk', agency: 'Berk Holding Sports', persona: 'holding', rep: 44, cash: 2000000, color: '#F5C451' },
+    { id: 'r1', name: 'Sedat Korkmaz', agency: 'Korkmaz Spor Menajerlik', persona: 'kopekbaligi', rep: 12, cash: 100000, color: '#E0624A', eliteCap: 2 },
+    { id: 'r2', name: 'Dr. Ayşe Tuna', agency: 'Tuna Akademi', persona: 'akademisyen', rep: 10, cash: 80000, color: '#B48CFF', eliteCap: 3 },
+    { id: 'r3', name: 'Hasan Usta', agency: 'Usta & Oğulları', persona: 'eskidost', rep: 30, cash: 240000, color: '#5AB0FF', eliteCap: 10 },
+    { id: 'r4', name: 'Orhan Berk', agency: 'Berk Holding Sports', persona: 'holding', rep: 42, cash: 1800000, color: '#F5C451', eliteCap: 18 },
   ],
   rivalCommission: [5, 10],
 
@@ -203,7 +211,7 @@ export const BAL = {
     lunch: { cashBase: 1500, cashPerPrestige: 1500, trust: 10, trustL2: 15, band: 0.25 },
     media: { cashBase: 3000, valueShare: 0.004, min: 3000, max: 25000, hype: 15, yildizMorale: 8, sadikMorale: -5 },
     deal: {
-      feeFactorBase: 0.95, feeFactorNeed: 0.05, repDiv: 200000, repMax: 3, repBase: 0.8, repLog: 0.6, repRenewal: 0.3,
+      feeFactorBase: 0.95, feeFactorNeed: 0.05, repDiv: 200000, repMax: 2.6, repBase: 0.85, repLog: 0.55, repRenewal: 0.3,
       oldClubTrust: -4, oldClubTrustFree: -20, newClubTrust: 6, renewTrust: 4, releaseMult: 1.5,
       minutesMorale: 30, benchHirsliMorale: -6, benchHirsliLoyalty: -8, dreamMorale: 8, dreamLoyalty: 6, moveLoyalty: 4, renewLoyalty: 8,
       feeNoticeLoyalty: -5,
@@ -219,8 +227,9 @@ export const BAL = {
     bonusMonths: { transfer: 2, free: 6, renewal: 1.5 },
     clause: { minutes: 0.08, release: 0.05 },
     maxWageMult: 4, maxBonusMonths: 24, maxFeeShare: 0.6,
+    bigDeal: { from: 2000000, span: 1.2, cut: 0.6 }, // the share of a package the client tolerates as your fee shrinks on very big packages (×(1−cut) from ~€32M up)
     tell: [0.05, 0.12, 0.22, 0.35],
-    creep: { base: 0.80, step: 0.05, noise: 0.04 },
+    creep: { base: 0.80, step: 0.05, noise: 0.06 },
     insult: 1.35,
     sat: {
       demandMult: 1.04, base: 32, wageFair: 15, wageSlope: 75, wageMin: -30, wageMax: 28, paraci: 1.3,
@@ -245,7 +254,7 @@ export const BAL = {
     },
   },
   deadline: {
-    hours: [18, 23], maxCalls: 8, minLevel: 2, kBoost: [0, 0.05, 0.09, 0.13], patiencePenalty: 1,
+    hours: [18, 23], maxCalls: 8, minLevel: 2, kBoost: [0, 0.03, 0.06, 0.09], patiencePenalty: 1,
     callLen: [1, 3], missedInterest: -30, hotLevel: 60,
   },
 
@@ -261,9 +270,11 @@ Object.assign(BAL, {
     count: 3, startKnow: 10, gemChance: 0.12, gemMinGap: 14,
     qBase: { 1: 46, 2: 54, 3: 60, 4: 66, 5: 70 }, qRep: 0.15, qSd: 7,   // target level of offered prospects
     watchKnow: 30, traitKnow: 60, dreamKnow: 85, shortlistMax: 40,
+    bandK: 0.44,                        // potential band width = (100 − know)·bandK CA points: wide when you barely know him
+    decoyChance: 0.22, decoyMaxGap: 3, // chance a prospect slot is a "decoy": looks the part today (high CA/hype) but has almost no upside left
   },
   recruit: {
-    repW: 1.6, knowW: 0.15, base: 6, mahalleYouth: 12, expiring: 4,
+    repW: 1.6, knowW: 0.30, base: 3, mahalleYouth: 12, expiring: 4,
     thrBase: 15, thrFrom: 40, thrSlope: 1.8, thrHigh: 70, thrSlope2: 2.0, thrRival: 18, thrHype: 0.04,
     maxPromises: 3, commission: [5, 10], commissionStep: 5, contractYears: 2,
     promiseAdd: 9, promiseFit: 1.5, promiseOffFit: 0.6,
@@ -281,9 +292,10 @@ Object.assign(BAL, {
   promise: {
     kept: { loyalty: 15, rep: 2, morale: 5 }, broken: { loyalty: -25, rep: -3, morale: -10 },
     minutesShare: 0.5, minWindow: 4, walkoutLoyalty: 25, wageMult: 1.25, wageFairMult: 1.15, keepMonths: 24,
+    stayMinutes: 0.45, transferUpReach: 12, transferUpSure: 5, // `stay` only for players who want to stay (starter-ish or rooted); `transfer_up` only when the next league is within reach
   },
   upgrade: {
-    cost: { scout: [40000, 120000, 350000, 900000], table: [40000, 120000, 350000, 900000], network: [50000, 150000, 400000, 1000000] },
+    cost: { scout: [40000, 120000, 550000, 2500000], table: [40000, 150000, 650000, 3500000], network: [50000, 180000, 750000, 4500000] },
     names: { scout: 'Gözlem', table: 'Masa', network: 'Ağ' },
     scoutPassiveKnow: 10, heatSlow: 0.7, lunchTrust: 15, loyaltyDecayMult: 0.65,
     text: {
@@ -294,7 +306,7 @@ Object.assign(BAL, {
   },
   rivalAI: {
     heatBase: 3, heatObv: 9, heatHype: 0.03, heatObvFrom: 45, heatObvSpan: 35, akademisyenU21: 1.4,
-    bgSign: 0.7, bgSample: 6, bgLose: 0.35, minPortfolio: 40, commission: [5, 10],
+    bgSign: 0.7, bgSample: 6, bgLose: 0.35, minPortfolio: 40, commission: [5, 10], eliteCa: 68, eliteYouthPa: 82, renewChance: 0.55, renewChanceElite: 0.4,
     repPull: 0.05, repNoise: 0.4, repMin: 5, repMax: 95, cashFloor: 20000, upkeepBase: 3000, upkeepRep: 120, incomeShare: 0.02, cashGrowth: 0.25, cashPull: 0.08,
     poachLoyalty: 35, poachChance: 0.55, poachCooldown: 4, poachBonusK: 2, poachBonusMin: 4000, poachBonusMax: 60000,
     poachPromiseLoyalty: 22, poachBonusLoyalty: 25, poachMaxPending: 3,

@@ -10,6 +10,7 @@ import { projectMinutes, clubStrength, squadOf } from './selection.js';
 import { avgRecent, interestOpenReason, negotiationView, upgradeEffects } from './selectors.js';
 import { spendEnergy } from './economy.js';
 import * as market from './market.js';
+import * as promises from './promises.js';
 import { useAction } from './deadline.js';
 import { tellLine, directorLine } from './data/tells.js';
 
@@ -264,7 +265,7 @@ export function openTable(S, a, opts = {}) {
     playerId: p.id, clubId: club.id, fromClubId: p.clubId || null,
     round: 0, patience, patienceMax: patience, insults: 0,
     fair, limits: limitsFor(fair, p), transferFee: tf, demandWage: demandWage(S, p, club, kind),
-    feeThreshold: market.feeThreshold(S),
+    feeThreshold: market.feeThreshold(S, market.packageCost(fair)),
     hand, package: null, counter: null, lastTell: null, ceilingBand: band, pending: null, log: [],
     deadline: opts.deadline ? { ...opts.deadline } : null,
     hidden: { K, K0: K, persona, gen: cp.gen, trueLevel: null, kBoost: opts.kBoost || 0, saved: cp.saved },
@@ -315,7 +316,7 @@ export function preview(S, a) {
     cost: packageCost(pkg), satisfaction: sat.value, satisfactionParts: sat.parts,
     feeSharePct: Math.round(share * 1000) / 10, feeWarning: share > n.feeThreshold + 1e-9,
     clientOk: sat.value >= BAL.neg.sat.ok, clientLean: sat.value >= BAL.neg.sat.lean && sat.value < BAL.neg.sat.ok,
-    transferFee: n.transferFee, expectedMinutes: sat.minutes, demandWage: sat.demand,
+    transferFee: n.transferFee, expectedMinutes: sat.minutes, demandWage: sat.demand, promiseChecks: promises.checksFor(S, p, pkg),
   };
   if (v.error) res.error = v.error;
   return res;
@@ -326,7 +327,7 @@ export function preview(S, a) {
 function close(S) { S.negotiation = null; }
 
 function settle(S, n, pkg) {
-  const deal = { playerId: n.playerId, toClubId: n.clubId, kind: n.kind, wage: pkg.wage, years: pkg.years, bonus: pkg.bonus, fee: pkg.fee, clauses: pkg.clauses, transferFee: n.transferFee };
+  const deal = { playerId: n.playerId, toClubId: n.clubId, kind: n.kind, wage: pkg.wage, years: pkg.years, bonus: pkg.bonus, fee: pkg.fee, clauses: pkg.clauses, transferFee: n.transferFee, feeThreshold: n.feeThreshold };
   const dl = n.deadline && S.deadline ? S.deadline : null;
   close(S);
   const r = market.executeTransfer(S, deal);

@@ -54,7 +54,11 @@ test('start: 3 Turkish clients, gem aged 17 with wide band, rivals hold ~25%', (
   for (const p of cl) { assert.equal(p.nat, 'TR'); assert.ok(['tr1', 'tr2'].includes(S.clubs[p.clubId].leagueId)); }
   const all = Object.values(S.players);
   const rival = all.filter(p => p.agentId && p.agentId !== 'you').length / all.length;
-  assert.ok(rival > 0.2 && rival < 0.3, 'rival share ' + rival);
+  assert.ok(rival > 0.09 && rival < 0.19, 'rival share ' + rival);
+  const elite = all.filter(p => p.ca >= BAL.rivalAI.eliteCa);
+  const eliteRival = elite.filter(p => p.agentId && p.agentId !== 'you').length / Math.max(1, elite.length);
+  assert.ok(eliteRival < 0.12, 'rivals hold few stars at the start: ' + eliteRival);
+  for (const r of S.rivals) assert.ok(all.filter(p => p.agentId === r.id && (p.ca >= BAL.rivalAI.eliteCa)).length <= (BAL.rivals.find(x => x.id === r.id).eliteCap || 99) + 6);
   assert.equal(S.rivals.length, 4);
   assert.equal(S.ranking.length, 5);
   assert.equal(S.agency.cash, 60000); assert.equal(S.agency.rep, 12);

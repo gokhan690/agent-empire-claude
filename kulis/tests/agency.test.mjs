@@ -294,7 +294,7 @@ test('promise on a lost client is voided; minutes progress exposed', () => {
 
 // ------------------------------------------------------------------ upgrades
 test('upgrade preview/buy: costs, upkeep, energy', () => {
-  const S = fresh(); S.agency.cash = 5e6;
+  const S = fresh(); S.agency.cash = 2e7;
   const pv = act(S, 'upgradePreview', { branch: 'network' }).preview;
   assert.equal(pv.level, 0); assert.equal(pv.nextLevel, 1); assert.equal(pv.cost, BAL.upgrade.cost.network[0]);
   assert.equal(pv.upkeepDelta, BAL.econ.upkeepUpgrade[1]); assert.ok(pv.text.length > 3);
@@ -517,3 +517,100 @@ for (const seed of [1, 2, 3]) {
     for (const pr of S.promises) assert.ok(pr.status !== 'open' || (S.players[pr.playerId] && S.players[pr.playerId].agentId === 'you'));
   });
 }
+
+// ------------------------------------------------------------------ round 2: promises are about what you can keep
+test('promise assess: stay only for players who want to stay, transfer_up not at the top, minutes only for starters', () => {
+  const S = fresh();
+  const { p } = setupPromise(S, 'visit');
+  p.st.sh = 0.8; p.trait = 'profesyonel';
+  assert.equal(promises.assess(S, p, 'stay').keepable, true);
+  p.st.sh = 0.1;
+  const st = promises.assess(S, p, 'stay');
+  assert.equal(st.blocked, true); assert.match(st.note, /kalmak istemiyor/);
+  p.clubId = topClub(S, 5).id;
+  const up = promises.assess(S, p, 'transfer_up');
+  assert.equal(up.blocked, true); assert.match(up.note, /en üst/);
+  // preview exposes it (new optional fields) and refuses a blocked choice with the same text
+  const q = Object.values(S.players).find(x => !x.agentId && x.clubId && !x.seen && S.clubs[x.clubId].leagueId === 'tr1');
+  q.seen = true; q.know = 80; q.st.sh = 0.05; q.trait = 'profesyonel';
+  const pv = clients.recruitPreview(S, { playerId: q.id, promises: [{ type: 'stay' }] });
+  const o = pv.promiseOptions.find(x => x.type === 'stay');
+  assert.equal(o.blocked, true); assert.equal(o.keepable, false); assert.equal(o.fit, false); assert.ok(o.warning.length > 5);
+  assert.equal(pv.canSign, false); assert.equal(pv.error, o.warning);
+  assert.equal(clients.recruit(S, { playerId: q.id, promises: [{ type: 'stay' }] }).ok, false);
+});
+
+test('promise minutes: the window restarts after a transfer you arranged to a club with more minutes', () => {
+  const S = fresh();
+  const { p, pr } = setupPromise(S, 'minutes');
+  S.time.month = 8;
+  p.st.mins = 400; S.leagues[S.clubs[p.clubId].leagueId].matchday = 10;
+  const before = pr.from;
+  promises.onMove(S, p, 0.22, 0.88, true);
+  assert.notEqual(pr.from, before); assert.ok(pr.restarted && pr.restarted.month === 8);
+  assert.equal(pr.from.mins, 400); assert.equal(pr.from.md, S.leagues[S.clubs[p.clubId].leagueId].matchday);
+  const keep = pr.from;
+  promises.onMove(S, p, 0.88, 0.22, true); // a move to fewer minutes does not restart anything
+  assert.equal(pr.from, keep);
+});
+
+test('promise stay: a transfer you arrange breaks it, a forced move voids it, and an open stay promise blocks transfer tables', () => {
+  const S = fresh();
+  const { p, pr } = setupPromise(S, 'stay');
+  const club = Object.values(S.clubs).find(c => c.id !== p.clubId && c.leagueId === S.clubs[p.clubId].leagueId);
+  S.time.month = 1; p.contractEnd = S.time.season + 2;
+  const it = { id: 'iStay', playerId: p.id, clubId: club.id, level: 80, kind: 'transfer', cooldown: 0, boost: 0 };
+  S.interests.push(it);
+  const row = sel.interestList(S, p.id).find(i => i.id === 'iStay');
+  assert.equal(row.negotiable, false); assert.match(row.reason, /kalma sözün/);
+  assert.equal(act(S, 'openNegotiation', { interestId: 'iStay' }).ok, false);
+  promises.onMove(S, p, 0.5, 0.5, false);
+  assert.equal(S.promises.includes(pr), false, 'forced move: void, not broken');
+  const S2 = fresh();
+  const b = setupPromise(S2, 'stay');
+  promises.onMove(S2, b.p, 0.5, 0.5, true);
+  assert.equal(b.pr.moved, true);
+  const out = promises.check(S2);
+  assert.equal(out[0].status, 'broken');
+});
+
+test('promise cards only offer a keepable type; negPreview lists promise checks', () => {
+  const S = fresh();
+  const { p } = setupPromise(S, 'visit');
+  p.trait = 'paraci'; p.contractEnd = S.time.season + 3; p.st.sh = 0.9;
+  assert.notEqual(promises.suggest(S, p), 'wage');
+  p.contractEnd = S.time.season;
+  assert.equal(promises.suggest(S, p), 'wage');
+  const wp = promises.add(S, promises.make(S, p, 'wage'));
+  const chk = promises.checksFor(S, p, { wage: 100, years: 3, bonus: 0, fee: 0 });
+  assert.equal(chk.length, 1); assert.equal(chk[0].ok, false);
+  assert.equal(promises.checksFor(S, p, { wage: wp.target, years: 3, bonus: 0, fee: 0 })[0].ok, true);
+});
+
+// ------------------------------------------------------------------ round 2: scouting, rivals, league stability
+test('potential band is wide when you barely know him and narrows with watching; the truth stays inside', () => {
+  const S = fresh();
+  let widths = [];
+  for (const know of [10, 40, 70, 100]) {
+    const gaps = [];
+    for (const p of Object.values(S.players).slice(0, 200)) {
+      p.know = know;
+      const b = sel.potentialBand(S, p);
+      assert.ok(b.lo <= p.pa && p.pa <= b.hi, 'band contains pa');
+      gaps.push(b.hi - b.lo);
+    }
+    widths.push(gaps.reduce((a, x) => a + x, 0) / gaps.length);
+  }
+  assert.ok(widths[0] > 30 && widths[0] > widths[1] && widths[1] > widths[2] && widths[2] > widths[3], JSON.stringify(widths));
+  assert.ok(widths[3] <= 3);
+});
+
+test('rivals hold a capped number of stars; the cap keeps the best players recruitable', () => {
+  const S = newGame({ seed: 17 });
+  const elite = rivals.isElite;
+  for (let i = 0; i < 40; i++) { S.time.month = (S.time.month + 1) % 12; rivals.monthly(S); }
+  for (const r of S.rivals) {
+    const n = Object.values(S.players).filter(p => p.agentId === r.id && elite(p)).length;
+    assert.ok(n <= BAL.rivals.find(x => x.id === r.id).eliteCap + 8, r.id + ' holds ' + n);
+  }
+});

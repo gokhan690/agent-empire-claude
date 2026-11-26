@@ -7,10 +7,11 @@
 // directly on their options (plain JSON); template cards resolve those from the template by `card.key`.
 import { BAL, MONTHS } from './constants.js';
 import { uid, chance, pickBy, pickWeighted } from './rng.js';
-import { myClients, absMonth, squadIndex, clubStrength } from './selectors.js';
+import { myClients, absMonth, squadIndex, clubStrength, wealthMult } from './selectors.js';
 import { spend, spendEnergy, takeLoan } from './economy.js';
 import { applyEffects } from './effects.js';
 import { fmt, eur } from './data/text.js';
+import { tidy } from './util.js';
 import { EVENT_TEMPLATES, TUTORIAL_TEMPLATES } from './data/events.js';
 import * as tutorial from './tutorial.js';
 import * as ending from './ending.js';
@@ -184,11 +185,17 @@ export function spawn(S, key, cand = {}, over = {}) {
   });
 }
 
+// templates whose `amount` is money coming IN (or a loan principal): never scaled by wealth
+const INCOME_KEYS = new Set(['fan_favourite', 'boot_sponsor', 'gambling_sponsor', 'journalist_leak', 'agency_buyout', 'friend_loan', 'loan_due', 'tax_audit']);
+
 function candidatesOf(tpl, S, X) {
   const r = tpl.when ? tpl.when(S, X) : true;
   if (!r) return [];
   if (r === true) return [{}];
-  return (Array.isArray(r) ? r : [r]).filter(Boolean).map(x => (x === true ? {} : x));
+  const list = (Array.isArray(r) ? r : [r]).filter(Boolean).map(x => (x === true ? {} : x));
+  const wm = INCOME_KEYS.has(tpl.key) ? 1 : wealthMult(S);
+  if (wm > 1) for (const c of list) if (typeof c.amount === 'number') c.amount = tidy(c.amount * wm);
+  return list;
 }
 
 function runEffects(S, effects, ctx, label) {

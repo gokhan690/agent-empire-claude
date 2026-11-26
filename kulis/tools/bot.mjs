@@ -64,7 +64,7 @@ function optScore(S, o, p) {
       case 'interest': s += v * 0.15; break;
       case 'know': s += v * 0.1; break;
       case 'energy': s += v * 4; break;
-      case 'promise': s += 1.5; break;
+      case 'promise': s += (typeof e.value === 'string' && /maaş|üst|transfer|kal/i.test(e.value)) ? -2 : 1.5; break;
       case 'releaseClient': case 'sellTo': s -= 25; break;
       case 'injure': s -= 5; break;
       case 'heal': s += 3; break;
@@ -192,13 +192,15 @@ function playTable(ctx, style) {
   if (style === 'sharp') {
     // careful play: the client's floor first, fee only from what the director can really add, tells + counters to find the ceiling, Koz only when needed
     const years = v.fair.years, bonus = v.fair.bonus;
-    const nw = needWage(ctx, v, bonus, years, false, 52);
-    if (nw === null) { ctx.do('negWalkAway'); result = 'lost'; why = 'client:unreachable'; }
+    let nw = needWage(ctx, v, bonus, years, false, 52);
+    const wp = sel.clientView(S, v.playerId).promises.find(q => q.type === 'wage' && q.target); // a wage promise is kept at the table: pay it out of the pie
+    if (nw !== null && wp) nw = Math.max(nw, Math.ceil(wp.target / 100) * 100);
+    if (nw === null || nw > v.limits.wage[1]) { ctx.do('negWalkAway'); result = 'lost'; why = 'client:unreachable'; }
     else {
-      const FSMAX = 0.115, FSWANT = 0.08, FSMIN = 0.025; // fee share: cap (client notices above it), what is worth the energy, what is barely worth it
+      const FSMAX = Math.min(0.115, v.feeThreshold - 0.004), FSWANT = Math.min(0.10, FSMAX * 0.85), FSMIN = 0.04; // fee share: cap (client notices above it), what is worth the energy, what is barely worth it
       const base = nw * 12 * years + bonus; // the cheapest package the client signs (no fee)
       const wantT = base / (1 - FSWANT), minT = base / (1 - FSMIN);
-      let Kcur = F * 0.95;                  // prior: the suggested package sits a bit above the ceiling
+      let Kcur = F * 1.0;                   // opening: about the suggested package; the first tell is what corrects it
       for (let round = 0; round < 9 && !result; round++) {
         v = sel.negotiationView(S);
         if (!v) break;
@@ -224,7 +226,7 @@ function playTable(ctx, style) {
         const lvl = r.tell ? r.tell.level : 2;
         const kTell = C / (1 + GAP_MID[lvl]);
         const c = r.counter;
-        const kCounter = c ? c.cost / (0.8 + 0.05 * (v.round + 1)) : kTell;
+        const kCounter = c ? c.cost / (0.8 + 0.05 * (v.round + 1)) : kTell; // counters creep (+5 % of his ceiling per round) — the noise in them keeps this an estimate
         Kcur = lvl >= 4 ? kCounter : (kTell + kCounter) / 2;
         if (c && c.clientOk && (r.patience <= 1 || (round >= 2 && c.cost >= 0.96 * Kcur))) {
           const a = ctx.do('negAcceptCounter');
@@ -271,8 +273,9 @@ function playTable(ctx, style) {
   }
   if (!result) { why = why || 'rounds'; result = 'lost'; }
   if (S.negotiation) ctx.do('negWalkAway');
-  if (result === 'accepted') T.won++; else { T.lost++; T.why[why || '?'] = (T.why[why || '?'] || 0) + 1; }
-  T.rounds.push(rounds);
+  if (result === 'accepted') T.won++; else if (why === 'client:unreachable') T.skipped = (T.skipped || 0) + 1; else { T.lost++; T.why[why || '?'] = (T.why[why || '?'] || 0) + 1; }
+  if (S.time.phase === 'deadline' && rounds > 0) { T.dl = T.dl || { n: 0, rounds: 0, won: 0 }; T.dl.n++; T.dl.rounds += rounds; if (result === 'accepted') T.dl.won++; }
+  if (rounds > 0) T.rounds.push(rounds); // tables walked away from at once (client unreachable) are not "rounds played"
   ctx.say('  ✦ masa: ' + result + ' (' + rounds + ' tur)');
   return result;
 }
@@ -360,9 +363,10 @@ function scoutAndRecruit(ctx, style) {
     let promises = [];
     if (style !== 'greedy' && info.score < info.threshold) {
       // add promises we can keep: visit first, then minutes for clubs where he starts
-      const order = style === 'sharp' ? ['visit', 'minutes', 'stay'] : ['minutes', 'visit', 'wage', 'stay', 'transfer_up'];
+      const order = style === 'sharp' ? ['visit', 'minutes', 'stay', 'wage', 'transfer_up'] : ['minutes', 'visit', 'wage', 'stay', 'transfer_up'];
       let sc = info.score;
-      for (const t of order) { if (sc >= info.threshold || promises.length >= 3) break; const o = info.promiseOptions.find(x => x.type === t); if (o) { promises.push({ type: t }); sc += o.add; } }
+      // careful players only promise what is realistically keepable (the preview says so: `keepable`/`blocked`)
+      for (const t of order) { if (sc >= info.threshold || promises.length >= 3) break; const o = info.promiseOptions.find(x => x.type === t); if (o && !o.blocked && (style !== 'sharp' || o.keepable)) { promises.push({ type: t }); sc += o.add; } }
       if (sc < info.threshold) continue;
     } else if (info.score < info.threshold) {
       promises = ['transfer_up', 'wage', 'minutes'].map(t => ({ type: t }));
@@ -381,6 +385,19 @@ function scoutAndRecruit(ctx, style) {
     const leagues = style === 'sharp' ? (S.agency.rep > 35 ? ['tr1', 'nl1', 'tr2'] : ['tr2', 'tr1']) : ['tr2', 'tr1'];
     const lid = ctx.rnd.pick(leagues);
     ctx.do('scoutTrip', { leagueId: lid, focus: style === 'sharp' ? 'u21' : 'any' });
+  }
+}
+
+/** Keep visit promises: in the last two months of a half-season visit every client who still needs one. */
+function visitPromises(ctx) {
+  const S = ctx.S, m = S.time.month;
+  if (![4, 5, 10, 11].includes(m)) return;
+  for (const c of sel.clientList(S)) {
+    if (energy(ctx) < 1) return;
+    const cv = sel.clientView(S, c.id);
+    if (cv.visitedThisMonth) continue;
+    const need = cv.promises.some(q => q.type === 'visit' && q.half && (m <= 5 ? (q.half.needA && !q.half.a) : (q.half.needB && !q.half.b)));
+    if (need) ctx.do('visitClient', { playerId: c.id });
   }
 }
 
@@ -442,7 +459,7 @@ function buyUpgrades(ctx, style) {
   for (const b of order) {
     const pv = sel.upgradeView(S).find(x => x.branch === b);
     if (!pv || pv.maxed) continue;
-    if (A.cash >= pv.cost * 2.2 + 25000 && (ups[b] + 1) === pv.nextLevel) {
+    if (A.cash >= pv.cost * 2.2 + 25000 + (S.time.season <= 2 ? 60000 : 0) && (ups[b] + 1) === pv.nextLevel) { // early on keep a cushion: upgrades add monthly upkeep
       // only buy the next level of the first branch in the list that is behind the "round-robin" schedule
       const total = ups.table + ups.network + ups.scout;
       if (ups[b] <= Math.floor(total / 3) + (order.indexOf(b) % 3 === 0 ? 1 : 0)) { if (ctx.do('buyUpgrade', { branch: b }).ok) { ctx.say('  ⚙ yükseltme ' + b); } return; }
@@ -468,6 +485,12 @@ function mediaRound(ctx) {
 }
 
 // ------------------------------------------------------------------ bots
+/** The bank's one-time lifeline: take it when offered (a person on the edge of bankruptcy would). */
+function takeLoanIfOffered(ctx) {
+  const S = ctx.S;
+  if (S.agency.loanOffered && !S.agency.loan && S.agency.cash < 40000) ctx.do('takeLoan');
+}
+
 function tutorialDrive(ctx, style) {
   const S = ctx.S;
   const step = sel.hubSummary(S).tutorialStep;
@@ -487,6 +510,7 @@ const BOTS = {
     plan(ctx) {
       const S = ctx.S;
       tutorialDrive(ctx, 'casual');
+      takeLoanIfOffered(ctx);
       if (negotiable(ctx).length && ctx.rnd.chance(0.8)) openAndPlay(ctx, 'casual', 1);
       if (energy(ctx) > 0 && sel.clientList(S).some(c => c.loyalty < 50)) visitClients(ctx, 1, 'casual');
       if (energy(ctx) > 0 && ctx.rnd.chance(0.7)) scoutAndRecruit(ctx, 'casual');
@@ -504,7 +528,9 @@ const BOTS = {
     plan(ctx) {
       const S = ctx.S;
       tutorialDrive(ctx, 'sharp');
+      takeLoanIfOffered(ctx);
       openAndPlay(ctx, 'sharp', 2);
+      visitPromises(ctx);
       if (energy(ctx) > 0) visitClients(ctx, 1, 'sharp');
       if (energy(ctx) > 0) scoutAndRecruit(ctx, 'sharp');
       if (energy(ctx) > 0) pitchRound(ctx, 'sharp');
@@ -635,7 +661,7 @@ function snapshotSeason(ctx, report) {
     kept: A.stats.promisesKept, broken: A.stats.promisesBroken, dreams: A.stats.dreams,
     stars: clients.filter(p => p.ca >= 82).length, top: clients.reduce((m, p) => Math.max(m, p.value), 0), maxCa: clients.reduce((m, p) => Math.max(m, p.ca), 0),
     pf: clients.reduce((s, p) => s + p.value, 0), rivalTop: S.ranking.filter(r => r.id !== 'you')[0] ? S.ranking.filter(r => r.id !== 'you')[0].score : 0, myScore: (S.ranking.find(r => r.id === 'you') || {}).score || 0,
-    ups: A.upgrades.scout + A.upgrades.table + A.upgrades.network,
+    ups: A.upgrades.scout + A.upgrades.table + A.upgrades.network, rvs: S.rivals.map(r => r.score),
     loy: clients.length ? clients.reduce((s, p) => s + p.loyalty, 0) / clients.length : 0,
   };
   ctx.last = { commission: A.stats.commission, deals: A.stats.deals, won: T.won, lost: T.lost };
@@ -677,6 +703,7 @@ export function runCareer(botName, seed, opts = {}) {
         if (!r.ok) throw new Error('advance blocked: ' + r.error);
       }
       if (r.ok && r.events) { ctx.pacing.cards += r.events.filter(e => e.type === 'inboxNew').length; ctx.pacing.inboxWaiting += S.inbox.length; }
+      if (opts.onReport) opts.onReport(r, S);
       if (ctx.trace) traceReport(ctx, r);
       if (r.seasonEnd) snapshotSeason(ctx, r);
       if (r.ending) { if (r.ending.kind === 'iflas') bankruptSeason = before.season; }
@@ -851,6 +878,10 @@ async function main() {
     if (o.table && !o.quiet) { console.log(`\n--- ${name}: sezon sezon (ortalama; kasa=medyan) ---`); console.log(perSeasonTable(runs)); }
     const a = aggregate(runs);
     printAggregate(name, a, runs);
+    { const m = (k, i) => fmtM(runs.reduce((a, r) => a + (r.rows[k] ? r.rows[k].rvs[i] : 0), 0) / runs.length); console.log('  rakipler (r1 r2 r3 r4) 2/5/8. sezon: ' + [1, 4, 7].map(k => [0, 1, 2, 3].map(i => m(k, i)).join(' ')).join('  |  ')); }
+    { const h = {}; for (const r of runs) for (const x of r.tables.rounds) h[Math.min(x, 7)] = (h[Math.min(x, 7)] || 0) + 1; const tot = Object.values(h).reduce((a, b) => a + b, 0); console.log('  tur dağılımı: ' + Object.keys(h).sort().map(k => k + ':' + Math.round(h[k] / tot * 100) + '%').join(' ')); }
+    { const d = runs.reduce((a, r) => { const x = r.tables.dl || { n: 0, rounds: 0, won: 0 }; a.n += x.n; a.rounds += x.rounds; a.won += x.won; return a; }, { n: 0, rounds: 0, won: 0 }); const tot = runs.reduce((a, r) => a + r.tables.rounds.length, 0); const totR = runs.reduce((a, r) => a + r.tables.rounds.reduce((x, y) => x + y, 0), 0); console.log(`  Son Gün masaları: ${d.n} (tüm masaların %${Math.round(d.n / Math.max(1, tot) * 100)}), ort. tur ${(d.rounds / Math.max(1, d.n)).toFixed(1)}, kapanan %${Math.round(d.won / Math.max(1, d.n) * 100)} | normal masalar: ort. tur ${((totR - d.rounds) / Math.max(1, tot - d.n)).toFixed(1)}`); }
+    const bk = runs.filter(r => r.end.ending === 'iflas'); if (bk.length) console.log('  iflas: ' + bk.map(r => 'seed ' + r.seed + ' (sezon ' + r.bankruptSeason + ')').join(', '));
     const x = extra(runs);
     console.log(`  EK: söz tutma %${x.keptPct} | kasa medyan €${fmtM(x.cashMed)} | tüm yükseltmeler: %${x.allUpPct} kariyerde, ort. sezon ${x.allUpAvg.toFixed(1)} (6.sezon ${x.ups6.toFixed(1)}/12, 8.sezon ${x.ups8.toFixed(1)}/12) | 8.sezon skor ben ${fmtM(x.mineScore8)} / rival1 ${fmtM(x.rivalScore8)}, portföy ${fmtM(x.pf8)}`);
     console.log(`  EK: U23 imzalar n=${x.recruitN}: ort. CA artışı ${x.recruitGain.toFixed(1)}, son CA ${x.recruitFinal.toFixed(1)}, pa ${x.recruitPa.toFixed(1)}, sönen %${Math.round(x.recruitBust * 100)}`);

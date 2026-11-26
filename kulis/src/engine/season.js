@@ -7,8 +7,8 @@ import { makeName } from './data/names.js';
 import { fairWage, refreshValues } from './valuation.js';
 import { squadIndex, clubStrength } from './selection.js';
 import { tableSorted } from './selectors.js';
-import { computeRanking } from './rivals.js';
-import { genYouth, refreshClubFinance, resetLeague } from './world.js';
+import { computeRanking, isElite } from './rivals.js';
+import { genYouth, refreshClubFinance, resetLeague, leagueMeans } from './world.js';
 import { LEAGUE_DEFS } from './constants.js';
 import * as news from './news.js';
 import * as market from './market.js';
@@ -127,7 +127,7 @@ export function endSeason(S) {
   for (const id in S.players) {
     const p = S.players[id];
     if (p.agentId && p.agentId !== 'you' && p.rep && p.rep.endSeason <= season) {
-      if (chance(S, 0.75)) p.rep.endSeason = season + rint(S, 1, 3);
+      if (chance(S, isElite(p) ? BAL.rivalAI.renewChanceElite : BAL.rivalAI.renewChance)) p.rep.endSeason = season + rint(S, 1, 2);
       else { p.agentId = null; p.rep = null; }
     }
   }
@@ -142,6 +142,18 @@ export function endSeason(S) {
   for (const c of up) S.clubs[c].leagueId = 'tr1';
   for (const c of down) S.clubs[c].leagueId = 'tr2';
   out.promoted = up; out.relegated = down;
+  // clubs that change league drift half-way to their new league's level (promoted sides reinforce, relegated ones sell): keeps both leagues' averages steady
+  if (S.flags.leagueBase) {
+    const idx0 = squadIndex(S);
+    for (const cid of [...up, ...down]) {
+      const target = S.flags.leagueBase[S.clubs[cid].leagueId];
+      const shift = clamp((target - clubStrength(S, cid, idx0[cid])) * BAL.season.moveShift, -BAL.season.moveShiftMax, BAL.season.moveShiftMax);
+      for (const p of idx0[cid]) {
+        if (p.agentId === 'you') continue;
+        p.cf = Math.max(1, Math.min(p.pa + Math.max(0, shift), p.cf + shift)); p.ca = Math.round(p.cf); p.pa = Math.max(p.pa, p.ca);
+      }
+    }
+  }
   for (const c of up) news.push(S, { kind: 'promoted', clubId: c, ctx: { club: S.clubs[c].name, league: T1.name } });
   for (const c of down) news.push(S, { kind: 'relegated', clubId: c, ctx: { club: S.clubs[c].name, league: T2.name } });
 
@@ -197,5 +209,7 @@ export function endSeason(S) {
   idx = squadIndex(S);
   for (const cid in S.clubs) refreshClubFinance(S, S.clubs[cid], idx[cid]);
   S.interests = S.interests.filter(i => S.players[i.playerId] && S.clubs[i.clubId]);
+  // league-strength regulator: how far each league's average XI has drifted from where it started (read by development.js)
+  if (S.flags.leagueBase) { const m = leagueMeans(S); S.flags.drift = {}; for (const lid in m) S.flags.drift[lid] = m[lid] - (S.flags.leagueBase[lid] ?? m[lid]); }
   return out;
 }

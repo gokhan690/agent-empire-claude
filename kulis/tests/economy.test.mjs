@@ -98,3 +98,25 @@ test('effects: primitives apply and clamp; unknown key throws', () => {
   assert.throws(() => applyEffects(S, { bogus: 1 }));
   JSON.stringify(S);
 });
+
+test('office upkeep grows with the roster and the reputation tier; action prices scale with the agency; event prices with wealth', async () => {
+  const { agencyScale, wealthMult } = await import('../src/engine/selectors.js');
+  const S = newGame({ seed: 2 });
+  assert.equal(officeUpkeep(S), 4000); assert.equal(agencyScale(S), 1); assert.equal(wealthMult(S), 1);
+  const base = officeUpkeep(S);
+  S.agency.rep = 36;
+  assert.equal(officeUpkeep(S), base + BAL.econ.repTier[1][1]);
+  const ids = Object.keys(S.players).filter(id => !S.players[id].agentId).slice(0, 5);
+  for (const id of ids) { S.players[id].agentId = 'you'; S.players[id].rep = { commissionPct: 7, endSeason: 3 }; S.players[id].value = 100000; }
+  assert.equal(officeUpkeep(S), base + BAL.econ.repTier[1][1] + (8 - BAL.econ.staff.free) * BAL.econ.staff.perClient);
+  assert.ok(agencyScale(S) > 1.3);
+  const star = myClients(S)[0]; star.value = 65e6;
+  assert.equal(officeUpkeep(S), base + BAL.econ.repTier[1][1] + (8 - BAL.econ.staff.free) * BAL.econ.staff.perClient + Math.round(60e6 * BAL.econ.staff.valueShare), 'stars cost staff');
+  S.agency.cash = 800000; assert.equal(wealthMult(S), 2);
+  S.agency.cash = 5e6;
+  assert.equal(wealthMult(S), BAL.econ.wealth.max);
+});
+
+test('late upgrade levels are real goals (L4 costs €2–5M)', () => {
+  for (const b of ['scout', 'table', 'network']) { const c = BAL.upgrade.cost[b]; assert.ok(c[3] >= 2e6 && c[3] <= 5e6, b); assert.ok(c[2] < c[3] && c[1] < c[2]); }
+});

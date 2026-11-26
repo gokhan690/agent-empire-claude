@@ -16,6 +16,7 @@ import { fairWage } from '../valuation.js';
 import { tidy, clamp, hash01 } from '../util.js';
 import { hpick } from './text.js';
 import { takeLoan } from '../economy.js';
+import { assess } from '../promises.js';
 
 const JOURNALISTS = ['Tolga Berker', 'Melih Aksu', 'Ceren Aydoğan', 'Selim Tuncer', 'Pınar Doruk', 'Kaan Erdil'];
 const BRANDS = ['Kortez Spor', 'Nova Boots', 'Atlas Wear', 'Pusula Athletic', 'Bora Sportswear'];
@@ -231,7 +232,7 @@ add({
   title: '{player} zam istiyor',
   body: `{player}, maaşının emsallerinin altında olduğunu düşünüyor: "Ayda {amount} hak ediyorum." Paracı bir yanı var ama haksız da sayılmaz.`,
   options: [
-    { id: 'promise', label: 'Söz ver: yeni maaş', hint: 'Tutamazsan bağlılık −25, itibar −3.',
+    { id: 'promise', label: 'Söz ver: yeni maaş', hint: 'Tutamazsan bağlılık −25, itibar −3.', show: (S, c) => assess(S, P(S, c), 'wage').keepable && P(S, c).contractEnd === S.time.season && S.time.month >= BAL.market.interest.renewalFrom,
       effects: (S, c) => [{ loyalty: 8, morale: 3, promise: { type: 'wage', target: c.amount, text: 'Aylık {amount} maaş', ...due(S, 6) } }], resultText: `"Altı ay içinde maaşın {amount} olacak" dedin. Gözleri parladı.` },
     { id: 'club', label: 'Kulüple görüş', hint: 'Yenileme masası açılabilir.', cost: { energy: 1 }, risk: { pct: 50, text: 'Kulüp kapıyı kapatabilir.' },
       effects: (S, c) => [{ loyalty: 5, trust: 1, interest: { playerId: c.playerId, clubId: c.clubId, level: 62, kind: 'renewal' } }], altEffects: [{ trust: -4, loyalty: -3 }],
@@ -247,7 +248,7 @@ add({
   title: '{player} başka yere bakıyor',
   body: `{player} gece yarısı mesaj attı: "Burada tavanıma çarptım abi. {big} gibi bir kulüp lazım bana." Sabrı zayıf, hırsı büyük.`,
   options: [
-    { id: 'promise', label: 'Söz ver: üst lige taşıyacağım', hint: 'Tutamazsan bağlılık −25, itibar −3.',
+    { id: 'promise', label: 'Söz ver: üst lige taşıyacağım', hint: 'Tutamazsan bağlılık −25, itibar −3.', show: (S, c) => assess(S, P(S, c), 'transfer_up').keepable,
       effects: (S, c) => [{ loyalty: 10, morale: 4, promise: { type: 'transfer_up', text: 'Bir üst seviyeye transfer', ...afterWindow(S) } }], resultText: `"Bir sonraki pencerede" dedin. {player} bu sözü not defterine yazmış gibi baktı.` },
     { id: 'pitch', label: 'Kapıyı çal', hint: '{big} ile görüşme başlat.', cost: { energy: 1 }, effects: (S, c) => [{ interest: { playerId: c.playerId, clubId: c.bigId, level: 62, kind: 'transfer' }, morale: 4 }], resultText: `{big} yönetimi ilgilendi. Piyasa sekmesinden masaya oturabilirsin.` },
     { id: 'refuse', label: 'Kal ve kendini kanıtla', hint: 'Sert ama dürüst.', effects: [{ loyalty: -8, morale: -5 }], resultText: `{player} başını salladı; ama bu konuşma bitmedi.` },
@@ -654,7 +655,7 @@ add({
   title: '{player} son büyük sözleşmesini istiyor',
   body: `{age} yaşındaki {player}: "Bu belki son büyük sözleşmem. Kısa yıllar, dolu maaş." Kulüpler yaşlı oyuncuya temkinli bakıyor; ama kalkacak yeri de yok.`,
   options: [
-    { id: 'promise', label: 'Söz ver: yeni maaş', hint: 'Tutamazsan bağlılık −25, itibar −3.', effects: (S, c) => [{ loyalty: 8, morale: 3, promise: { type: 'wage', target: c.amount, text: 'Aylık {amount} maaş', ...due(S, 6) } }], resultText: `"Altı ay içinde" dedin. {player} bir omuz silkmeyle teşekkür etti.` },
+    { id: 'promise', label: 'Söz ver: yeni maaş', hint: 'Tutamazsan bağlılık −25, itibar −3.', show: (S, c) => assess(S, P(S, c), 'wage').keepable && P(S, c).contractEnd === S.time.season && S.time.month >= BAL.market.interest.renewalFrom, effects: (S, c) => [{ loyalty: 8, morale: 3, promise: { type: 'wage', target: c.amount, text: 'Aylık {amount} maaş', ...due(S, 6) } }], resultText: `"Altı ay içinde" dedin. {player} bir omuz silkmeyle teşekkür etti.` },
     { id: 'talk', label: 'Dürüstçe konuş', hint: 'Gerçekçi beklenti.', cost: { energy: 1 }, effects: [{ loyalty: 4, morale: 1 }], resultText: `Baş başa, çay içerek konuştunuz. Hayal ile hesap arasındaki mesafeyi gördü.` },
     { id: 'plan', label: 'Emeklilik sonrasını konuş', hint: 'Menajerlikten yardım.', effects: [{ loyalty: 2 }], resultText: `"Sonrası için hep yanındayım" dedin. Gülümsedi.` },
   ],

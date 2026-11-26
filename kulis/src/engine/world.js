@@ -7,7 +7,7 @@ import { CLUB_DATA } from './data/clubs.js';
 import { fairWage, refreshValues } from './valuation.js';
 import { generateFixtures } from './fixtures.js';
 import { squadIndex, projectMinutes, clubStrength } from './selection.js';
-import { computeRanking } from './rivals.js';
+import { computeRanking, isElite } from './rivals.js';
 
 const TRAIT_KEYS = Object.keys(TRAITS);
 
@@ -112,7 +112,7 @@ export function genYouth(S, club, pos, A, adult = false) {
 
 /** With probability BAL.rivalShare hand the player to a rival agency (weighted by persona). */
 export function assignAgent(S, p) {
-  if (!chance(S, BAL.rivalShare)) return;
+  if (!chance(S, isElite(p) ? BAL.rivalEliteShare : BAL.rivalShare)) return;
   const r = pickBy(S, S.rivals, rv => {
     if (rv.persona === 'holding') return Math.max(0, p.ca - 55) / 10 + 0.2;
     if (rv.persona === 'akademisyen') return p.age <= 21 ? 3 : 0.4;
@@ -218,7 +218,18 @@ export function createWorld(S) {
   }
   refreshValues(S);
   for (const lid in S.leagues) resetLeague(S, S.leagues[lid]);
+  S.flags.leagueBase = leagueMeans(S); S.flags.drift = {};
   computeRanking(S);
+}
+
+/** Mean strength (average of the best XI) of the clubs of every league. */
+export function leagueMeans(S) {
+  const idx = squadIndex(S), out = {};
+  for (const lid in S.leagues) {
+    const ids = S.leagues[lid].clubIds;
+    out[lid] = ids.reduce((a, c) => a + clubStrength(S, c, idx[c]), 0) / Math.max(1, ids.length);
+  }
+  return out;
 }
 
 /** New fixtures + empty table for a league (start of a season). */

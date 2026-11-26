@@ -4,7 +4,7 @@ import { BAL, MONTHS, TRAITS, DREAMS } from './constants.js';
 import { clamp, tidy, r1 } from './util.js';
 import { spendEnergy, addRep } from './economy.js';
 import { fairWage } from './valuation.js';
-import { myClients, prospectLevel, isRecruitable, upgradeEffects, monthIndex, tableSorted } from './selectors.js';
+import { myClients, prospectLevel, isRecruitable, upgradeEffects, monthIndex, tableSorted, wealthMult } from './selectors.js';
 import * as promises from './promises.js';
 import * as events from './events.js';
 import * as news from './news.js';
@@ -17,9 +17,14 @@ function leagueIdOf(S, p) { const c = S.clubs[p.clubId]; return c ? c.leagueId :
 function prestigeOf(S, p) { const c = S.clubs[p.clubId]; return c ? S.leagues[c.leagueId].prestige : 1; }
 
 /** How much a promise type adds to the recruit score for this player (trait fit multiplies). */
-export function promiseValue(p, type) {
+export function promiseValue(p, type, S) {
   const R = BAL.recruit;
   const fit = R.fit[type].includes(p.trait);
+  if (S) {
+    const a = promises.assess(S, p, type);
+    if (a.blocked) return 0;
+    if (!a.keepable) return Math.round(R.promiseAdd * R.promiseOffFit * 0.5); // a promise you probably cannot keep is worth little to him
+  }
   return Math.round(R.promiseAdd * (fit ? R.promiseFit : R.promiseOffFit));
 }
 
@@ -71,7 +76,7 @@ export function recruitPreview(S, a) {
   if (S.meta.archetype === 'mahalle' && p.nat === 'TR' && p.age <= 21) parts.push({ label: 'Mahalle bağı', value: BAL.archetype.mahalle.recruitTrYouth });
   if (p.contractEnd <= S.time.season) parts.push({ label: 'Sözleşmesi bitiyor', value: R.expiring });
   const chosen = normPromises(S, p, (a.promises || []).slice(0, R.maxPromises));
-  const promiseBonus = chosen.map(s => ({ type: s.type, value: promiseValue(p, s.type) }));
+  const promiseBonus = chosen.map(s => ({ type: s.type, value: promiseValue(p, s.type, S) }));
   for (const b of promiseBonus) parts.push({ label: promises.PROMISE_LABELS[b.type], value: b.value });
   const lvl = prospectLevel(p);
   const rival = !!(p.agentId && p.agentId !== 'you');
@@ -85,10 +90,14 @@ export function recruitPreview(S, a) {
   const threshold = recruitThreshold(S, p);
   const promiseOptions = promises.PROMISE_TYPES.map(type => {
     const spec = promises.make(S, p, type);
-    return { type, label: promises.PROMISE_LABELS[type], add: promiseValue(p, type), text: spec.text, due: { dueSeason: spec.dueSeason, dueMonth: spec.dueMonth }, target: spec.target,
-      fit: R.fit[type].includes(p.trait), chosen: chosen.some(c => c.type === type) };
+    const a = promises.assess(S, p, type);
+    return { type, label: promises.PROMISE_LABELS[type], add: promiseValue(p, type, S), text: spec.text, due: { dueSeason: spec.dueSeason, dueMonth: spec.dueMonth }, target: spec.target,
+      fit: R.fit[type].includes(p.trait) && a.keepable, chosen: chosen.some(c => c.type === type), keepable: a.keepable, blocked: a.blocked, warning: a.note };
   });
-  return { score, threshold, parts, thresholdParts, promiseOptions, promiseBonus, canSign: score >= threshold && S.agency.energy >= 1, cost: { energy: 1, cash: 0 }, rival, gap: threshold - score };
+  const blockedChoice = promiseOptions.find(o => o.chosen && o.blocked);
+  const out = { score, threshold, parts, thresholdParts, promiseOptions, promiseBonus, canSign: score >= threshold && S.agency.energy >= 1 && !blockedChoice, cost: { energy: 1, cash: 0 }, rival, gap: threshold - score };
+  if (blockedChoice) out.error = blockedChoice.warning;
+  return out;
 }
 
 /**
@@ -313,8 +322,8 @@ export function monthly(S) {
 }
 
 function renewalCard(S, p, key) {
-  const bonus = clamp(tidy(p.wage * BAL.clientDrift.repBonusCashK * 2), 3000, 50000);
-  const prom = promises.make(S, p, p.trait === 'paraci' ? 'wage' : p.trait === 'sadik' || p.trait === 'ailebabasi' ? 'visit' : 'minutes');
+  const bonus = tidy(clamp(tidy(p.wage * BAL.clientDrift.repBonusCashK * 2), 3000, 50000) * wealthMult(S));
+  const prom = promises.make(S, p, promises.suggest(S, p));
   return {
     key, kind: 'client', title: `${p.name}: temsil sözleşmesi bitiyor`, from: p.name, playerId: p.id, expiresIn: 3,
     body: `${p.name} (${TRAITS[p.trait].label}) ile temsil sözleşmen bu sezon sona eriyor. Bağlılığı yeterince yüksek değil; yenilemek için bir jest bekliyor.`,

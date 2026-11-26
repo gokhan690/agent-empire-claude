@@ -22,7 +22,7 @@ const S = newGame({ seed, agentName, agencyName, archetype: 'mahalle'|'eskifutbo
 | `scoutTrip` | `{leagueId:'tr2'…'en1', focus:'any'\|'u21'\|'form'\|'expiring'}` | 1E + travel € | `prospects:[playerId]` (now `seen`; show via `prospectList`) |
 | `watchPlayer` | `{playerId}` | 1E | event `watch {know, delta, traitRevealed, band}` |
 | `toggleShortlist` | `{playerId}` | free | event `shortlist {on}` (max 40) |
-| `recruitPreview` | `{playerId, promises:[{type}]}` | – | preview `{score, threshold, parts:[{label,value}], thresholdParts, promiseOptions:[{type,label,add,text,due,target,fit,chosen}], promiseBonus, canSign, cost, rival, gap}` (+`error`) |
+| `recruitPreview` | `{playerId, promises:[{type}]}` | – | preview `{score, threshold, parts:[{label,value}], thresholdParts, promiseOptions:[{type,label,add,text,due,target,fit,chosen,keepable,blocked,warning}], promiseBonus, canSign, cost, rival, gap}` (+`error`). `fit` = trait fit AND realistically keepable; new optional `keepable` / `blocked` / `warning` (Turkish reason or null): a `blocked` option adds nothing, makes `canSign` false and sets `error` to its `warning` |
 | `recruit` | `{playerId, promises:[{type:'minutes'\|'transfer_up'\|'wage'\|'stay'\|'visit'}] ≤3}` | 1E | event `signed {commissionPct,endSeason,promiseIds,fromRival}`; fails with the score gap text |
 | `visitClient` | `{playerId}` | 1E (1/client/month) | `line` (what he wants now) |
 | `releaseClient` | `{playerId}` | free | – |
@@ -31,7 +31,7 @@ const S = newGame({ seed, agentName, agencyName, archetype: 'mahalle'|'eskifutbo
 | `pitchPlayer` | `{playerId, clubId}` | 1E (on Son Gün: the hour's action) | `delta, interestId` |
 | `mediaPush` | `{playerId}` | 1E + € | event `media {hype, cash, value}` |
 | `openNegotiation` | `{interestId}` | 1E (Son Gün: the hour's action) | `negotiation` (= `negotiationView`) |
-| `negPreview` | `{package, koz?}` | – | preview `{cost, satisfaction, satisfactionParts, feeSharePct, feeWarning, clientOk, clientLean, transferFee, expectedMinutes, demandWage}` (+`error`) |
+| `negPreview` | `{package, koz?}` | – | preview `{cost, satisfaction, satisfactionParts, feeSharePct, feeWarning, clientOk, clientLean, transferFee, expectedMinutes, demandWage, promiseChecks:[{id,type,text,ok,note}]}` (+`error`); `promiseChecks` (new, optional) lists open wage/stay promises this package would keep (`ok`) or break |
 | `negPropose` | `{package, koz?:'rakip'\|…}` | patience | see §4 |
 | `negAcceptCounter` / `negWalkAway` / `negLeanOnClient` | `{}` | – | see §4 |
 | `upgradePreview` | `{branch:'scout'\|'table'\|'network'}` | – | preview `{name, level, nextLevel, maxed, cost, upkeep, upkeepDelta, text, currentText, canAfford}` |
@@ -50,7 +50,7 @@ Package: `{wage (monthly €), years 1..5, bonus, fee (your commission, lump sum
 `sel.clientView(S,id)` → full dossier `{…, trait/traitLabel, dream:{type,label,text,target,done}, wage, fairWage, wageRatio, value, hype, morale/loyalty (+Word), club, league, minutesShare, expectedShare, avgRating, avgRecent, stats, career, band:{lo,hi,width}, contractEnd, contractYearsLeft, preContract, rep:{commissionPct,endSeason}, promises:[{…, progress:{value,target,text}}], interests, visitedThisMonth, flags:{expiring,freeAgent,unhappy}}` (null if not your client).
 `sel.prospectList(S,{shortlistedOnly?,leagueId?})` → discovered, recruitable players `{id,name,age,nat,pos,ca,form,hype,value,clubName,leagueName,contractEnd,know,band,trait|null,dream|null,heat,heatPerMonth,shortlisted,level,rival:{id,agency}|null,score,threshold,canSign,gap}`. `trait` appears at know≥60, `dream` at ≥85; `band` always contains the true potential.
 `sel.clubView(S,id)` / `sel.clubList(S,leagueId)`; `needs`, `director.persona`, `budgetHint` are `null` until `lunchKnown` (reset every July).
-`sel.interestList(S[,playerId])` → your clients' interests `{id,playerId,clubId,level,kind:'transfer'|'free'|'renewal',cooldown,negotiable,reason,clubName,playerName,fitSat,fitWord,expectedMinutes}`. `negotiable` = level≥60 and window/contract rules satisfied; `reason` is Turkish when not; `fitSat<40` = the client will refuse a realistic package ("Reddeder").
+`sel.interestList(S[,playerId])` → your clients' interests `{id,playerId,clubId,level,kind:'transfer'|'free'|'renewal',cooldown,negotiable,reason,clubName,playerName,fitSat,fitWord,expectedMinutes}`. `negotiable` = level≥60 and window/contract rules satisfied; `reason` is Turkish when not (also when an open `stay` promise would be broken by the move); `fitSat<40` = the client will refuse a realistic package ("Reddeder").
 `sel.financeSeries(S)` (oldest first `{season,month,label,net,cash,items:[{k,label,amt}]}`), `sel.rankingView(S)` (5 rows `{rank,id,name,owner,score,isYou,personaLabel,rep,clients,color}`), `sel.upgradeView(S)` (3 previews), `sel.objectiveView(S)` (`{offered,active:{progress,target,pct,reward,failed,endOnly,…},history}`), `sel.deadlineView(S)`, `sel.negotiationView(S)`, `sel.tableSorted(S,leagueId)`, `sel.monthName(S)`, `sel.isWindowOpen(S)`, `sel.myClients(S)`, `sel.upgradeEffects(S)`.
 `sel.availableActions(S,{playerId?,clubId?})` → `[{id,label,payload,cost:{energy,cash},ok,reason}]`; `{playerId}` of a client → visit/media/(pitch with `clubId`)/release, of a prospect → watch/recruit/shortlist, `{clubId}` → lunch, `{}` → scout trip per league, upgrades, loan. `reason` is the Turkish disabled text ("Enerjin yok", "Bu ay zaten ziyaret ettin", "Yeterli paran yok", …).
 Also: `sel.advanceBlock`, `sel.potentialBand`, `sel.minutesShare`, `sel.avgRating`, `sel.canAfford`, `sel.deadlineCalls`.
@@ -66,12 +66,13 @@ Also: `sel.advanceBlock`, `sel.potentialBand`, `sel.minutesShare`, `sel.avgRatin
    - `left`: patience 0 / bluff caught at 0 → director walked (`directorLeft`, trust −10, 3-month cooldown); table closed.
    - Client refusal (<40) is `ok:false` with a message; nothing is spent.
 5. `negAcceptCounter` → `{outcome:'accepted'|'hesitates', …}` (same as above). `negWalkAway` closes without penalty. `S.negotiation.hidden` (ceiling) is **never** readable by the UI.
+`feeThreshold` shrinks on very big packages (up to half the base 12 %/15 %). Promise rules (keepable types, `minutes` window restart, `stay`): see DESIGN.md §Promises.
 Kinds: `transfer` (window open or Son Gün), `free` (pre-contract from January for a client whose contract ends this season → commission now, move at season end; or a clubless free agent), `renewal` (contract ends this season, from October). There is no sponsor table.
 
 ## 5. Son Gün (deadline day) — Ağustos & Ocak
 1. `advance(S)` in month 1 or 6 → `{ok:true, phase:'deadline', season, month}` **only if** there are panic calls or an open transfer interest, else the month simply plays. `S.time.phase==='deadline'`.
 2. `sel.deadlineView(S)` → `{hour 18..23, hoursLeft, actionsLeft, actionsMax(1|2), ended, deals, calls:[{id,clubId,clubName,playerId,playerName,fromHour,expiresHour,level,taken,available,kind,fitSat,fitWord,expectedMinutes}], log, hasTable, interests}`.
-3. Per hour: `deadlineTakeCall({callId})` (opens a quick table: patience −1, K +10..25 %, `songun` Koz; result like `openNegotiation`), or `openNegotiation({interestId})`, or `pitchPlayer`, or `deadlineSkipHour`. Each uses the hour's action (two with network L4); the hour advances automatically (`deadlineHour` event). A table opened stays playable even when the clock passes 23:00.
+3. Per hour: `deadlineTakeCall({callId})` (opens a quick table: patience −1, K +3..9 %, `songun` Koz; result like `openNegotiation`), or `openNegotiation({interestId})`, or `pitchPlayer`, or `deadlineSkipHour`. Each uses the hour's action (two with network L4); the hour advances automatically (`deadlineHour` event). A table opened stays playable even when the clock passes 23:00.
 4. When `deadlineView.ended` (or any time) → `act('deadlineFinish')` collapses open talks (`negotiationCollapsed`), clears `S.deadline`, sets phase `plan` → call `advance(S)` again for the month report. `deadlineFinish` outside Son Gün fails.
 
 ## 6. advance(S) → MonthReport

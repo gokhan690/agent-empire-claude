@@ -19,12 +19,12 @@ export function leagueOf(S, club) { return club ? S.leagues[club.leagueId] || nu
 export function leagueOfPlayer(S, p) { return leagueOf(S, clubOf(S, p)); }
 
 /**
- * Potential band shown to the player: width ≈ (100−know)·0.3 CA points. The true `pa` is
+ * Potential band shown to the player: width ≈ (100−know)·0.44 CA points. The true `pa` is
  * always inside the band; the band's offset is a stable hash of the player id (not the centre).
  * @returns {{lo:number, hi:number}}
  */
 export function potentialBand(S, p) {
-  const w = (100 - p.know) * 0.3;
+  const w = (100 - p.know) * BAL.scout.bandK;
   const f = hash01(p.id + ':band');
   let lo = Math.max(p.ca, p.pa - f * w);
   let hi = Math.min(99, lo + w);
@@ -72,9 +72,25 @@ export function energyMaxFor(S) {
 /** Monthly office upkeep (base + upgrade upkeep). */
 export function officeUpkeep(S) {
   const u = S.agency.upgrades;
+  const E = BAL.econ;
   let v = BAL.start.upkeep;
-  for (const k in u) v += BAL.econ.upkeepUpgrade[u[k]] || 0;
-  return v;
+  for (const k in u) v += E.upkeepUpgrade[u[k]] || 0;
+  const mine = myClients(S);
+  v += Math.max(0, mine.length - E.staff.free) * E.staff.perClient;
+  for (const p of mine) v += Math.max(0, p.value - E.staff.valueFrom) * E.staff.valueShare;
+  let tier = 0;
+  for (const [rep, cost] of E.repTier) if (S.agency.rep >= rep) tier = cost;
+  return Math.round(v + tier);
+}
+/** Multiplier on action prices (lunch, media push, scouting trips) from agency size: 1 + perClient·(clients beyond the 3 you start with) + perRep·(rep above the start)/100 — exactly 1 at the start. */
+export function agencyScale(S) {
+  const K = BAL.econ.scale;
+  return 1 + K.perClient * Math.max(0, myClients(S).length - 3) + K.perRep * Math.max(0, S.agency.rep - BAL.start.rep) / 100;
+}
+/** Multiplier on event / loyalty-bonus prices from the agency's wealth (cash). */
+export function wealthMult(S) {
+  const W = BAL.econ.wealth;
+  return Math.max(1, Math.min(W.max, 1 + (S.agency.cash - W.from) / W.per));
 }
 /** Expected monthly commission income from current clients' wages. */
 export function monthlyCommission(S) {
@@ -123,6 +139,10 @@ export function interestOpenReason(S, i) {
   if (i.cooldown > 0) return 'Direktör küs (' + i.cooldown + ' ay)';
   if (i.level < BAL.neg.minLevel) return 'İlgi yetersiz (en az ' + BAL.neg.minLevel + ')';
   if (p.preContract && i.kind !== 'renewal') return 'Ön sözleşme zaten imzalı';
+  if (i.kind !== 'renewal') {
+    const st = S.promises.find(x => x.playerId === p.id && x.status === 'open' && x.type === 'stay');
+    if (st && !(i.kind === 'free' && p.clubId && st.dueSeason <= S.time.season)) return 'Kulüpte kalma sözün var: bu transfer sözünü bozar (bağlılık −25, itibar −3). Sözün bitmesini bekle.';
+  }
   const tt = S.flags.tutorial;
   const tutorialSuitor = !!(tt && typeof tt === 'object' && !tt.done && tt.target && tt.target.playerId === i.playerId && tt.target.clubId === i.clubId); // the first suitor may be answered outside the window
   if (i.kind === 'transfer' && !MONTHS[S.time.month].window && S.time.phase !== 'deadline' && !tutorialSuitor) return 'Transfer dönemi kapalı';

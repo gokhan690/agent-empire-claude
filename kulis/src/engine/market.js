@@ -5,11 +5,12 @@ import { rint, chance, gauss, uid, shuffle, pickBy } from './rng.js';
 import { clamp, hash01, mean, tidy } from './util.js';
 import { fairWage, playerValue } from './valuation.js';
 import { squadIndex, squadOf, clubStrength, projectMinutes } from './selection.js';
-import { myClients, upgradeEffects } from './selectors.js';
+import { myClients, upgradeEffects, agencyScale } from './selectors.js';
 import { spend, earn, spendEnergy, addRep } from './economy.js';
 import { genYouth } from './world.js';
 import * as news from './news.js';
 import { useAction } from './deadline.js';
+import * as promises from './promises.js';
 
 /** @typedef {{ok:true,events:object[],[k:string]:any}|{ok:false,error:string}} Result */
 
@@ -36,8 +37,11 @@ export function packageCost(pkg) {
 /** Share of the package cost that is your commission (0..1). */
 export function feeShare(pkg) { const c = packageCost(pkg); return c > 0 ? pkg.fee / c : 0; }
 /** Threshold above which the client notices your fee (archetype hukukcu 15%, else 12%). */
-export function feeThreshold(S) {
-  return S.meta.archetype === 'hukukcu' ? BAL.archetype.hukukcu.feeThreshold : 0.12;
+export function feeThreshold(S, cost) {
+  const base = S.meta.archetype === 'hukukcu' ? BAL.archetype.hukukcu.feeThreshold : 0.12;
+  if (!cost) return base;
+  const B = BAL.neg.bigDeal;
+  return Math.round(base * (1 - B.cut * clamp(Math.log10(Math.max(1, cost / B.from)) / B.span, 0, 1)) * 1000) / 1000;
 }
 
 // ------------------------------------------------------------------------------------------ needs
@@ -301,7 +305,7 @@ export function handleExpiry(S, p) {
   if (pc) {
     delete p.preContract;
     const to = S.clubs[pc.toClubId];
-    if (to) { applyMove(S, p, to, { ...pc, kind: 'free' }, { seasonEnd: true }); return true; }
+    if (to) { applyMove(S, p, to, { ...pc, kind: 'free' }, { seasonEnd: true, arranged: true }); return true; }
   }
   const club = p.clubId ? S.clubs[p.clubId] : null;
   const F = BAL.market.freeAgent;
@@ -411,7 +415,7 @@ export function pitchPlayer(S, a) {
 /** Cost of a lunch with this club's director. */
 export function lunchCost(S, club) {
   const L = BAL.market.lunch;
-  return L.cashBase + L.cashPerPrestige * S.leagues[club.leagueId].prestige;
+  return tidy((L.cashBase + L.cashPerPrestige * S.leagues[club.leagueId].prestige) * agencyScale(S));
 }
 
 /**
@@ -442,7 +446,7 @@ export function clubLunch(S, a) {
 /** Cost of a media push for this player. */
 export function mediaCost(S, p) {
   const M = BAL.market.media;
-  return tidy(clamp(M.cashBase + p.value * M.valueShare, M.min, M.max));
+  return tidy(clamp(M.cashBase + p.value * M.valueShare, M.min, M.max) * agencyScale(S));
 }
 
 /**
@@ -502,6 +506,7 @@ function applyMove(S, p, to, d, opts = {}) {
   const clauses = d.clauses || { minutes: false, release: false };
   const moved = !from || from.id !== to.id;
   const m = projectMinutes(S, p, to.id, { guarantee: !!clauses.minutes });
+  const oldM = from ? projectMinutes(S, p, from.id) : 0;
   let transferFee = 0;
   if (kind === 'transfer' && moved) {
     transferFee = d.transferFee ?? estimateTransferFee(S, p, to);
@@ -527,6 +532,7 @@ function applyMove(S, p, to, d, opts = {}) {
   if (moved) {
     if (from) balanceSquad(S, from);
     balanceSquad(S, to);
+    if (p.agentId === 'you') promises.onMove(S, p, oldM, m, !!opts.arranged);
   }
   return { transferFee, minutes: m, fit, from };
 }
@@ -565,7 +571,7 @@ export function executeTransfer(S, deal) {
     minutes = projectMinutes(S, p, to.id, { guarantee: clauses.minutes });
     news.push(S, { kind: 'transfer', playerId: p.id, clubId: to.id, text: p.name + ', sezon sonunda ' + to.name + ' ile bedelsiz anlaştı (ön sözleşme). ' + from.name + ' öfkeli.' });
   } else {
-    const r = applyMove(S, p, to, d);
+    const r = applyMove(S, p, to, d, { arranged: true });
     transferFee = r.transferFee; fit = r.fit; minutes = r.minutes;
     const text = d.kind === 'renewal' ? p.name + ' ' + to.name + ' ile sözleşme uzattı.'
       : d.kind === 'free' ? p.name + ', ' + to.name + ' ile bedelsiz anlaştı.'
@@ -573,7 +579,7 @@ export function executeTransfer(S, deal) {
     news.push(S, { kind: 'transfer', playerId: p.id, clubId: to.id, text });
   }
   if (commission > 0) earn(S, commission, 'commission', (d.kind === 'renewal' ? 'Sözleşme: ' : 'Transfer: ') + p.name);
-  if (share > feeThreshold(S) + 1e-9) { p.loyalty = clamp(p.loyalty + D.feeNoticeLoyalty, 0, 100); events.push({ type: 'feeNoticed', playerId: p.id, share }); }
+  if (share > (deal.feeThreshold || feeThreshold(S)) + 1e-9) { p.loyalty = clamp(p.loyalty + D.feeNoticeLoyalty, 0, 100); events.push({ type: 'feeNoticed', playerId: p.id, share }); }
   const repRaw = d.kind === 'renewal' ? D.repRenewal : clamp(D.repBase + D.repLog * Math.log10(Math.max(1, p.value / D.repDiv)), D.repBase, D.repMax);
   const repGain = addRep(S, repRaw);
   A.stats.deals++;

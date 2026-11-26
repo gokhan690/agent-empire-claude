@@ -2,7 +2,7 @@
 import { BAL } from './constants.js';
 import { rint, chance, pick, pickBy, gauss } from './rng.js';
 import { clamp } from './util.js';
-import { myClients, upgradeEffects, prospectLevel, monthIndex, isRecruitable } from './selectors.js';
+import { myClients, upgradeEffects, prospectLevel, monthIndex, isRecruitable, wealthMult } from './selectors.js';
 import { fairWage } from './valuation.js';
 import * as events from './events.js';
 import * as promises from './promises.js';
@@ -32,6 +32,24 @@ export function computeRanking(S) {
   rows.sort((a, b) => b.score - a.score);
   S.ranking = rows;
   return rows;
+}
+
+/** A "star" for the purposes of rival portfolio caps: a strong player or a top prospect. */
+export function isElite(p) {
+  const A = BAL.rivalAI;
+  return p.ca >= A.eliteCa || (p.age <= 21 && p.pa >= A.eliteYouthPa);
+}
+function eliteCount(S, rid) {
+  let n = 0;
+  for (const id in S.players) { const p = S.players[id]; if (p.agentId === rid && isElite(p)) n++; }
+  return n;
+}
+/** Can this rival take one more star? (each rival has a cap, so the world's best players stay recruitable) */
+function hasRoom(S, r, p, cache) {
+  if (!isElite(p)) return true;
+  const base = BAL.rivals.find(x => x.id === r.id);
+  if (!cache[r.id]) cache[r.id] = eliteCount(S, r.id);
+  return cache[r.id] < (base && base.eliteCap !== undefined ? base.eliteCap : 99);
 }
 
 /** How strongly a rival persona wants this player (for picking who signs him). */
@@ -110,9 +128,8 @@ function pickPoacher(S, p) {
 
 function poachCard(S, p, r) {
   const A = BAL.rivalAI;
-  const bonus = clamp(Math.round(p.wage * A.poachBonusK / 1000) * 1000, A.poachBonusMin, A.poachBonusMax);
-  const type = p.trait === 'paraci' ? 'wage' : p.trait === 'sadik' || p.trait === 'ailebabasi' ? 'visit' : 'minutes';
-  const prom = promises.make(S, p, type);
+  const bonus = Math.round(clamp(Math.round(p.wage * A.poachBonusK / 1000) * 1000, A.poachBonusMin, A.poachBonusMax) * wealthMult(S) / 1000) * 1000;
+  const prom = promises.make(S, p, promises.suggest(S, p));
   return {
     key: 'poach:' + p.id, kind: 'rival', title: `${r.agency} ${p.name} için devrede`, from: r.name, playerId: p.id, expiresIn: 2,
     body: `${r.name} (${r.agency}), ${p.name}'e kancayı attı. Son zamanlarda kendini ihmal edilmiş hissediyor. Hamle yapmazsan gidebilir.`,
@@ -142,6 +159,7 @@ export function monthly(S) {
   // 1. heat on discovered, unrepresented prospects
   const unseen = [];
   const sizes = {};
+  const eliteCache = {};
   for (const id in S.players) {
     const p = S.players[id];
     if (p.agentId && p.agentId !== 'you') sizes[p.agentId] = (sizes[p.agentId] || 0) + 1;
@@ -149,8 +167,9 @@ export function monthly(S) {
     if (p.seen) {
       p.heat = Math.min(100, Math.round((p.heat + heatRate(S, p, fx, hasAk)) * 10) / 10);
       if (p.heat >= 100) {
-        const r = pickBy(S, S.rivals, rv => rivalWeight(rv, p));
-        signRival(S, r, p, moves, true);
+        const open = S.rivals.filter(rv => hasRoom(S, rv, p, eliteCache));
+        if (open.length) { const r = pickBy(S, open, rv => rivalWeight(rv, p)); signRival(S, r, p, moves, true); if (isElite(p)) delete eliteCache[r.id]; }
+        else p.heat = 85; // every agency is full of stars: he stays on the market for now
       }
     } else unseen.push(p);
   }
@@ -166,8 +185,9 @@ export function monthly(S) {
         const w = rivalWeight(r, p) + (p.ca - 40) / 20;
         if (w > bw) { bw = w; best = p; }
       }
-      if (best) {
+      if (best && hasRoom(S, r, best, eliteCache)) {
         signRival(S, r, best, moves, false);
+        if (isElite(best)) delete eliteCache[r.id];
         sizes[r.id] = (sizes[r.id] || 0) + 1;
         if (best.ca >= 62 || (best.age <= 19 && best.pa >= 75)) {
           const text = `${r.agency}, ${best.name} (${best.age}) ile anlaştı.`;
@@ -209,7 +229,7 @@ export function monthly(S) {
     const inc = income[r.id] || 0;
     const goal = base.cash * (1 + A.cashGrowth * (S.time.season - 1));
     r.cash = Math.max(A.cashFloor, Math.round(r.cash + inc * A.incomeShare - A.upkeepBase - r.rep * A.upkeepRep + (goal - r.cash) * A.cashPull));
-    const target = base.rep + Math.min(20, (sizes[r.id] || 0) / 5) - 6;
+    const target = base.rep + Math.min(14, (sizes[r.id] || 0) / 8) - 4;
     r.rep = Math.round(clamp(r.rep + (target - r.rep) * A.repPull + gauss(S, 0, A.repNoise), A.repMin, A.repMax) * 10) / 10;
   }
   computeRanking(S);

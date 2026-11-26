@@ -5,7 +5,7 @@ import { BAL, LEAGUE_DEFS } from './constants.js';
 import { pickBy, chance, pick } from './rng.js';
 import { clamp } from './util.js';
 import { spend, spendEnergy } from './economy.js';
-import { upg, upgradeEffects, prospectLevel, isRecruitable, monthIndex, potentialBand } from './selectors.js';
+import { upg, upgradeEffects, prospectLevel, isRecruitable, monthIndex, potentialBand, agencyScale } from './selectors.js';
 
 /** @typedef {{ok:true,events:object[],[k:string]:any}|{ok:false,error:string}} Result */
 
@@ -51,6 +51,10 @@ function pickProspects(S, list, count, prestige, focus) {
       const gems = src.filter(gemOk);
       if (gems.length) p = pick(S, gems);
     }
+    if (!p && chance(S, B.decoyChance)) {
+      const decoys = src.filter(q => q.pa - q.ca <= B.decoyMaxGap && q.age <= 24 && q.ca >= Q - 8 && q.hype >= 25);
+      if (decoys.length) p = pick(S, decoys);
+    }
     if (!p) p = pickBy(S, src, q => Math.exp(-0.5 * Math.pow((prospectLevel(q) - Q) / B.qSd, 2)));
     out.push(p);
     const i = src.indexOf(p); src.splice(i, 1);
@@ -67,7 +71,7 @@ function startKnow(S) { return BAL.scout.startKnow + upgradeEffects(S).scoutKnow
 function tripCost(S, a) {
   const L = a && S.leagues[a.leagueId];
   if (!L) return null;
-  return { L, cash: BAL.scout.travel[L.prestige] };
+  return { L, cash: Math.round(BAL.scout.travel[L.prestige] * (0.6 + 0.4 * agencyScale(S)) / 100) * 100 };
 }
 
 /**

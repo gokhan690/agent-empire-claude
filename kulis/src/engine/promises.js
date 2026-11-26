@@ -6,6 +6,7 @@ import { addRep } from './economy.js';
 import { clamp, tidy } from './util.js';
 import { fairWage } from './valuation.js';
 import * as news from './news.js';
+import { projectMinutes } from './selection.js';
 
 export const PROMISE_TYPES = ['minutes', 'transfer_up', 'wage', 'stay', 'visit'];
 export const PROMISE_LABELS = { minutes: 'Süre sözü', transfer_up: 'Üst lige transfer', wage: 'Maaş artışı', stay: 'Kulüpte kalma', visit: 'Düzenli ziyaret' };
@@ -15,6 +16,48 @@ function dateText(season, month) { return MONTHS[month].name + ', ' + season + '
 function prestigeOf(S, p) { const c = S.clubs[p.clubId]; return c ? S.leagues[c.leagueId].prestige : 0; }
 function mdOf(S, p) { const c = S.clubs[p.clubId]; return c ? S.leagues[c.leagueId].matchday : 0; }
 const fmt = n => n.toLocaleString('tr-TR');
+
+/** Does this player (as far as you can tell) want to stay where he is? Rooted traits count only once you know them. */
+export function wantsStay(S, p) {
+  if (!p.clubId) return false;
+  const known = p.agentId === 'you' || p.know >= BAL.scout.traitKnow;
+  if (known && (p.trait === 'sadik' || p.trait === 'ailebabasi')) return true;
+  return p.st.sh >= BAL.promise.stayMinutes && !(known && (p.trait === 'hirsli' || p.trait === 'yildiz') && p.hype >= 60);
+}
+
+/**
+ * Is a promise of `type` realistically keepable for `p` right now? `{keepable, blocked, note}`:
+ * `blocked` = it cannot be kept at all (or must not be made), `note` = a short Turkish reason when not keepable.
+ */
+export function assess(S, p, type) {
+  const P = BAL.promise;
+  const pr = prestigeOf(S, p);
+  switch (type) {
+    case 'minutes': {
+      if (!p.clubId) return { keepable: false, blocked: false, note: 'Kulübü yok; önce bir kulüp bulunmalı.' };
+      const m = projectMinutes(S, p, p.clubId);
+      return m >= BAL.sel.proj.starter ? { keepable: true, blocked: false, note: null } : { keepable: false, blocked: false, note: 'Şu an ilk 11\'de değil; süre sözünü tutmak için daha çok oynayacağı bir kulübe taşımalısın.' };
+    }
+    case 'transfer_up': {
+      if (pr >= 5) return { keepable: false, blocked: true, note: 'Zaten en üst seviye ligde; üst lige transfer sözü verilemez.' };
+      const next = BAL.strengthByPrestige[Math.min(5, pr + 1)];
+      const suitor = S.interests.some(i => i.playerId === p.id && i.level >= 50 && S.clubs[i.clubId] && S.leagues[S.clubs[i.clubId].leagueId].prestige > pr);
+      if (p.ca < next - P.transferUpReach && !suitor) return { keepable: false, blocked: false, note: 'Seviyesi bir üst lig için henüz yetersiz.' };
+      if (p.ca < next - P.transferUpSure && !suitor) return { keepable: false, blocked: false, note: 'Üst ligden henüz ilgi yok; tutmak zor olabilir.' };
+      return { keepable: true, blocked: false, note: null };
+    }
+    case 'wage': {
+      if (!p.clubId) return { keepable: false, blocked: false, note: 'Kulübü yok.' };
+      const due = dueFor(S, 'wage').dueSeason;
+      // a raise needs a table: a renewal / pre-contract in the last contract year, or a transfer offer
+      const table = p.contractEnd <= due;
+      return table ? { keepable: true, blocked: false, note: null } : { keepable: false, blocked: false, note: 'Sözleşmesi daha uzun sürüyor; süre dolmadan masaya oturacağı bir yenileme görünmüyor.' };
+    }
+    case 'stay':
+      return wantsStay(S, p) ? { keepable: true, blocked: false, note: null } : { keepable: false, blocked: true, note: 'Bu kulüpte kalmak istemiyor; kalma sözü verilemez.' };
+    default: return { keepable: true, blocked: false, note: null };
+  }
+}
 
 /**
  * Create an open promise.
@@ -126,7 +169,7 @@ export function check(S) {
         else if (due) resolve(S, pr, p, 'broken', out);
         break;
       case 'stay':
-        if (p.clubId && p.clubId !== pr.from.clubId) resolve(S, pr, p, 'broken', out);
+        if (pr.moved || (p.clubId && p.clubId !== pr.from.clubId)) resolve(S, pr, p, 'broken', out);
         else if (due) resolve(S, pr, p, 'kept', out);
         break;
       case 'minutes':
@@ -146,6 +189,43 @@ export function check(S) {
   S.promises = S.promises.filter(pr => pr.status === 'open' || now - (pr.resolved || now) <= BAL.promise.keepMonths);
   return out;
 }
+
+/**
+ * A client changed club. `arranged` = you made the move (a transfer / pre-contract); otherwise the club or the market did.
+ * - `stay`: an arranged move breaks it; a forced move voids it (it was not your doing).
+ * - `minutes`: when the new club offers more expected minutes (`newM` > `oldM`) the evaluation window restarts from now.
+ */
+export function onMove(S, p, oldM, newM, arranged) {
+  for (const pr of S.promises.slice()) {
+    if (pr.playerId !== p.id || pr.status !== 'open') continue;
+    if (pr.type === 'stay') {
+      if (arranged) pr.moved = true;
+      else S.promises.splice(S.promises.indexOf(pr), 1);
+    } else if (pr.type === 'minutes' && newM > oldM + 1e-9) {
+      pr.from = snapshot(S, p);
+      pr.restarted = { season: S.time.season, month: S.time.month };
+    }
+  }
+}
+
+/** The promise type that suits this player's trait AND is keepable now (cards that offer "give your word" use it). */
+export function suggest(S, p) {
+  const want = p.trait === 'paraci' ? 'wage' : p.trait === 'sadik' || p.trait === 'ailebabasi' ? 'visit' : 'minutes';
+  return assess(S, p, want).keepable ? want : 'visit';
+}
+
+/** For a table: which open promises of this player would the package keep / break. `[{id,type,text,ok,note}]`. */
+export function checksFor(S, p, pkg) {
+  const out = [];
+  for (const pr of forPlayer(S, p.id)) {
+    if (pr.type === 'wage') out.push({ id: pr.id, type: pr.type, text: pr.text, ok: pkg.wage >= pr.target, note: pkg.wage >= pr.target ? 'Maaş sözünü tutar' : 'Maaş sözünün altında (€' + fmt(pr.target) + ' gerekir)' });
+    else if (pr.type === 'stay') out.push({ id: pr.id, type: pr.type, text: pr.text, ok: false, note: 'Kalma sözünü bozar' });
+  }
+  return out;
+}
+
+/** Open `stay` promise of a player (or null). */
+export function stayPromise(S, playerId) { return S.promises.find(x => x.playerId === playerId && x.status === 'open' && x.type === 'stay') || null; }
 
 /** Share of minutes over the promise period (0..1). */
 export function minutesProgress(S, pr, p) {
@@ -172,7 +252,7 @@ export function progressOf(S, pr) {
     case 'minutes': { const v = minutesProgress(S, pr, p); return { value: Math.round(v * 100), target: Math.round(pr.target * 100), text: `Dakika payı %${Math.round(v * 100)} / %${Math.round(pr.target * 100)}` }; }
     case 'wage': return { value: p.wage, target: pr.target, text: `Maaş €${fmt(p.wage)} / €${fmt(pr.target)}` };
     case 'transfer_up': return { value: prestigeOf(S, p), target: pr.target, text: `Lig seviyesi ${prestigeOf(S, p)} / ${pr.target}` };
-    case 'stay': return { value: p.clubId === pr.from.clubId ? 1 : 0, target: 1, text: 'Kulübünde' };
+    case 'stay': { const gone = pr.moved || (p.clubId && p.clubId !== pr.from.clubId); return { value: gone ? 0 : 1, target: 1, text: gone ? 'Kulüp değiştirdi' : 'Kulübünde' }; }
     default: { const h = pr.half || {}; return { value: (h.a ? 1 : 0) + (h.b ? 1 : 0), target: (h.needA ? 1 : 0) + 1, text: `Ziyaret: ${h.a ? 'ilk yarı ✓' : 'ilk yarı –'} ${h.b ? 'ikinci yarı ✓' : 'ikinci yarı –'}` }; }
   }
 }

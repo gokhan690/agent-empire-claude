@@ -63,7 +63,11 @@ system is not in this document, do not add it.
 
 ### Resources
 - **Para** `agency.cash` (€). In: transfer commissions (lump sums), monthly % of clients' wages,
-  sponsorship cuts, objective rewards. Out: office upkeep, travel/action costs, loan instalments.
+  objective rewards, event windfalls. Out: office upkeep (base + upgrade levels + staff per client above 3
+  and per €5M+ of client value + a reputation-tier term), travel/lunch/media prices that scale with agency
+  size (1 + 4% per client above 3 + rep above start), upgrade prices, loan instalments, and event /
+  loyalty-bonus prices that scale with how much cash you hold (×1 up to €400K, ×10 from ~€4M). Late upgrade levels cost
+  €2–5M and are real goals; a strong career should end with roughly €5–12M, not a pile of cash.
 - **İtibar** `agency.rep` 0..100. Gates which players will sign with you and which clubs listen.
 - **Enerji** `agency.energy`, refilled to `energyMax` (4 base, up to 6) every month.
 - **Güven** `club.trust` 0..100 — your relationship with each club's director.
@@ -105,6 +109,10 @@ Reference curves (tune in balance pass, keep the orders of magnitude):
   (ca 50 → ~150K, 60 → ~750K, 70 → ~3.7M, 80 → ~18M, 90 → ~90M);
   ageMult: ≤21 1.5, 22–25 1.25, 26–28 1.0, 29–30 0.7, 31–32 0.45, 33+ 0.2.
 - fair monthly wage(€) ≈ 2_000 · e^(0.12·(ca−50)) · leagueWageMult.
+- League strength is regulated: each league's average XI is stored at creation (`S.flags.leagueBase`);
+  every month the drift from it slows (or speeds) the growth of non-client players, and clubs that change
+  league at season end move 60 % of the way to their new league's level, so the average CA per league
+  stays within ~±1 (worst case ~±2) over 8 seasons. Your own clients are never dampened.
 - Development: youngsters grow toward `pa` mainly through **minutes played**, then club
   `facilities`, morale and the `profesyonel` trait. Target: a 17-year-old with pa 90 who plays
   regularly is ~85 at 23; the same player rotting on a bench is ~74. Decline from 30+.
@@ -125,26 +133,40 @@ Reference curves (tune in balance pass, keep the orders of magnitude):
 | `answerInbox` {inboxId, optionId} | per option | resolve an inbox card |
 
 ### Scouting & hidden potential
-`player.know` 0..100 is *your* knowledge. Shown potential band width ≈ (100−know)·0.3 CA points;
-the true `pa` is **always inside the band** but the band is randomly offset, so the centre is not
-the truth. know ≥ 60 reveals trait; dream is revealed by visiting (clients) or know ≥ 85.
+`player.know` 0..100 is *your* knowledge. Shown potential band width ≈ (100−know)·0.44 CA points
+(~40 at a first sighting, ~13 after two watches); the true `pa` is **always inside the band** but the band
+is randomly offset, so the centre is not the truth. Low-knowledge picks are risky on purpose: ~1 in 5
+scouted slots is a *decoy* (looks the part today, almost no upside left) and `know` also adds to the recruit
+score. know ≥ 60 reveals trait; dream is revealed by visiting (clients) or know ≥ 85.
 Each unrepresented prospect you have discovered has `heat` 0..100 (rival interest) that rises
 every month — faster for obvious talents. At 100 a rival agency signs him. Heat is visible.
 
 ### Recruiting (signing a client) — no dice
-`recruitScore = f(your rep vs player's level, know/visits, archetype bonus, promises offered)`
-vs a visible threshold. The UI shows the meter and what each promise would add. Promises are real
+`recruitScore = 1.6·rep + 0.3·know + 3 (+ archetype / expiring / promise bonuses)` vs a visible threshold
+`15 + 1.8·max(0, level−40) + 2.0·max(0, level−70) + 0.04·hype (+18 if a rival agent holds him)`, where
+`level` = CA + half (≤21) / 30 % (22–24) of the potential gap. Stars therefore need reputation ~60–70. The UI shows the meter and what each promise would add. Promises are real
 obligations (see below). If score ≥ threshold the player signs a representation contract
-(`rep: {commissionPct 5..10, endSeason}`). ~25% of world players start with a rival agent
-(recruitable only when their rep contract is in its last season, at a higher threshold), ~10%
+(`rep: {commissionPct 5..10, endSeason}`). ~16% of world players start with a rival agent (only ~5% of the
+stars, CA ≥ 68 or a top prospect; each rival also has a cap on stars it will hold, so the best players
+stay on the market and churn: rival contracts are renewed only 55 % / 40 % (stars) of the time). Rival-held
+players are recruitable only when their rep contract is in its last season, at a higher threshold; ~10%
 start as *your* potential pool via the intro; the rest are unrepresented.
 
 ### Promises (Söz)
 `{id, playerId, type, text, dueSeason, dueMonth, status:'open'|'kept'|'broken'}`.
-Types: `minutes` (≥50% minutes share over the period), `transfer_up` (move to a higher-prestige
-league by due date), `wage` (wage ≥ target by due date), `stay` (no transfer before due date),
+Types: `minutes` (≥50% minutes share over the window), `transfer_up` (move to a higher-prestige
+league by due date), `wage` (wage ≥ target by due date), `stay` (no transfer YOU arrange before due date),
 `visit` (visited at least once each half-season). Kept: loyalty +15, rep +2. Broken: loyalty −25,
 rep −3, and a `hirsli`/`yildiz` client may walk out.
+Fairness rules: the recruit preview marks every option `keepable`/`blocked` with a Turkish `warning`
+(`fit` = trait fit AND keepable; unkeepable promises are worth little, blocked ones nothing and the
+signing is refused with the same text): `minutes` only for a starter, `transfer_up` never at prestige 5 and only
+when the next league is within reach, `wage` only when a renewal table will exist before the due date,
+`stay` only for players who want to stay. The `minutes` window restarts (from that month's stats) after a
+transfer you arrange to a club with more expected minutes. An arranged move breaks an open `stay`; a forced
+move (club released him / free-agent placement) voids it; while one is open, transfer tables are closed
+with a Turkish `reason`. Cards that offer "give your word" only offer a keepable type. `negPreview.promiseChecks`
+lists open wage/stay promises a package would keep or break.
 
 ### Transfers & interest
 Each month clubs compute **needs** (weak/thin positions) and build **interest** (0..100) in
@@ -156,13 +178,19 @@ January on (the "Bosman" play: no fee, so a much bigger pie — but the current 
 trust −20). AI clubs also trade among themselves in windows (0–2 signings per club) so the world
 and the news feed stay alive. Your clients only move through you.
 
+**Free agents.** At season end a client whose contract is up may be let go by a club that no longer needs him
+(age ≥ 26 and CA ≥ 8 below the club's strength, 40 % chance): he becomes a clubless *free agent* (wage 0,
+loyalty/morale −10). In July/August his `free` interests can be negotiated (commission as usual); if nothing is
+signed, a fitting club takes him after the August deadline at ~90 % of the fair wage and **no commission**
+(`freeAgentPlaced`). Forced moves like this void a `stay` promise instead of breaking it.
+
 After a move, **career fit** is real: minutes at the new club come from the squad hierarchy and
 `club.youthTrust`; development, morale and loyalty follow. A dream move to a giant where he never
 plays will stall him and he will blame you.
 
 ### Masa — the negotiation mini-game (centerpiece)
 One table per deal, kinds: `transfer`, `free` (pre-contract/free agent), `renewal` (with current
-club), `sponsor` (simplified). You propose a **package**:
+club). (There is no sponsor table; sponsor cards live in the Gündem.) You propose a **package**:
 
 `{ wage (monthly €), years 1..5, bonus (signing bonus to player €), fee (your commission, lump sum €), clauses: { minutes: bool, release: bool } }`
 
@@ -170,13 +198,17 @@ club), `sponsor` (simplified). You propose a **package**:
 - The director has a hidden **ceiling** `K` and visible **patience** (3..6 pips). The transfer
   fee between clubs is settled automatically and shown ("Bonservis: €X"); for `free` deals part of
   the saved fee is added to K.
-- `K = fairPackage · generosity`, generosity 0.85..1.35 from need level, interest, budget health,
-  persona, and played Koz cards.
+- `K = fairPackage · generosity`, generosity ≈ 0.72..1.30 from need level (shown by lunch), interest,
+  budget health (lunch hint), persona and a persona-specific noise (±5..9 %), then Koz cards. The
+  suggested "fair" package usually sits slightly ABOVE K (median ≈ 0.9), and the client's own minimum
+  (wage ≥ ~0.96 × his demand, demand = 1.04 × fair wage) is about as high as K: the margin that is
+  left over for your fee is small and sometimes negative until a Koz is played — Koz and the
+  fee/wage trade-off decide deals; a greedy fee regularly loses the deal.
 - Each round: adjust the package, optionally play **one** Koz, press "Teklif Et".
   - `C ≤ K` → accepted.
   - else patience −1 (−2 if C > 1.35·K: "hakaret"), the director gives a **tell** (5 levels by gap:
     ≤5%, ≤12%, ≤22%, ≤35%, >35%; each with a face + line) and a **counter-package** costing
-    `K·(0.80 + 0.05·round)` — counters creep upward, so they leak information.
+    `K·(0.80 + 0.05·round ± 4 % noise)` — counters creep upward, so they leak information (not to the euro).
   - You may accept his counter, or walk away (no penalty). Patience 0 → he leaves: trust −10,
     that club is on cooldown for this player for 3 months.
 - Director personas (`club.director.persona`): `durust` (true tells), `kurnaz` (tell shown one
@@ -185,21 +217,22 @@ club), `sponsor` (simplified). You propose a **package**:
 - **The client must agree too.** `satisfaction` 0..100 from wage vs his demand, bonus, expected
   minutes vs trait, dream match, league prestige. ≥ 50 → signs. 40..49 → you can lean on him
   ("İkna et": loyalty −8). Shown live as you move sliders. If your fee is > 12% of the package
-  cost the client notices: loyalty −5 (warned in UI). **Wage vs. your fee vs. the ceiling is the
+  cost the client notices (threshold 12 %, 15 % hukukcu, shrinking to half on packages above ~€30M):
+  loyalty −5 (warned in UI). **Wage vs. your fee vs. the ceiling is the
   three-way tension — never remove it.**
 - **Koz cards** are generated from real state at table open (max 4 in hand, one per round):
   `rakip` (another club has interest ≥ 50: K +12%), `formda` (avg rating ≥ 7.2 over last 4 apps:
   K +8%), `taraftar` (hype ≥ 60: patience +1, K +4%), `sozlesme` (free/expiring: K +6%),
   `dostluk` (trust ≥ 60: reveals a band K ±8% and patience +1), `songun` (deadline day & club need
   high: K +10%), `blof` (always available when `rakip` is not: K +10% with a **shown** risk
-  `15% + 8%·director.info − 5%·tableUpgrade`; caught → patience −2, trust −15, rep −2).
+  `15% + 8%·director.info`, −10 points at table level 3, clamped 5..60 %; caught → patience −2, trust −15, rep −2).
   Bluff is the only dice in the mini-game and its odds are always visible.
 
 ### Son Gün (deadline day)
 Triggered when the player presses "Ayı Oynat" in Ağustos or Ocak. Six hourly slots 18:00…23:00,
 one action per hour (two with the top `network` upgrade): take one of the incoming **panic calls**
 (clubs with an unfilled need bid for your clients; each call has an expiry hour), run a quick Masa
-(patience −1, K +10..25% by need, `songun` Koz), or pitch. At midnight everything open collapses
+(patience −1, K +3..9% by need, `songun` Koz), or pitch. At midnight everything open collapses
 and the month simulation continues. If the player has no clients/interests it is skipped.
 
 ### Rivals
@@ -207,8 +240,9 @@ and the month simulation continues. If the player has no clients/interests it is
 (snipes young prospects — heat rises faster on U21s), `eskidost` (fair, slow), `holding` (rich,
 goes after stars). They hold portfolios (`player.agentId`), sign prospects when heat hits 100,
 approach your clients whose loyalty < 35 (inbox event: match with a promise / pay a loyalty bonus
-/ let go). **Ranking**: agencyScore = Σ(client value · 0.08) + cash·0.5 + rep·50_000, computed for
-all five every month; shown as a ladder.
+/ let go). **Ranking**: agencyScore = Σ over the 10 most valuable clients of 80 000·√(value in €M) +
+cash·0.3 + rep·50 000, computed for all five every month; shown as a ladder. Portfolio value, cash and
+reputation all count, so neither hoarding cash nor one star wins alone.
 
 ### Office upgrades (3 branches × 4 levels, cost € + monthly upkeep)
 - `scout` Gözlem: L1 trips reveal 4 prospects; L2 starting knowledge +15; L3 passive discovery
@@ -296,7 +330,7 @@ S = {
   deals: [ { season, month, playerId, fromClubId, toClubId, fee, commission, kind } ],
   ranking: [ { id, name, score } ],      // 5 agencies, sorted desc; id 'you' for the player
   history: [ { season, rank, cash, rep, clients, champions: { [leagueId]: clubId }, awards: [] } ],
-  flags: { tutorial: 0, seen: {} },
+  flags: { tutorial: null | { step, done, target, … }, seen: {}, … },   // tutorial is an object (see tutorial.js; UI reads hubSummary.tutorialStep); the rest is internal bookkeeping
   ending: null | { kind, rank, legacy, epilogues: [] },
 }
 ```

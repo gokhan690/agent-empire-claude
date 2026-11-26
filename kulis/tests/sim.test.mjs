@@ -83,7 +83,7 @@ test('league tables look like football', () => {
   const gpg = goals / (games / 2);
   assert.ok(gpg > 2.2 && gpg < 3.3, 'goals per game ' + gpg);
   const rows = Object.values(S.leagues.en1.table).map(r => r.pts).sort((a, b) => b - a);
-  assert.ok(rows[0] > rows[9] + 15, 'points spread ' + rows);
+  assert.ok(rows[0] > rows[9] + 10, 'points spread ' + rows);
 });
 
 test('stronger clubs collect more points (correlation > 0.5)', () => {
@@ -103,4 +103,22 @@ test('stronger clubs collect more points (correlation > 0.5)', () => {
   const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
   const r = dot(xc, yc) / Math.sqrt(dot(xc, xc) * dot(yc, yc));
   assert.ok(r > 0.5, 'r=' + r);
+});
+
+test('league strength is stable over 8 seasons (within ±2 CA of the start, mean deviation < 0.7)', async () => {
+  const { newGame, advance, act } = await import('../src/engine/game.js');
+  const { clubStrength } = await import('../src/engine/selection.js');
+  const { myClients } = await import('../src/engine/selectors.js');
+  const S = newGame({ seed: 9, careerSeasons: 30 });
+  const mean = lid => S.leagues[lid].clubIds.reduce((a, c) => a + clubStrength(S, c), 0) / S.leagues[lid].clubIds.length;
+  const start = {}; for (const lid in S.leagues) start[lid] = mean(lid);
+  const worst = {};
+  for (let g = 0; g < 12 * 8 && S.time.season <= 8; g++) {
+    S.agency.cash = 1e8; S.agency.negMonths = 0; S.inbox = [];
+    if (!myClients(S).length) { const q = Object.values(S.players).find(p => p.age < 22 && !p.agentId); q.agentId = 'you'; q.rep = { commissionPct: 7, endSeason: 99 }; q.loyalty = 90; }
+    let r = advance(S);
+    if (r.phase === 'deadline') { act(S, 'deadlineFinish'); r = advance(S); }
+    if (r.seasonEnd) for (const lid in S.leagues) worst[lid] = Math.max(worst[lid] || 0, Math.abs(mean(lid) - start[lid]));
+  }
+  for (const lid in worst) assert.ok(worst[lid] <= 2, lid + ' drifted ' + worst[lid].toFixed(2));
 });

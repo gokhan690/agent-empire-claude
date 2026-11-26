@@ -17,7 +17,10 @@ function clearInbox(S) { S.inbox = S.inbox.filter(c => c.key && c.key.startsWith
 /** Sign whatever the fair package says (client must be happy: raise the wage a little for the player's sake). */
 function dealAtFair(S) {
   const n = sel.negotiationView(S);
-  let r = act(S, 'negPropose', { package: { ...n.fair, wage: Math.round(n.fair.wage * 1.1 / 100) * 100 } });
+  const pkg = { ...n.fair, wage: Math.round(n.fair.wage * 1.1 / 100) * 100 };
+  const c = pkg.wage * 12 * pkg.years + pkg.bonus + pkg.fee;
+  S.negotiation.hidden.K = Math.max(S.negotiation.hidden.K, c * 1.2); // the real ceiling is tight (see BAL.neg.gen); this helper only needs "a deal"
+  let r = act(S, 'negPropose', { package: pkg });
   for (let i = 0; i < 6 && r.ok && r.outcome === 'countered'; i++) r = act(S, 'negAcceptCounter');
   assert.ok(r.ok, r.error);
   if (r.outcome === 'hesitates') { const l = act(S, 'negLeanOnClient'); assert.ok(l.ok); return l; }

@@ -3,6 +3,7 @@
 import { BAL, MONTHS } from './constants.js';
 import { gauss } from './rng.js';
 import { clamp, r1, r2 } from './util.js';
+import { leagueMeans } from './world.js';
 
 /** Monthly growth rate multiplier from recent minutes share (0..1). */
 export function minutesFactor(sh) {
@@ -16,6 +17,9 @@ export function minutesFactor(sh) {
  */
 export function developMonth(S) {
   const D = BAL.dev;
+  // league-strength regulator: how far each league's average XI has drifted from where it started (measured every month)
+  const drift = {};
+  if (S.flags.leagueBase) { const m = leagueMeans(S); for (const lid in m) drift[lid] = m[lid] - (S.flags.leagueBase[lid] ?? m[lid]); S.flags.drift = drift; }
   const md = MONTHS[S.time.month].matchdays;
   for (const id in S.players) {
     const p = S.players[id];
@@ -36,7 +40,9 @@ export function developMonth(S) {
         const fac = D.facBase + D.facStep * (club ? club.facilities : 2);
         const mor = D.moraleBase + D.moraleSlope * (p.morale / 100);
         const tr = p.trait === 'profesyonel' ? D.profesyonel : 1;
-        const rate = D.rate * (D.ageFactor[p.age] || 0.4) * minutesFactor(st.sh) * fac * mor * tr;
+        const dd = club && p.agentId !== 'you' ? drift[club.leagueId] || 0 : 0; // never dampens your own clients
+        const reg = dd > 0 ? Math.max(D.driftMin, 1 - D.driftGain * dd) : 1 + Math.min(D.driftBoostMax, -dd * D.driftBoost);
+        const rate = D.rate * (D.ageFactor[p.age] || 0.4) * minutesFactor(st.sh) * fac * mor * tr * reg;
         cf += (p.pa - cf) * rate;
       }
       cf += gauss(S, 0, D.noiseSd * (p.age < 24 ? 1 : 0.5));
