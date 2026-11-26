@@ -5,8 +5,8 @@ import { rint, chance, gauss, uid, shuffle, pickBy } from './rng.js';
 import { clamp, hash01, mean, tidy } from './util.js';
 import { fairWage, playerValue } from './valuation.js';
 import { squadIndex, squadOf, clubStrength, projectMinutes } from './selection.js';
-import { myClients } from './selectors.js';
-import { spend, earn, spendEnergy } from './economy.js';
+import { myClients, upgradeEffects } from './selectors.js';
+import { spend, earn, spendEnergy, addRep } from './economy.js';
 import { genYouth } from './world.js';
 import * as news from './news.js';
 import { useAction } from './deadline.js';
@@ -130,6 +130,7 @@ export function interestTarget(S, p, club, A, kind) {
   const W = BAL.market.interest;
   const nl = needLevel(club, p.pos);
   if (!nl) return 0;
+  if (p.moveAt !== undefined && p.clubId && S.time.season * 12 + S.time.month - p.moveAt < W.moveLock) return 0; // just settled in: nobody bids again yet
   const delta = p.ca - A;
   let t = nl * W.needW + clamp(W.fitBase + delta * W.fitK, W.fitMin, W.fitMax) + p.form * W.formW + p.hype / W.hypeDiv + club.trust / W.trustDiv;
   t += p.age <= 23 ? W.ageYoung : p.age <= 29 ? W.ageMid : p.age <= 30 ? 0 : p.age <= 32 ? W.age31 : W.age33;
@@ -279,6 +280,7 @@ export function monthly(S) {
     A = strengthMap(S, idx);
     refreshNeeds(S, idx, A);
   }
+  if (S.time.month === 1) for (const p of myClients(S)) if (!p.clubId) { placeFreeAgent(S, p); events.push({ type: 'freeAgentPlaced', playerId: p.id, clubId: p.clubId }); }
   updateInterests(S, A, events);
   return events;
 }
@@ -294,6 +296,7 @@ export function monthly(S) {
  * @returns {boolean}
  */
 export function handleExpiry(S, p) {
+  if (!p.clubId) { placeFreeAgent(S, p, true); return true; }
   const pc = p.preContract;
   if (pc) {
     delete p.preContract;
@@ -313,6 +316,23 @@ export function handleExpiry(S, p) {
     }
   }
   return false;
+}
+
+/**
+ * A clubless client (free agent) who found no table in the window is signed by a fitting club at a modest wage
+ * (no commission: you did not negotiate it). Keeps the world free of clubless players after September.
+ */
+export function placeFreeAgent(S, p, seasonEnd = false) {
+  const leagues = Object.values(S.leagues).sort((a, b) => b.prestige - a.prestige);
+  const L = leagues.find(l => BAL.strengthByPrestige[l.prestige] - 8 <= p.ca) || leagues[leagues.length - 1];
+  const ids = L.clubIds.slice().sort();
+  const needy = ids.filter(id => needLevel(S.clubs[id], p.pos) > 0);
+  const pool = needy.length ? needy : ids;
+  const to = S.clubs[pool[rint(S, 0, pool.length - 1)]];
+  const wage = Math.max(BAL.wage.min, r100(fairWage(S, p, to.leagueId) * 0.9));
+  applyMove(S, p, to, { kind: 'free', wage, years: 1 + rint(S, 0, 1), bonus: 0, clauses: { minutes: false, release: false } }, { seasonEnd });
+  news.push(S, { kind: 'transfer', playerId: p.id, clubId: to.id, text: p.name + ' serbest kaldıktan sonra ' + to.name + ' ile anlaştı.' });
+  return to;
 }
 
 // ------------------------------------------------------------------------------------------ pitch / lunch / media
@@ -409,7 +429,7 @@ export function clubLunch(S, a) {
   spendEnergy(S, 1);
   spend(S, cash, 'lunch', club.short + ' yemeği');
   const L = BAL.market.lunch;
-  const gain = S.agency.upgrades.network >= 2 ? L.trustL2 : L.trust;
+  const gain = upgradeEffects(S).lunchTrust;
   club.trust = clamp(club.trust + gain, 0, 100);
   club.lunchKnown = true;
   const f = hash01(club.id + ':bh' + S.time.season);
@@ -490,6 +510,7 @@ function applyMove(S, p, to, d, opts = {}) {
     if (from) from.budget += transferFee;
   }
   p.clubId = to.id;
+  if (moved) p.moveAt = S.time.season * 12 + S.time.month;
   p.wage = Math.round(d.wage);
   if (kind === 'renewal') p.contractEnd = Math.max(p.contractEnd, season) + d.years;
   else p.contractEnd = (opts.seasonEnd ? season + 1 : season) + d.years - 1;
@@ -553,8 +574,8 @@ export function executeTransfer(S, deal) {
   }
   if (commission > 0) earn(S, commission, 'commission', (d.kind === 'renewal' ? 'Sözleşme: ' : 'Transfer: ') + p.name);
   if (share > feeThreshold(S) + 1e-9) { p.loyalty = clamp(p.loyalty + D.feeNoticeLoyalty, 0, 100); events.push({ type: 'feeNoticed', playerId: p.id, share }); }
-  const repGain = d.kind === 'renewal' ? 1 : clamp(1 + Math.floor(Math.log10(Math.max(1, p.value / D.repDiv))), 1, D.repMax);
-  A.rep = clamp(A.rep + repGain, 0, 100);
+  const repRaw = d.kind === 'renewal' ? D.repRenewal : clamp(D.repBase + D.repLog * Math.log10(Math.max(1, p.value / D.repDiv)), D.repBase, D.repMax);
+  const repGain = addRep(S, repRaw);
   A.stats.deals++;
   S.deals.push({ season: S.time.season, month: S.time.month, playerId: p.id, fromClubId, toClubId: to.id, fee: transferFee, commission, kind: d.kind });
   events.unshift({

@@ -34,7 +34,7 @@ export function newGame(opts = {}) {
     },
     ledger: [], leagues: {}, clubs: {}, players: {}, rivals: [], inbox: [], promises: [], interests: [],
     negotiation: null, deadline: null, objectives: { offered: [], active: null, history: [] },
-    news: [], deals: [], ranking: [], history: [], flags: { tutorial: 0, seen: {} }, ending: null,
+    news: [], deals: [], ranking: [], history: [], flags: { tutorial: null, seen: {} }, ending: null,
   };
   seedRng(S, opts.seed === undefined ? 20260101 : opts.seed);
   createWorld(S);
@@ -58,6 +58,8 @@ const ROUTES = {
   takeLoan: (S) => takeLoan(S),
   continueEndless: (S) => ending.continueEndless(S),
 };
+/** Energy actions that are closed while Son Gün runs. */
+const DEADLINE_CLOSED = new Set(['scoutTrip', 'watchPlayer', 'recruit', 'visitClient', 'clubLunch', 'mediaPush']);
 /** Action ids whose result is read-only data: act() returns `{ok:true, preview: data}`. */
 const PREVIEWS = new Set(['tripPreview', 'recruitPreview', 'pitchPreview', 'negPreview', 'upgradePreview']);
 export const ACTION_IDS = Object.keys(ROUTES);
@@ -73,6 +75,7 @@ export function act(S, actionId, payload = {}) {
   const fn = ROUTES[actionId];
   if (!fn) return { ok: false, error: 'Bilinmeyen eylem' };
   if (S.time.phase === 'over' && actionId !== 'continueEndless') return { ok: false, error: 'Kariyer sona erdi' };
+  if (S.time.phase === 'deadline' && DEADLINE_CLOSED.has(actionId)) return { ok: false, error: 'Son Gün sürüyor: sadece arama, masa ve öneri' };
   let res = fn(S, payload);
   if (PREVIEWS.has(actionId) && res && res.ok === undefined) return { ok: true, preview: res };
   if (res && res.ok) tutorial.onAction(S, actionId, res);

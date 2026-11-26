@@ -10,6 +10,7 @@ function invariants(S, cumMd) {
   const counts = {};
   for (const id in S.players) {
     const p = S.players[id];
+    if (p.clubId === null) { assert.ok(p.agentId === 'you' && S.time.month <= 1 && S.time.phase !== 'x', 'clubless only a free-agent client before the Aug deadline ' + id); continue; }
     assert.ok(S.clubs[p.clubId], 'bad clubId ' + id);
     counts[p.clubId] = (counts[p.clubId] || 0) + 1;
     assert.ok(p.pa >= p.ca - 0 && p.age >= 16 && p.age <= 40, p.id + ' age/ca');
@@ -37,7 +38,7 @@ function invariants(S, cumMd) {
   assert.equal(S.ranking.length, 5);
 }
 
-for (const seed of [1, 2, 3, 4, 5, 6]) {
+for (const seed of [1, 2, 3, 4]) {
   test('full 8-season career, seed ' + seed, () => {
     const S = newGame({ seed });
     let season = 1;

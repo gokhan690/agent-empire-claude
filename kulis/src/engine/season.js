@@ -65,7 +65,7 @@ export function endSeason(S) {
   for (const id in S.players) {
     const p = S.players[id];
     const lid = clubLeague[p.clubId];
-    if (p.st.goals > 0 && (!best[lid] || p.st.goals > best[lid].st.goals)) best[lid] = p;
+    if (lid && p.st.goals > 0 && (!best[lid] || p.st.goals > best[lid].st.goals)) best[lid] = p;
   }
   for (const lid in best) {
     const p = best[lid];
@@ -113,7 +113,7 @@ export function endSeason(S) {
       out.clientEvents.push({ type: 'renewed', playerId: p.id, clubId: p.clubId });
     } else if (chance(S, R.renewChance)) {
       newContract(S, p, lid); out.renewed++;
-    } else {
+    } else if (lid) {
       const L = S.leagues[lid];
       const dests = L.clubIds.filter(c => c !== p.clubId);
       let dest = dests[0];
@@ -154,7 +154,7 @@ export function endSeason(S) {
     const sq = idx[cid];
     const cnt = { KL: 0, DF: 0, OS: 0, FV: 0 };
     for (const p of sq) cnt[p.pos]++;
-    const A = 0.6 * clubStrength(S, cid, sq) + 0.4 * BAL.strengthByPrestige[L.prestige];
+    const A = (1 - BAL.season.youthAnchor) * clubStrength(S, cid, sq) + BAL.season.youthAnchor * BAL.strengthByPrestige[L.prestige];
     let culled = 0;
     for (const p of sq.slice()) {
       if (culled >= 2) break;

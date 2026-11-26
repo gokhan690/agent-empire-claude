@@ -18,7 +18,8 @@ test('act() routes every action id of the DESIGN table', () => {
     assert.equal(typeof r.ok, 'boolean', id);
     if (!r.ok) assert.equal(typeof r.error, 'string');
   }
-  assert.deepEqual(act(S, 'scoutTrip', { leagueId: 'tr1', focus: 'any' }), { ok: false, error: 'Henüz hazır değil' });
+  const sc = act(S, 'scoutTrip', { leagueId: 'tr1', focus: 'any' });
+  assert.ok(sc.ok && Array.isArray(sc.prospects), 'scout trip works');
   assert.equal(act(S, 'nope').ok, false);
 });
 
@@ -42,8 +43,9 @@ test('advance guards: open negotiation, must-answer inbox card, deadline phase, 
 test('MonthReport shape', () => {
   const S = newGame({ seed: 1 });
   S.agency.cash = 1e6;
-  advance(S); // July: no matches
-  const r = advance(S);
+  assert.equal(advance(S).matchdays.length, 0); // July: no matches
+  let r = advance(S);
+  if (r.phase === 'deadline') { assert.ok(act(S, 'deadlineFinish').ok); r = advance(S); }
   assert.ok(r.ok && r.month === 1);
   assert.equal(r.matchdays.length, 12); // 2 matchdays × 6 leagues
   assert.equal(r.clients.length, 3);

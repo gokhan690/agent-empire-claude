@@ -195,7 +195,7 @@ test('dream fulfilment: loyalty +30, rep +4, stats.dreams, news', () => {
   const rep = S.agency.rep;
   const ev = clients.monthly(S);
   assert.ok(ev.some(e => e.type === 'dream'));
-  assert.ok(p.dream.done && S.agency.stats.dreams === 1 && S.agency.rep === rep + 4);
+  assert.ok(p.dream.done && S.agency.stats.dreams === 1 && Math.abs(S.agency.rep - (rep + 4 * Math.max(BAL.rep.floor, 1 - rep / BAL.rep.decay))) < 1e-9);
   assert.ok(p.loyalty >= 65);
   p.dream = { type: 'big_wage', target: 5000, done: false }; p.wage = 6000;
   clients.monthly(S); assert.equal(S.agency.stats.dreams, 2);
@@ -252,7 +252,7 @@ for (const type of ['minutes', 'transfer_up', 'wage', 'stay', 'visit']) {
     const out = promises.check(S);
     assert.equal(out.length, 1, JSON.stringify(out));
     assert.equal(out[0].status, 'kept'); assert.equal(pr.status, 'kept');
-    assert.equal(p.loyalty, loy + 15); assert.equal(S.agency.rep, rep + 2); assert.equal(S.agency.stats.promisesKept, 1);
+    assert.equal(p.loyalty, loy + 15); assert.ok(Math.abs(S.agency.rep - (rep + 2 * Math.max(BAL.rep.floor, 1 - rep / BAL.rep.decay))) < 1e-9); assert.equal(S.agency.stats.promisesKept, 1);
     assert.equal(promises.forPlayer(S, p.id).length, 0);
   });
   test(`promise ${type}: broken`, () => {

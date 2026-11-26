@@ -1,6 +1,8 @@
 // Read-only helpers. Safe to call from the UI every render. Never mutate S, never touch RNG.
 import { BAL, MONTHS } from './constants.js';
 import { clamp, hash01 } from './util.js';
+import { fairPackage, demandWage, satisfaction } from './negotiation.js';
+import { squadOf } from './selection.js';
 export { squadOf, squadIndex, projectMinutes, clubStrength } from './selection.js';
 
 /** All players represented by you (agentId === 'you'). */
@@ -121,16 +123,36 @@ export function interestOpenReason(S, i) {
   if (i.cooldown > 0) return 'Direktör küs (' + i.cooldown + ' ay)';
   if (i.level < BAL.neg.minLevel) return 'İlgi yetersiz (en az ' + BAL.neg.minLevel + ')';
   if (p.preContract && i.kind !== 'renewal') return 'Ön sözleşme zaten imzalı';
-  if (i.kind === 'transfer' && !MONTHS[S.time.month].window && S.time.phase !== 'deadline') return 'Transfer dönemi kapalı';
+  const tt = S.flags.tutorial;
+  const tutorialSuitor = !!(tt && typeof tt === 'object' && !tt.done && tt.target && tt.target.playerId === i.playerId && tt.target.clubId === i.clubId); // the first suitor may be answered outside the window
+  if (i.kind === 'transfer' && !MONTHS[S.time.month].window && S.time.phase !== 'deadline' && !tutorialSuitor) return 'Transfer dönemi kapalı';
   if (i.kind === 'free' && p.clubId && (p.contractEnd !== S.time.season || S.time.month < BAL.market.interest.freeFrom)) return 'Ön sözleşme Ocak\'ta başlar';
   if (i.kind === 'renewal' && p.contractEnd !== S.time.season) return 'Sözleşme henüz bitmiyor';
   return null;
 }
-/** Interests in your clients, best first: `{...interest, negotiable, reason}`. */
-export function interestList(S) {
+/** Turkish word for a client satisfaction value (0..100). */
+export function satWord(v) { return v >= 55 ? 'Memnun' : v >= 50 ? 'Razı' : v >= 40 ? 'Tereddütlü' : 'Reddeder'; }
+/**
+ * Interests in your clients, best first: `{...interest, negotiable, reason, clubName, playerName, fitSat, fitWord, expectedMinutes}`.
+ * Pass `playerId` to list only that client's interests. `fitSat` = how happy the client would be with a package at (up to +12% over) the fair wage — roughly what the club can afford (< 40: he will refuse; do not waste the energy).
+ */
+export function fitOf(S, p, club, kind, squad) {
+  const fair = fairPackage(S, p, club, kind);
+  const pkg = { ...fair, wage: Math.min(Math.max(fair.wage, demandWage(S, p, club, kind)), Math.round(fair.wage * 1.12 / 100) * 100) };
+  const sat = satisfaction(S, p, club, kind, pkg, squad);
+  return { fitSat: sat.value, fitWord: satWord(sat.value), expectedMinutes: Math.round(sat.minutes * 100) / 100 };
+}
+export function interestList(S, playerId) {
+  const sq = {};
+  const squad = cid => sq[cid] || (sq[cid] = squadOf(S, cid));
   return S.interests
-    .filter(i => S.players[i.playerId] && S.players[i.playerId].agentId === 'you')
-    .map(i => { const reason = interestOpenReason(S, i); return { ...i, negotiable: !reason, reason }; })
+    .filter(i => (!playerId || i.playerId === playerId) && S.players[i.playerId] && S.players[i.playerId].agentId === 'you' && S.clubs[i.clubId])
+    .map(i => {
+      const reason = interestOpenReason(S, i);
+      const p = S.players[i.playerId], club = S.clubs[i.clubId];
+      const fit = fitOf(S, p, club, i.kind, squad(club.id));
+      return { ...i, negotiable: !reason, reason, clubName: club.name, playerName: p.name, ...fit };
+    })
     .sort((a, b) => b.level - a.level);
 }
 /**
@@ -151,5 +173,13 @@ export function absMonth(S) { return (S.time.season - 1) * 12 + S.time.month; }
 export function deadlineCalls(S) {
   const d = S.deadline;
   if (!d) return [];
-  return d.calls.map(c => ({ ...c, available: !d.ended && !c.taken && c.fromHour <= d.hour && d.hour <= c.expiresHour }));
+  return d.calls.map(c => {
+    const p = S.players[c.playerId], club = S.clubs[c.clubId];
+    const kind = !p || !p.clubId ? 'free' : (p.contractEnd === S.time.season && S.time.month >= BAL.market.interest.freeFrom ? 'free' : 'transfer');
+    const fit = p && club ? fitOf(S, p, club, kind) : { fitSat: 0, fitWord: satWord(0), expectedMinutes: 0 };
+    return { ...c, available: !d.ended && !c.taken && c.fromHour <= d.hour && d.hour <= c.expiresHour, kind, ...fit };
+  });
 }
+
+// UI-facing views (hubSummary, clientView, prospectList, clubView, financeSeries, rankingView, availableActions, ...).
+export * from './views.js';

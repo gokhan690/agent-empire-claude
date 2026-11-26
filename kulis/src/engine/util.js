@@ -21,5 +21,3 @@ export function hash01(s) { return hashStr(s) / 4294967296; }
 /** Round a euro amount to a tidy value (nearest 1K above 20K, else 100). */
 export function tidy(v) { return v >= 20000 ? Math.round(v / 1000) * 1000 : Math.round(v / 100) * 100; }
 
-/** Standard "not implemented yet" Result returned by stubbed actions. */
-export function notReady() { return { ok: false, error: 'Henüz hazır değil' }; }

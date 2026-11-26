@@ -404,10 +404,11 @@ test('every Koz effect on K, patience and rules (one per round, once each)', () 
   assert.equal(act(ghost.S, 'negPropose', { package: ghost.S.negotiation.fair, koz: 'rakip' }).ok, false, 'a Koz you do not hold');
 });
 
-test('bluff: shown risk 15% + 8%·info − 5%·table; success +10% K; caught = patience −2, trust −15, rep −2 (forced rng)', () => {
+test('bluff: shown risk 15% + 8%·info − 10% (table L3+); success +10% K; caught = patience −2, trust −15, rep −2 (forced rng)', () => {
   assert.equal(table({ info: 2 }).S.negotiation.hand[0].risk, 31);
-  assert.equal(table({ info: 3, tableLvl: 3 }).S.negotiation.hand[0].risk, 24);
-  assert.equal(table({ info: 0, tableLvl: 2 }).S.negotiation.hand[0].risk, 5);
+  assert.equal(table({ info: 3, tableLvl: 3 }).S.negotiation.hand[0].risk, 29);
+  assert.equal(table({ info: 3, tableLvl: 2 }).S.negotiation.hand[0].risk, 39);
+  assert.equal(table({ info: 0, tableLvl: 4 }).S.negotiation.hand[0].risk, 5);
   const t = table({ info: 3 }); // 39 %
   const base = JSON.stringify(t.S);
   const k = cost({ ...t.S.negotiation.fair, fee: 0 }) + 20000;

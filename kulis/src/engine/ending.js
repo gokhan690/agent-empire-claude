@@ -6,6 +6,8 @@
 //        + 25 per €1M of the five most valuable client peak values + champion·(titles won by clients' clubs)
 //        + rank points (1st 600 … 5th 0) + rep·4 + seasons played·20, never below 0.
 import { BAL } from './constants.js';
+import { energyMaxFor } from './selectors.js';
+import * as objectives from './objectives.js';
 import { myClients, tableSorted } from './selectors.js';
 import { eur, fmt, hpick } from './data/text.js';
 import { ENDING_TITLES, ENDING_TEXTS, EPILOGUES, TAIL, DREAM_PHRASE, DREAM_DONE, DREAM_MISS } from './data/ending.js';
@@ -171,5 +173,8 @@ export function continueEndless(S) {
   S.meta.careerSeasons = 999;
   S.time.phase = 'plan';
   S.ending.continued = true;
+  S.agency.energyMax = energyMaxFor(S);
+  S.agency.energy = S.agency.energyMax;
+  if (!S.objectives.active) objectives.offer(S);
   return { ok: true, events: [{ type: 'endless' }] };
 }

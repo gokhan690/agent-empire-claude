@@ -2,7 +2,7 @@
 // State: S.flags.tutorial = { step, done, skipped, gem, target:{playerId,clubId}|null, did:{visit,scout,market,open} }.
 // Steps: welcome → visit → scout → market → interest (guaranteed suitor with a durust director → first Masa)
 //        → promises → ranking → done. The last two arrive via monthly() so the first month is not a wall of cards.
-import { BAL, MONTHS } from './constants.js';
+import { BAL } from './constants.js';
 import { myClients } from './selectors.js';
 import { applyEffects } from './effects.js';
 import * as events from './events.js';
@@ -161,9 +161,8 @@ export function monthly(S) {
   const name = STEPS[t.step];
   const ev = [];
   if (name === 'interest' && t.target) {
-    const nextOpen = MONTHS[(S.time.month + 1) % 12].window;
     const it = S.interests.find(i => i.playerId === t.target.playerId && i.clubId === t.target.clubId);
-    if (nextOpen && S.players[t.target.playerId] && (!it || it.level < ((BAL.neg && BAL.neg.minLevel) || 60) + 5)) {
+    if (S.players[t.target.playerId] && (!it || it.level < ((BAL.neg && BAL.neg.minLevel) || 60) + 5)) {
       applyEffects(S, [{ interest: { playerId: t.target.playerId, clubId: t.target.clubId, level: 72, kind: 'transfer' } }]);
     }
   }

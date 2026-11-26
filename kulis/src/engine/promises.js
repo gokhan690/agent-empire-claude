@@ -2,6 +2,7 @@
 //   status:'open'|'kept'|'broken', target?, from:{season,month,mins,md,prestige,clubId,wage}, half?:{a,b,needA,needB}}
 import { BAL, MONTHS } from './constants.js';
 import { uid } from './rng.js';
+import { addRep } from './economy.js';
 import { clamp, tidy } from './util.js';
 import { fairWage } from './valuation.js';
 import * as news from './news.js';
@@ -86,7 +87,7 @@ function resolve(S, pr, p, status, out) {
   const e = { type: 'promise', id: pr.id, playerId: p.id, status, promiseType: pr.type, text: pr.text };
   if (status === 'kept') {
     p.loyalty = clamp(p.loyalty + P.kept.loyalty, 0, 100); p.morale = clamp(p.morale + P.kept.morale, 0, 100);
-    A.rep = clamp(A.rep + P.kept.rep, 0, 100); A.stats.promisesKept++;
+    addRep(S, P.kept.rep); A.stats.promisesKept++;
   } else {
     p.loyalty = clamp(p.loyalty + P.broken.loyalty, 0, 100); p.morale = clamp(p.morale + P.broken.morale, 0, 100);
     A.rep = clamp(A.rep + P.broken.rep, 0, 100); A.stats.promisesBroken++;
@@ -125,7 +126,7 @@ export function check(S) {
         else if (due) resolve(S, pr, p, 'broken', out);
         break;
       case 'stay':
-        if (p.clubId !== pr.from.clubId) resolve(S, pr, p, 'broken', out);
+        if (p.clubId && p.clubId !== pr.from.clubId) resolve(S, pr, p, 'broken', out);
         else if (due) resolve(S, pr, p, 'kept', out);
         break;
       case 'minutes':

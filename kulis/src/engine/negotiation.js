@@ -3,11 +3,11 @@
 // live under `S.negotiation.hidden` — the UI must read the table through selectors.negotiationView(S) only.
 // Package: {wage (monthly €), years 1..5, bonus, fee (your commission, lump sum), clauses:{minutes,release}}.
 import { BAL } from './constants.js';
-import { rnd, chance } from './rng.js';
+import { rnd, chance, gauss } from './rng.js';
 import { clamp, tidy } from './util.js';
 import { fairWage } from './valuation.js';
-import { projectMinutes, clubStrength } from './selection.js';
-import { avgRecent, interestOpenReason, negotiationView } from './selectors.js';
+import { projectMinutes, clubStrength, squadOf } from './selection.js';
+import { avgRecent, interestOpenReason, negotiationView, upgradeEffects } from './selectors.js';
 import { spendEnergy } from './economy.js';
 import * as market from './market.js';
 import { useAction } from './deadline.js';
@@ -51,12 +51,19 @@ function ceilingParts(S, p, club, kind, level, fair, transferFee) {
   let g = G.base + G.need * nl + G.level * (Math.max(level, N.minLevel) - 60);
   const ratio = club.budget / Math.max(1, (kind === 'transfer' ? transferFee : 0) + F * 0.5);
   g += clamp((Math.log10(Math.max(ratio, 1e-3)) - 1) * G.budget, -G.budget, G.budget);
-  g = clamp(g, G.min, G.max);
+  g = clamp(g + gauss(S, 0, G.noise), G.min, G.max);
   const P = BAL.persona[club.director.persona] || BAL.persona.durust;
   let pf = 1 + (P.k || 0);
   if (club.director.persona === 'gosterisci') pf = 1 + (p.hype >= P.hypeMin ? P.hypeBonus : P.otherMalus);
   const saved = kind === 'free' ? p.value * N.saveFactor * N.freeSaved : 0;
   return { K: F * g * pf + saved, gen: g, persona: pf, saved, F, need: nl };
+}
+
+// Per-table squad cache (a pure perf aid: not part of S, rebuilt when the table changes).
+let sqCache = null;
+function tableSquad(S, n) {
+  if (!sqCache || sqCache.S !== S || sqCache.id !== n.id) sqCache = { S, id: n.id, squad: squadOf(S, n.clubId) };
+  return sqCache.squad;
 }
 
 // ------------------------------------------------------------------------------------------ client satisfaction
@@ -73,7 +80,7 @@ export function demandWage(S, p, club, kind) {
  * Client satisfaction 0..100 for a package. `parts` are the labelled contributions (sum = value, before clamping).
  * @returns {{value:number, parts:{label:string,value:number}[], minutes:number, demand:number}}
  */
-export function satisfaction(S, p, club, kind, pkg) {
+export function satisfaction(S, p, club, kind, pkg, squad) {
   const Z = BAL.neg.sat;
   const parts = [{ label: 'Temel', value: Z.base }];
   const add = (label, v) => { v = Math.round(v); if (v !== 0) parts.push({ label, value: v }); };
@@ -85,7 +92,7 @@ export function satisfaction(S, p, club, kind, pkg) {
   let b = clamp(pkg.bonus / (demand * 12) * Z.bonusSlope, 0, Z.bonusMax);
   if (paraci) b *= Z.paraciBonus;
   add('İmza primi', b);
-  const m = projectMinutes(S, p, club.id, { guarantee: !!(pkg.clauses && pkg.clauses.minutes) });
+  const m = projectMinutes(S, p, club.id, { guarantee: !!(pkg.clauses && pkg.clauses.minutes) }, squad);
   let mv = (m - 0.5) * Z.minutesW;
   if (mv < 0 && p.trait === 'hirsli') mv *= Z.hirsliMinutes;
   if (p.trait === 'profesyonel') mv *= Z.profMinutes;
@@ -199,7 +206,7 @@ function buildHand(S, p, club, kind, isDeadline, needLvl) {
   if (rival) hand.push({ id: 'rakip', label: 'Rakip Teklif', text: S.clubs[rival.clubId].name + ' de peşinde.', effect: 'Tavan +%' + Math.round(Z.rakip * 100), kPct: Z.rakip, patience: 0, risk: null, clubId: rival.clubId });
   if (!rival) {
     const bl = BAL.neg.bluff;
-    const risk = clamp(bl.base + bl.info * club.director.info - bl.table * S.agency.upgrades.table, bl.min, bl.max);
+    const risk = clamp(bl.base + bl.info * club.director.info + upgradeEffects(S).blofRiskDelta, bl.min, bl.max);
     hand.push({ id: 'blof', label: 'Blöf', text: 'Başka teklifin varmış gibi yap.', effect: 'Tavan +%' + Math.round(Z.blof * 100), kPct: Z.blof, patience: 0, risk: Math.round(risk * 100) });
   }
   if (isDeadline && needLvl >= Z.songunNeed) hand.push({ id: 'songun', label: 'Son Gün Baskısı', text: 'Saat daralıyor, kulüp ihtiyacını biliyor.', effect: 'Tavan +%' + Math.round(Z.songun * 100), kPct: Z.songun, patience: 0, risk: null });
@@ -207,7 +214,7 @@ function buildHand(S, p, club, kind, isDeadline, needLvl) {
   if (p.hype >= Z.hypeMin) hand.push({ id: 'taraftar', label: 'Taraftar', text: 'Tribünler adını haykırıyor.', effect: 'Sabır +1, tavan +%' + Math.round(Z.taraftar * 100), kPct: Z.taraftar, patience: 1, risk: null });
   if (kind === 'free' || p.contractEnd === S.time.season) hand.push({ id: 'sozlesme', label: 'Sözleşme Bitiyor', text: kind === 'free' ? 'Bonservis ödemeden alabilirler.' : 'Sözleşmesi bu sezon bitiyor.', effect: 'Tavan +%' + Math.round(Z.sozlesme * 100), kPct: Z.sozlesme, patience: 0, risk: null });
   if (club.trust >= Z.trustMin) hand.push({ id: 'dostluk', label: 'Eski Dostluk', text: 'Direktörle aranız iyi.', effect: 'Tavan aralığını gösterir, sabır +1', kPct: 0, patience: 1, risk: null });
-  const max = S.agency.upgrades.table >= 3 ? Z.handMaxL3 : Z.handMax;
+  const max = upgradeEffects(S).kozMax;
   return hand.slice(0, max).map(c => ({ ...c, used: false }));
 }
 
@@ -239,14 +246,17 @@ export function openTable(S, a, opts = {}) {
   const tf = kind === 'transfer' ? market.estimateTransferFee(S, p, club) : 0;
   const cp = ceilingParts(S, p, club, kind, it.level, fair, tf);
   let K = cp.K * (1 + (opts.kBoost || 0));
+  const tut = S.flags.tutorial;
+  if (tut && typeof tut === 'object' && !tut.done && tut.target && tut.target.playerId === p.id && tut.target.clubId === club.id) K *= 1 + N.tutorialK; // the first Masa is meant to be won
   const persona = club.director.persona;
   let patience = (BAL.persona[persona] || BAL.persona.durust).patience;
-  patience += S.agency.upgrades.table >= 1 ? N.table.patience : 0;
+  const fx = upgradeEffects(S);
+  patience += fx.tablePatience;
   if (S.meta.archetype === 'hukukcu') patience += BAL.archetype.hukukcu.patience;
   patience = Math.max(1, patience - (opts.patiencePenalty || 0));
   const isDl = !!opts.deadline || S.time.phase === 'deadline';
   const hand = buildHand(S, p, club, kind, isDl, cp.need);
-  const band = S.agency.upgrades.table >= N.table.bandTable ? { ...makeBand(S, K, N.table.band), source: 'masa' } : null;
+  const band = fx.ceilingBand ? { ...makeBand(S, K, fx.ceilingBand), source: 'masa' } : null;
   if (!opts.free) spendEnergy(S, 1);
   S.negotiation = {
     id: 'n' + S.time.season + '_' + S.time.month + '_' + it.id,
@@ -299,7 +309,7 @@ export function preview(S, a) {
   const raw = (a && a.package) || {};
   const p = S.players[n.playerId], club = S.clubs[n.clubId];
   const pkg = v.pkg || { wage: Math.max(0, +raw.wage || 0), years: clamp(Math.round(+raw.years || 1), 1, 5), bonus: Math.max(0, +raw.bonus || 0), fee: Math.max(0, +raw.fee || 0), clauses: { minutes: !!(raw.clauses && raw.clauses.minutes), release: !!(raw.clauses && raw.clauses.release) } };
-  const sat = satisfaction(S, p, club, n.kind, pkg);
+  const sat = satisfaction(S, p, club, n.kind, pkg, tableSquad(S, n));
   const share = market.feeShare(pkg);
   const res = {
     cost: packageCost(pkg), satisfaction: sat.value, satisfactionParts: sat.parts,
@@ -358,7 +368,7 @@ export function propose(S, a) {
   if (v.error) return fail(v.error);
   const pkg = v.pkg;
   const p = S.players[n.playerId], club = S.clubs[n.clubId];
-  const sat = satisfaction(S, p, club, n.kind, pkg);
+  const sat = satisfaction(S, p, club, n.kind, pkg, tableSquad(S, n));
   if (sat.value < BAL.neg.sat.lean) return fail('Oyuncu bu teklifi kabul etmez (memnuniyet ' + sat.value + '). Maaşı ya da primi artır.');
   let card = null;
   if (a.koz) {
@@ -414,7 +424,7 @@ export function propose(S, a) {
   const trueLevel = tellLevel((C - K) / K);
   H.trueLevel = trueLevel;
   const T = BAL.neg.table;
-  const honest = club.trust >= T.kurnazTrust || S.agency.upgrades.table >= T.kurnazTable;
+  const honest = club.trust >= T.kurnazTrust || upgradeEffects(S).kurnazTrue;
   const shown = H.persona === 'kurnaz' && !honest ? Math.min(4, trueLevel + 1) : trueLevel;
   const tell = tellFor(club, shown, n.round);
   n.lastTell = tell;
@@ -426,7 +436,7 @@ export function propose(S, a) {
   }
   const target = Math.min(K, K * (BAL.neg.creep.base + BAL.neg.creep.step * n.round));
   const cp = shapeCounter(n, pkg, target);
-  const cs = satisfaction(S, p, club, n.kind, cp);
+  const cs = satisfaction(S, p, club, n.kind, cp, tableSquad(S, n));
   n.counter = { package: cp, cost: packageCost(cp), satisfaction: cs.value, clientOk: cs.value >= BAL.neg.sat.ok, clientLean: cs.value >= BAL.neg.sat.lean && cs.value < BAL.neg.sat.ok };
   return { ok: true, outcome: 'countered', round: n.round, patience: n.patience, patienceMax: n.patienceMax, tell, counter: n.counter, insult, koz: kozRes, line: say(club, insult ? 'insult' : 'counter', n.round), events };
 }
@@ -442,7 +452,7 @@ export function acceptCounter(S) {
   if (!n.counter) return fail('Karşı teklif yok');
   const pkg = n.counter.package;
   const p = S.players[n.playerId], club = S.clubs[n.clubId];
-  const sat = satisfaction(S, p, club, n.kind, pkg);
+  const sat = satisfaction(S, p, club, n.kind, pkg, tableSquad(S, n));
   if (sat.value < BAL.neg.sat.lean) return fail('Oyuncu bu karşı teklifi kabul etmiyor (memnuniyet ' + sat.value + ')');
   n.package = pkg;
   n.log.push({ round: n.round, cost: n.counter.cost, koz: null, outcome: 'counterAccepted' });

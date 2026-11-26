@@ -2,7 +2,7 @@
 // Representation contract: p.agentId='you', p.rep={commissionPct 5..10, endSeason}.
 import { BAL, MONTHS, TRAITS, DREAMS } from './constants.js';
 import { clamp, tidy, r1 } from './util.js';
-import { spendEnergy } from './economy.js';
+import { spendEnergy, addRep } from './economy.js';
 import { fairWage } from './valuation.js';
 import { myClients, prospectLevel, isRecruitable, upgradeEffects, monthIndex, tableSorted } from './selectors.js';
 import * as promises from './promises.js';
@@ -26,7 +26,8 @@ export function promiseValue(p, type) {
 /** Score threshold to sign player `p` (deterministic). */
 export function recruitThreshold(S, p) {
   const R = BAL.recruit;
-  let t = R.thrBase + Math.max(0, prospectLevel(p) - R.thrFrom) * R.thrSlope + p.hype * R.thrHype;
+  const lv = prospectLevel(p);
+  let t = R.thrBase + Math.max(0, lv - R.thrFrom) * R.thrSlope + Math.max(0, lv - R.thrHigh) * R.thrSlope2 + p.hype * R.thrHype;
   if (p.agentId && p.agentId !== 'you') t += R.thrRival;
   return Math.round(t);
 }
@@ -76,7 +77,7 @@ export function recruitPreview(S, a) {
   const rival = !!(p.agentId && p.agentId !== 'you');
   const thresholdParts = [
     { label: 'Taban', value: R.thrBase },
-    { label: 'Seviye / potansiyel', value: Math.round(Math.max(0, lvl - R.thrFrom) * R.thrSlope) },
+    { label: 'Seviye / potansiyel', value: Math.round(Math.max(0, lvl - R.thrFrom) * R.thrSlope + Math.max(0, lvl - R.thrHigh) * R.thrSlope2) },
     { label: 'Şöhret', value: Math.round(p.hype * R.thrHype) },
   ];
   if (rival) thresholdParts.push({ label: 'Rakip menajerden koparma', value: R.thrRival });
@@ -212,7 +213,7 @@ function driftOne(S, p, fx) {
     const trait = p.trait === 'hirsli' || p.trait === 'yildiz' ? 1.5 : 1;
     if (gap < 0) dl += gap * D.loyMinK * trait; else dl += Math.min(1.5, gap * 3);
   } else if (p.injured) dm += D.injuredMorale;
-  if (ratio < D.wageLow) { const k = p.trait === 'paraci' ? 2 : 1; dm -= 1 * k; dl -= 1.5 * k; }
+  if (p.clubId && ratio < D.wageLow) { const k = p.trait === 'paraci' ? 2 : 1; dm -= 1 * k; dl -= 1.5 * k; }
   else if (ratio > D.wageHigh) { dm += 1; dl += p.trait === 'paraci' ? 1.5 : 0.5; }
   if (p.trait === 'yildiz') dm += p.hype >= 50 ? 1 : -1.5;
   const since = p.lastVisit ? monthIndex(S) - (p.lastVisit.season * 12 + p.lastVisit.month) : 12;
@@ -274,7 +275,7 @@ export function monthly(S) {
     if (!p.dream.done && dreamDone(S, p)) {
       p.dream.done = true; p.dreamKnown = true;
       p.loyalty = clamp(p.loyalty + D.dreamLoyalty, 0, 100); p.morale = clamp(p.morale + D.dreamMorale, 0, 100);
-      S.agency.rep = clamp(S.agency.rep + D.dreamRep, 0, 100); S.agency.stats.dreams++;
+      addRep(S, D.dreamRep); S.agency.stats.dreams++;
       news.push(S, { kind: 'dream', playerId: p.id, text: `${p.name} hayalini gerçekleştirdi: ${DREAMS[p.dream.type].label}!` });
       out.push({ type: 'dream', playerId: p.id, dream: p.dream.type });
     }

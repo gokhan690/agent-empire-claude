@@ -6,14 +6,11 @@
 // Cards created by other modules (rivals, objectives…) may carry `effects`/`altEffects`/`resultText`/`altResultText`
 // directly on their options (plain JSON); template cards resolve those from the template by `card.key`.
 import { BAL, MONTHS } from './constants.js';
-import { uid, chance, pickBy, pickWeighted, rint } from './rng.js';
+import { uid, chance, pickBy, pickWeighted } from './rng.js';
 import { myClients, absMonth, squadIndex, clubStrength } from './selectors.js';
 import { spend, spendEnergy, takeLoan } from './economy.js';
 import { applyEffects } from './effects.js';
-import { clamp } from './util.js';
 import { fmt, eur } from './data/text.js';
-import { makeName } from './data/names.js';
-import { LEAGUE_DEFS } from './constants.js';
 import { EVENT_TEMPLATES, TUTORIAL_TEMPLATES } from './data/events.js';
 import * as tutorial from './tutorial.js';
 import * as ending from './ending.js';
@@ -21,10 +18,22 @@ import * as ending from './ending.js';
 /** @typedef {{ok:true,events:object[],[k:string]:any}|{ok:false,error:string}} Result */
 
 /** All templates by key (random deck, follow-ups, tutorial). */
-export const TEMPLATES = {};
-for (const t of EVENT_TEMPLATES.concat(TUTORIAL_TEMPLATES)) TEMPLATES[t.key] = t;
+const _T = {};
+let _deck = null;
+// Filled on first use: data/events.js sits in an import cycle (selectors → views → clients → events), so nothing may read it at load time.
+function ensure() {
+  if (_deck) return;
+  for (const t of EVENT_TEMPLATES.concat(TUTORIAL_TEMPLATES)) _T[t.key] = t;
+  _deck = EVENT_TEMPLATES.filter(t => t.weight > 0 && !t.followUp);
+}
+export const TEMPLATES = new Proxy(_T, {
+  get(t, k) { ensure(); return t[k]; },
+  has(t, k) { ensure(); return k in t; },
+  ownKeys(t) { ensure(); return Reflect.ownKeys(t); },
+  getOwnPropertyDescriptor(t, k) { ensure(); return Reflect.getOwnPropertyDescriptor(t, k); },
+});
 /** Templates eligible for the random monthly draw. */
-export const DECK = EVENT_TEMPLATES.filter(t => t.weight > 0 && !t.followUp);
+export function deck() { ensure(); return _deck; }
 
 // ---------------------------------------------------------------- helpers
 const KEY_LABEL = {
@@ -33,8 +42,6 @@ const KEY_LABEL = {
   commission: 'Komisyon', releaseClient: 'Müşteri ayrılır', sellTo: 'Müşteri satılır',
 };
 const SILENT = new Set(['news', 'flag', 'queue', 'directorMove', 'label']);
-/** Effect keys handled here, on top of effects.js's primitives. Move them into effects.js when convenient. */
-export const LOCAL_EFFECT_KEYS = ['heal', 'scout', 'directorMove', 'sellTo', 'commission', 'queue'];
 const NON_KEYS = new Set(['playerId', 'clubId', 'label']);
 
 function flags(S) {
@@ -184,62 +191,8 @@ function candidatesOf(tpl, S, X) {
   return (Array.isArray(r) ? r : [r]).filter(Boolean).map(x => (x === true ? {} : x));
 }
 
-// ---------------------------------------------------------------- local effect primitives
-function ownedPlayer(S, ef, ctx) { const id = ef.playerId ?? ctx.playerId; return id ? S.players[id] : null; }
-
-function applyLocal(S, ef, ctx, events) {
-  const rest = {};
-  for (const k in ef) {
-    const v = ef[k];
-    const p = ownedPlayer(S, ef, ctx);
-    switch (k) {
-      case 'heal': if (p) p.injured = Math.max(0, p.injured - v); events.push({ type: 'effect', key: k, value: v, playerId: p ? p.id : null }); break;
-      case 'scout': if (p) { p.seen = true; p.know = clamp(p.know + v, 0, 100); } events.push({ type: 'effect', key: k, value: v, playerId: p ? p.id : null }); break;
-      case 'commission': if (p && p.rep) p.rep.commissionPct = clamp(p.rep.commissionPct + v, 3, 12); events.push({ type: 'effect', key: k, value: v, playerId: p ? p.id : null }); break;
-      case 'sellTo': {
-        const rv = S.rivals.find(r => r.id === v);
-        if (p && rv && p.agentId === 'you') {
-          p.agentId = rv.id; p.rep = { commissionPct: rint(S, BAL.rivalCommission[0], BAL.rivalCommission[1]), endSeason: S.time.season + 2 };
-          p.loyalty = 55;
-          S.promises = S.promises.filter(q => !(q.playerId === p.id && q.status === 'open'));
-        }
-        events.push({ type: 'effect', key: k, value: v, playerId: p ? p.id : null });
-        break;
-      }
-      case 'directorMove': {
-        const A = S.clubs[v.from], B = S.clubs[v.to];
-        if (A && B && A !== B) {
-          const nat = (LEAGUE_DEFS.find(d => d.id === A.leagueId) || LEAGUE_DEFS[0]).nat;
-          B.director = A.director;
-          A.director = { name: makeName(S, nat), persona: pickWeighted(S, BAL.persona.weights), info: 0 };
-          B.trust = Math.max(B.trust, clamp(A.trust - 10, 0, 100));
-          A.trust = clamp(A.trust - 15, 0, 100);
-        }
-        events.push({ type: 'effect', key: k, value: v });
-        break;
-      }
-      case 'queue': {
-        flags(S).evQueue.push({ key: v.key, due: absMonth(S) + (v.months || 1), ctx: v.ctx || {} });
-        break;
-      }
-      case 'releaseClient': {
-        S.promises = S.promises.filter(q => !(q.playerId === v && q.status === 'open'));
-        rest[k] = v;
-        break;
-      }
-      default: rest[k] = v;
-    }
-  }
-  return rest;
-}
-
 function runEffects(S, effects, ctx, label) {
-  const events = [];
-  for (const ef of effects) {
-    const rest = applyLocal(S, ef, ctx, events);
-    if (Object.keys(rest).some(k => !NON_KEYS.has(k))) events.push(...applyEffects(S, [{ label, ...rest }], ctx));
-  }
-  return events;
+  return applyEffects(S, effects.map(ef => ({ label, ...ef })), ctx);
 }
 
 /** Resolve one option: pick effects (roll risk), apply, build the result. Used by answerInbox and by expiry. */
@@ -336,7 +289,7 @@ export function monthly(S) {
   if (want <= 0) return events;
 
   const pool = [];
-  for (const tpl of DECK) {
+  for (const tpl of deck()) {
     if (keys.has(tpl.key)) continue;
     if (tpl.once && S.flags.seen['ev_' + tpl.key]) continue;
     if (tpl.heavy && S.time.season < BAL.events.heavyFromSeason) continue;

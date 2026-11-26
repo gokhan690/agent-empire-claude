@@ -32,6 +32,17 @@ export function earn(S, amt, k, label) {
   book(S, amt, k, label);
   if (k === 'commission' || k === 'wagecut') S.agency.stats.commission += amt;
 }
+/**
+ * Change reputation. Gains shrink as rep grows (BAL.rep.decay: ×(1 − rep/decay), floor BAL.rep.floor); losses are not scaled.
+ * Returns the actual change.
+ */
+export function addRep(S, amt) {
+  const A = S.agency, R = BAL.rep;
+  const k = amt > 0 ? Math.max(R.floor, 1 - A.rep / R.decay) : 1;
+  const before = A.rep;
+  A.rep = Math.min(100, Math.max(0, A.rep + amt * k));
+  return Math.round((A.rep - before) * 10) / 10;
+}
 /** Spend energy; returns false (and spends nothing) if not enough. */
 export function spendEnergy(S, n) {
   if (S.agency.energy < n) return false;

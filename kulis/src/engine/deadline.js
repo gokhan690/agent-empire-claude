@@ -6,7 +6,7 @@ import { BAL, MONTHS } from './constants.js';
 import { rint, uid, pickBy } from './rng.js';
 import { clamp, hash01 } from './util.js';
 import { clubStrength } from './selection.js';
-import { myClients } from './selectors.js';
+import { myClients, upgradeEffects } from './selectors.js';
 import * as market from './market.js';
 import { openTable } from './negotiation.js';
 
@@ -64,7 +64,7 @@ export function start(S) {
   const calls = newCalls(S);
   const openable = S.interests.some(i => i.level >= BAL.neg.minLevel && i.cooldown <= 0 && S.players[i.playerId] && S.players[i.playerId].agentId === 'you' && i.kind === 'transfer');
   if (!calls.length && !openable) return false;
-  const max = S.agency.upgrades.network >= 4 ? 2 : 1;
+  const max = upgradeEffects(S).deadlineActionsPerHour;
   S.deadline = { hour: BAL.deadline.hours[0], actionsLeft: max, actionsMax: max, calls, log: [{ hour: BAL.deadline.hours[0], kind: 'start', text: 'Son Gün başladı. Telefonlar susmuyor.' }], deals: 0, ended: false };
   return true;
 }
@@ -158,6 +158,7 @@ export function skipHour(S) {
  * @returns {Result}
  */
 export function finish(S) {
+  if (S.time.phase !== 'deadline') return fail('Son Gün aktif değil');
   const events = [];
   const dl = S.deadline;
   let missed = 0;

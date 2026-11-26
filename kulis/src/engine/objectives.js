@@ -5,7 +5,7 @@
 import { BAL } from './constants.js';
 import { pick, uid } from './rng.js';
 import { clamp, tidy } from './util.js';
-import { earn } from './economy.js';
+import { earn, addRep } from './economy.js';
 import { myClients, monthlyCommission, monthIndex } from './selectors.js';
 import * as news from './news.js';
 
@@ -212,7 +212,7 @@ export function check(S) {
   const reached = st.progress >= o.target;
   if (reached && (!st.endOnly || last)) {
     earn(S, o.reward.cash, 'objective', 'Hedef ödülü: ' + o.title);
-    S.agency.rep = clamp(S.agency.rep + o.reward.rep, 0, 100);
+    addRep(S, o.reward.rep);
     news.push(S, { kind: 'objective', text: `${S.meta.agencyName} sezon hedefini tamamladı: ${o.title}` });
     finish(S, o, 'done');
     return [{ type: 'objective', status: 'done', title: o.title, reward: o.reward }];
