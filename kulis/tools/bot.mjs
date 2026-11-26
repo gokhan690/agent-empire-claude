@@ -3,10 +3,13 @@
 //   node tools/bot.mjs --bot sharp --seeds 20 --seasons 8
 //   node tools/bot.mjs --bot all --seeds 30            (every bot, aggregate table)
 //   node tools/bot.mjs --bot sharp --trace 7           (month-by-month story of seed 7)
+//   node tools/bot.mjs --bot sharp,sharpnw --seeds 40 --par 4   (parallel; sharpnw = sharp that never uses watchPlayer)
 // Options: --bot passive|casual|sharp|greedy|fuzz|all  --seeds N  --seed0 N  --seasons N  --trace [seed]  --seasons-table  --quiet
 import { newGame, act, advance, serialize, deserialize } from '../src/engine/game.js';
 import * as sel from '../src/engine/selectors.js';
 import { MONTHS, BAL } from '../src/engine/constants.js';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 // ------------------------------------------------------------------ tiny deterministic rng for the bots themselves
 function mkRng(seed) {
@@ -32,9 +35,11 @@ function makeCtx(seed, opts) {
   };
   ctx.say = s => { if (ctx.trace) ctx.log.push(s); };
   ctx.do = (id, payload = {}) => {
+    if (opts.noWatch && id === 'watchPlayer') return { ok: false, error: 'bot: izleme kapalı' };
     const r = act(S, id, payload);
     if (typeof r !== 'object' || typeof r.ok !== 'boolean') throw new Error('bad Result shape from ' + id);
     if (!r.ok && typeof r.error !== 'string') throw new Error('Result without error text from ' + id);
+    if (opts.hook) opts.hook(id, payload, r, S, ctx);
     if (ctx.trace && r.ok && !['negPropose', 'negPreview', 'recruitPreview', 'pitchPreview', 'upgradePreview', 'tripPreview'].includes(id)) ctx.say('  · ' + id + ' ' + brief(payload));
     return r;
   };
@@ -527,6 +532,8 @@ const BOTS = {
   },
 };
 
+BOTS.sharpnw = { ...BOTS.sharp, noWatch: true };
+
 function deadlineDay(ctx, style) {
   const S = ctx.S;
   for (let guard = 0; guard < 40 && S.time.phase === 'deadline'; guard++) {
@@ -621,6 +628,7 @@ function snapshotSeason(ctx, report) {
     kept: A.stats.promisesKept, broken: A.stats.promisesBroken, dreams: A.stats.dreams,
     stars: clients.filter(p => p.ca >= 82).length, top: clients.reduce((m, p) => Math.max(m, p.value), 0), maxCa: clients.reduce((m, p) => Math.max(m, p.ca), 0),
     pf: clients.reduce((s, p) => s + p.value, 0), rivalTop: S.ranking.filter(r => r.id !== 'you')[0] ? S.ranking.filter(r => r.id !== 'you')[0].score : 0, myScore: (S.ranking.find(r => r.id === 'you') || {}).score || 0,
+    ups: A.upgrades.scout + A.upgrades.table + A.upgrades.network,
     loy: clients.length ? clients.reduce((s, p) => s + p.loyalty, 0) / clients.length : 0,
   };
   ctx.last = { commission: A.stats.commission, deals: A.stats.deals, won: T.won, lost: T.lost };
@@ -629,7 +637,7 @@ function snapshotSeason(ctx, report) {
 
 export function runCareer(botName, seed, opts = {}) {
   const bot = BOTS[botName];
-  const ctx = makeCtx(seed, { ...opts, seasons: opts.seasons || 8 });
+  const ctx = makeCtx(seed, { ...opts, seasons: opts.seasons || 8, noWatch: !!bot.noWatch });
   const S = ctx.S;
   let bankruptSeason = null;
   try {
@@ -638,7 +646,7 @@ export function runCareer(botName, seed, opts = {}) {
       if (ctx.trace) ctx.say(`\n── ${before.season}. sezon ${MONTHS[before.month].name}  kasa €${Math.round(S.agency.cash).toLocaleString('tr-TR')}  itibar ${S.agency.rep.toFixed(1)}  müşteri ${sel.myClients(S).length}  sıra ${sel.myRank(S)}`);
       answerInbox(ctx, bot.inbox);
       if (!S.objectives.active && S.objectives.offered.length && botName !== 'passive') {
-        const o = S.objectives.offered[botName === 'sharp' ? 1 : 0] || S.objectives.offered[0];
+        const o = S.objectives.offered[botName === 'sharp' || botName === 'sharpnw' ? 1 : 0] || S.objectives.offered[0];
         if (o) ctx.do('chooseObjective', { objectiveId: o.id });
       }
       bot.plan(ctx);
@@ -759,7 +767,7 @@ function printAggregate(name, a, runs) {
 }
 
 function parseArgs(argv) {
-  const o = { bot: 'sharp', seeds: 10, seed0: 1, seasons: 8, trace: null, quiet: false, table: true };
+  const o = { bot: 'sharp', seeds: 10, seed0: 1, seasons: 8, trace: null, quiet: false, table: true, raw: false, par: 1 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--bot') o.bot = argv[++i];
@@ -769,14 +777,47 @@ function parseArgs(argv) {
     else if (a === '--trace') o.trace = /^\d+$/.test(argv[i + 1] || '') ? +argv[++i] : o.seed0;
     else if (a === '--quiet') o.quiet = true;
     else if (a === '--no-table') o.table = false;
+    else if (a === '--raw') o.raw = true;
+    else if (a === '--par') o.par = +argv[++i];
     else if (a === '--archetype') o.archetype = argv[++i];
   }
   return o;
 }
 
-function main() {
+function slim(r) {
+  return { bot: r.bot, seed: r.seed, rows: r.rows, ending: r.ending ? { legacy: r.ending.legacy, kind: r.ending.kind } : null, exceptions: r.exceptions, tables: r.tables, bankruptSeason: r.bankruptSeason, end: r.end, pacing: r.pacing,
+    recruits: r.recruits, promises: { kept: r.end.stats.promisesKept, broken: r.end.stats.promisesBroken } };
+}
+
+function extra(runs) {
+  const rec = runs.flatMap(r => r.recruits).filter(x => x.finalCa !== null && x.age <= 23);
+  const m = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const kept = runs.reduce((a, r) => a + r.end.stats.promisesKept, 0), broken = runs.reduce((a, r) => a + r.end.stats.promisesBroken, 0);
+  const allUp = runs.map(r => { const i = r.rows.findIndex(x => x.ups >= 12); return i < 0 ? null : i + 1; });
+  const upAt = k => m(runs.map(r => (r.rows[k] ? r.rows[k].ups : 12)));
+  const topRiv = runs.map(r => (r.rows[7] ? r.rows[7].rivalTop : 0));
+  const mine = runs.map(r => (r.rows[7] ? r.rows[7].myScore : 0));
+  const pf = runs.map(r => (r.rows[7] ? r.rows[7].pf : 0));
+  return { keptPct: kept + broken ? Math.round(kept / (kept + broken) * 100) : 0, recruitN: rec.length, recruitGain: m(rec.map(x => x.finalCa - x.ca)), recruitFinal: m(rec.map(x => x.finalCa)), recruitPa: m(rec.map(x => x.pa)),
+    recruitBust: rec.length ? rec.filter(x => x.pa - x.ca <= 4).length / rec.length : 0,
+    allUpPct: Math.round(allUp.filter(x => x !== null).length / runs.length * 100), allUpAvg: m(allUp.filter(x => x !== null)), ups6: upAt(5), ups8: upAt(7), mineScore8: m(mine), rivalScore8: m(topRiv), pf8: m(pf),
+    cashMed: (() => { const v = runs.map(r => r.end.cash).sort((a, b) => a - b); return v[Math.floor(v.length / 2)] || 0; })() };
+}
+
+function runSlice(name, o, seed0, seeds) {
+  return new Promise((res, rej) => {
+    const args = [fileURLToPath(import.meta.url), '--bot', name, '--seed0', String(seed0), '--seeds', String(seeds), '--seasons', String(o.seasons), '--raw'];
+    if (o.archetype) args.push('--archetype', o.archetype);
+    const ch = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'], maxBuffer: 1 << 30 });
+    let out = '';
+    ch.stdout.on('data', d => { out += d; });
+    ch.on('close', () => { try { res(JSON.parse(out)); } catch (e) { rej(new Error('bad child output for ' + name + ' ' + seed0 + ': ' + out.slice(0, 300))); } });
+  });
+}
+
+async function main() {
   const o = parseArgs(process.argv.slice(2));
-  const names = o.bot === 'all' ? Object.keys(BOTS) : o.bot.split(',');
+  const names = o.bot === 'all' ? Object.keys(BOTS).filter(n => n !== 'sharpnw') : o.bot.split(',');
   for (const n of names) if (!BOTS[n]) { console.error('bilinmeyen bot: ' + n + ' (' + Object.keys(BOTS).join(', ') + ')'); process.exit(2); }
   let exitCode = 0;
   for (const name of names) {
@@ -787,11 +828,25 @@ function main() {
       if (r.exceptions.length) { console.log(r.exceptions[0].message + '\n' + r.exceptions[0].stack); exitCode = 1; }
       continue;
     }
-    const runs = [];
+    let runs = [];
     const t0 = Date.now();
-    for (let i = 0; i < o.seeds; i++) runs.push(runCareer(name, o.seed0 + i, { seasons: o.seasons, archetype: o.archetype }));
+    if (o.raw) {
+      for (let i = 0; i < o.seeds; i++) runs.push(slim(runCareer(name, o.seed0 + i, { seasons: o.seasons, archetype: o.archetype })));
+      process.stdout.write(JSON.stringify(runs));
+      process.exit(0);
+    }
+    if (o.par > 1) {
+      const per = Math.ceil(o.seeds / o.par);
+      const jobs = [];
+      for (let k = 0; k < o.par; k++) { const a = k * per, n = Math.min(per, o.seeds - a); if (n > 0) jobs.push(runSlice(name, o, o.seed0 + a, n)); }
+      runs = (await Promise.all(jobs)).flat();
+    } else for (let i = 0; i < o.seeds; i++) runs.push(runCareer(name, o.seed0 + i, { seasons: o.seasons, archetype: o.archetype }));
     if (o.table && !o.quiet) { console.log(`\n--- ${name}: sezon sezon (ortalama; kasa=medyan) ---`); console.log(perSeasonTable(runs)); }
-    printAggregate(name, aggregate(runs), runs);
+    const a = aggregate(runs);
+    printAggregate(name, a, runs);
+    const x = extra(runs);
+    console.log(`  EK: söz tutma %${x.keptPct} | kasa medyan €${fmtM(x.cashMed)} | tüm yükseltmeler: %${x.allUpPct} kariyerde, ort. sezon ${x.allUpAvg.toFixed(1)} (6.sezon ${x.ups6.toFixed(1)}/12, 8.sezon ${x.ups8.toFixed(1)}/12) | 8.sezon skor ben ${fmtM(x.mineScore8)} / rival1 ${fmtM(x.rivalScore8)}, portföy ${fmtM(x.pf8)}`);
+    console.log(`  EK: U23 imzalar n=${x.recruitN}: ort. CA artışı ${x.recruitGain.toFixed(1)}, son CA ${x.recruitFinal.toFixed(1)}, pa ${x.recruitPa.toFixed(1)}, sönen %${Math.round(x.recruitBust * 100)}`);
     const bad = runs.filter(r => r.exceptions.length);
     for (const r of bad.slice(0, 3)) { console.log(`  !! seed ${r.seed}: ${r.exceptions[0].message}\n${r.exceptions[0].stack}`); }
     if (bad.length) exitCode = 1;
