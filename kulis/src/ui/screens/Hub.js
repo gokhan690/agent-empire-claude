@@ -165,12 +165,11 @@ function AdvanceBar({ S, h }) {
     if (h.advanceBlock) note = html`<div class="hub-adv__why"><${Icon} name="lock" size=${14} /> ${h.advanceBlock}</div>`;
     else if (h.energy > 0) note = html`<div class="hub-adv__hint"><${Icon} name="bolt" size=${14} /> ${h.energy} enerjin kaldı</div>`;
   }
-  return html`<div class="hub-adv">${note}${btn}
+  return html`<div class="hub-adv">${note}${btn}</div>
     ${confirm ? html`<${Sheet} title="Enerjin kaldı" onClose=${() => setConfirm(null)} footer=${html`<div class="stack"><${Button} block icon="play" variant=${h.deadlineMonth ? 'gold' : 'primary'} onClick=${run}>Yine de oynat</${Button}><${Button} block variant="ghost" onClick=${() => setConfirm(null)}>Geri dön</${Button}></div>`}>
       <div class="stack"><p class="hub-confirm__lead"><b class="lime num">${h.energy}</b> enerjin kaldı. Enerji aya devredilmez; yine de oynatmak istiyor musun?</p>
         ${tips.map((t) => html`<button type="button" class="hub-alert" onClick=${() => { setConfirm(null); navigate(t.to); }}><${Icon} name="arrowRight" size=${16} /><span>${t.t}</span><${Icon} name="chevronRight" size=${16} /></button>`)}</div>
-    </${Sheet}>` : null}
-  </div>`;
+    </${Sheet}>` : null}`;
 }
 
 export default function Hub() {

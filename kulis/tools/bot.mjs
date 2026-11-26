@@ -190,21 +190,28 @@ function playTable(ctx, style) {
   let result = null, rounds = 0, why = '';
   const F = v.fair.wage * 12 * v.fair.years + v.fair.bonus + v.fair.fee;
   if (style === 'sharp') {
+    // careful play: the client's floor first, fee only from what the director can really add, tells + counters to find the ceiling, Koz only when needed
     const years = v.fair.years, bonus = v.fair.bonus;
     const nw = needWage(ctx, v, bonus, years, false, 52);
     if (nw === null) { ctx.do('negWalkAway'); result = 'lost'; why = 'client:unreachable'; }
     else {
-      const FS = 0.115;
-      const floorT = (nw * 12 * years + bonus) / (1 - FS); // cheapest package the client signs
-      let Tt = F * 1.38;
+      const FSMAX = 0.115;
+      const base = nw * 12 * years + bonus; // the cheapest package the client signs (no fee)
+      let Kcur = F * 0.95;                  // prior: the suggested package sits a bit above the ceiling
+      let counterOk = null;
       for (let round = 0; round < 9 && !result; round++) {
         v = sel.negotiationView(S);
         if (!v) break;
         rounds = Math.max(rounds, v.round + 1);
-        const koz = round < 3 ? chooseKoz(v, 'sharp', used) : null;
-        if (koz) { used.add(koz); const c = v.hand.find(h => h.id === koz); if (c && c.kPct) Tt = Math.min(Tt * (1 + c.kPct * 0.5), F * 1.35); }
-        Tt = Math.max(Tt, floorT);
-        const fee = Math.min(v.limits.fee[1], tidy(Tt * FS));
+        let koz = null;
+        if (round >= 1 || Kcur * 0.98 < base * 1.01) koz = chooseKoz(v, 'sharp', used);
+        if (koz) { used.add(koz); const c = v.hand.find(h => h.id === koz); if (c && c.kPct) Kcur *= 1 + c.kPct; }
+        let Tt = Kcur * 0.98;
+        if (Tt < base * 1.003) {
+          if (Kcur < base * 0.985 && !v.hand.some(h => !h.used && h.kPct > 0)) { result = 'lost'; why = 'nofee'; ctx.do('negWalkAway'); break; }
+          Tt = base * 1.003;
+        }
+        const fee = Math.min(v.limits.fee[1], Math.max(0, tidy(Math.min(Tt - base, Tt * FSMAX))));
         const wage = Math.max(nw, Math.floor((Tt - bonus - fee) / (12 * years) / 100) * 100);
         const pkg = { wage, years, bonus, fee, clauses: { minutes: false, release: false } };
         const C = wage * 12 * years + bonus + fee;
@@ -217,13 +224,12 @@ function playTable(ctx, style) {
         const kTell = C / (1 + GAP_MID[lvl]);
         const c = r.counter;
         const kCounter = c ? c.cost / (0.8 + 0.05 * (v.round + 1)) : kTell;
-        const Kest = Math.min(kTell * 1.03, (kTell + kCounter) / 2);
-        if (c && c.clientOk && c.cost >= 0.95 * Kest && round >= 2) {
+        Kcur = lvl >= 4 ? kCounter : (kTell + kCounter) / 2;
+        if (c && c.clientOk && (r.patience <= 1 || (round >= 2 && c.cost >= 0.96 * Kcur))) {
           const a = ctx.do('negAcceptCounter');
           if (a.ok && a.outcome === 'accepted') { result = 'accepted'; break; }
         }
-        Tt = Kest * 0.985;
-        if (Tt < floorT * 0.995) { result = 'lost'; why = 'nofee'; ctx.do('negWalkAway'); break; }
+        if (Kcur < base * 0.97 && !v.hand.some(h => !h.used && h.kPct > 0 && !used.has(h.id))) { result = 'lost'; why = 'nofee'; ctx.do('negWalkAway'); break; }
       }
     }
   } else {

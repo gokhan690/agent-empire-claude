@@ -86,11 +86,11 @@ export const BAL = {
     hukukcu: { patience: 1, feeThreshold: 0.15 },
   },
   persona: {
-    durust: { k: 0, patience: 4 },
-    kurnaz: { k: 0, patience: 4 },
-    cimri: { k: -0.08, patience: 6 },
-    sabirsiz: { k: 0.08, patience: 3 },
-    gosterisci: { k: 0, patience: 4, hypeBonus: 0.12, hypeMin: 60, otherMalus: -0.03 },
+    durust: { k: 0, patience: 4, noise: 0.05 },
+    kurnaz: { k: 0, patience: 4, noise: 0.08 },
+    cimri: { k: -0.08, patience: 6, noise: 0.06 },
+    sabirsiz: { k: 0.08, patience: 3, noise: 0.09 },
+    gosterisci: { k: 0, patience: 4, hypeBonus: 0.12, hypeMin: 60, otherMalus: -0.03, noise: 0.08 },
     weights: { durust: 30, kurnaz: 22, cimri: 18, sabirsiz: 15, gosterisci: 15 },
   },
 
@@ -212,7 +212,7 @@ export const BAL = {
   },
   neg: {
     minLevel: 60,
-    gen: { base: 0.95, need: 0.05, level: 0.0025, budget: 0.06, noise: 0.07, min: 0.85, max: 1.35 },
+    gen: { base: 0.81, renewal: -0.06, need: 0.05, level: 0.0025, budget: 0.06, noise: 0.07, min: 0.72, max: 1.30 },
     fee: { valueShare: 0.08, valueDamp: 40000000, wageShare: 0.09, freeShare: 0.10, renewShare: 0.06 },
     tutorialK: 0.12, freeSaved: 0.30, saveFactor: 0.9,
     years: { default: 3, old: 2, oldAge: 31, young: 4, youngAge: 21, renew: 3 },
@@ -220,10 +220,10 @@ export const BAL = {
     clause: { minutes: 0.08, release: 0.05 },
     maxWageMult: 4, maxBonusMonths: 24, maxFeeShare: 0.6,
     tell: [0.05, 0.12, 0.22, 0.35],
-    creep: { base: 0.80, step: 0.05 },
+    creep: { base: 0.80, step: 0.05, noise: 0.03 },
     insult: 1.35,
     sat: {
-      base: 38, wageFair: 15, wageSlope: 75, wageMin: -30, wageMax: 28, paraci: 1.3,
+      base: 32, wageFair: 15, wageSlope: 75, wageMin: -30, wageMax: 28, paraci: 1.3,
       bonusSlope: 50, bonusMax: 8, paraciBonus: 1.5,
       minutesW: 20, hirsliMinutes: 1.5, profMinutes: 0.7,
       prestigeW: 3, hirsliPrestige: 1.6, sadikMove: -6,

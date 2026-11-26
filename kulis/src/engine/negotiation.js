@@ -48,11 +48,11 @@ function ceilingParts(S, p, club, kind, level, fair, transferFee) {
   const N = BAL.neg, G = N.gen;
   const nl = kind === 'renewal' ? 2 : Math.max(1, market.needLevel(club, p.pos));
   const F = market.packageCost(fair);
-  let g = G.base + G.need * nl + G.level * (Math.max(level, N.minLevel) - 60);
+  let g = G.base + G.need * nl + G.level * (Math.max(level, N.minLevel) - 60) + (kind === 'renewal' ? G.renewal : 0);
   const ratio = club.budget / Math.max(1, (kind === 'transfer' ? transferFee : 0) + F * 0.5);
   g += clamp((Math.log10(Math.max(ratio, 1e-3)) - 1) * G.budget, -G.budget, G.budget);
-  g = clamp(g + gauss(S, 0, G.noise), G.min, G.max);
   const P = BAL.persona[club.director.persona] || BAL.persona.durust;
+  g = clamp(g + gauss(S, 0, P.noise ?? G.noise), G.min, G.max);
   let pf = 1 + (P.k || 0);
   if (club.director.persona === 'gosterisci') pf = 1 + (p.hype >= P.hypeMin ? P.hypeBonus : P.otherMalus);
   const saved = kind === 'free' ? p.value * N.saveFactor * N.freeSaved : 0;
@@ -434,7 +434,7 @@ export function propose(S, a) {
     events.push(leave(S, n));
     return { ok: true, outcome: 'left', round: n.round, patience: 0, tell, insult, koz: kozRes, line: say(club, 'walkout', n.round), events };
   }
-  const target = Math.min(K, K * (BAL.neg.creep.base + BAL.neg.creep.step * n.round));
+  const target = Math.min(K, K * (BAL.neg.creep.base + BAL.neg.creep.step * n.round + gauss(S, 0, BAL.neg.creep.noise)));
   const cp = shapeCounter(n, pkg, target);
   const cs = satisfaction(S, p, club, n.kind, cp, tableSquad(S, n));
   n.counter = { package: cp, cost: packageCost(cp), satisfaction: cs.value, clientOk: cs.value >= BAL.neg.sat.ok, clientLean: cs.value >= BAL.neg.sat.lean && cs.value < BAL.neg.sat.ok };
