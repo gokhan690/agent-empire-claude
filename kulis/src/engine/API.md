@@ -1,99 +1,77 @@
 # KULİS engine — UI-facing API
 
 The UI imports only `game.js`, `selectors.js`, `constants.js`. All text the engine returns is Turkish. Money is whole €.
-`S` is plain JSON (`serialize(S)` / `deserialize(json)`), mutated in place by `act` / `advance`. Never throw on player mistakes: failures are `{ok:false, error:'Türkçe mesaj'}`.
+`S` is plain JSON (`serialize(S)` / `deserialize(json)`, save version `SAVE_VERSION` = 2; older saves are rejected), mutated in place by `act` / `advance`. Never throw on player mistakes: failures are `{ok:false, error:'Türkçe mesaj'}`.
 
 ```js
 import { newGame, act, advance, serialize, deserialize, ACTION_IDS } from '../engine/game.js';
 import * as sel from '../engine/selectors.js';          // read-only views, safe every render, no RNG
-const S = newGame({ seed, agentName, agencyName, archetype: 'mahalle'|'eskifutbolcu'|'hukukcu', careerSeasons: 8|5 });
+const S = newGame({ seed, agentName, agencyName, careerSeasons: 5 });   // careerSeasons defaults to BAL.careerSeasons (5)
 ```
 
-## 1. Result shapes
-- `act(S, id, payload)` → `{ok:true, events:[{type,…}], …extras}` | `{ok:false, error}`. Preview ids return `{ok:true, preview:{…}}`.
-- `events` are for toasts/animation (`type` ∈ `signed scout watch visit lunch pitch media upgrade inbox tableOpen tell dealDone feeNoticed bluffCaught directorLeft walkAway leaned deadlineHour deadlineEnd negotiationCollapsed loan loanOffer objectiveChosen released shortlist effect …`). Unknown types: ignore.
-- While `S.time.phase==='over'` every action fails except `continueEndless`. While `phase==='deadline'` the energy actions `scoutTrip watchPlayer recruit visitClient clubLunch mediaPush` fail ("Son Gün sürüyor…").
-- Energy: `S.agency.energy / energyMax` (4, 5 or 6). A failed action never costs anything.
+## 1. The game in one sentence
+Find players, sign them, sell them to bigger clubs at the table, take your cut, grow your agency.
+Month = one turn: spend **Enerji** (4, 5 with "Büyük ofis"; every action costs exactly 1), then `advance`. 12 months × 5 seasons.
 
-## 2. Actions (`act(S, id, payload)`)
+## 2. Actions (`act(S, id, payload)` → `{ok:true, events:[…], …extras}` | `{ok:false, error}`)
 | id | payload | cost | result extras |
 |---|---|---|---|
-| `tripPreview` | `{leagueId, focus}` | – | preview `{energy:1, cash, count, available, startKnow}` (+`error`) |
-| `scoutTrip` | `{leagueId:'tr2'…'en1', focus:'any'\|'u21'\|'form'\|'expiring'}` | 1E + travel € | `prospects:[playerId]` (now `seen`; show via `prospectList`) |
-| `watchPlayer` | `{playerId}` | 1E | event `watch {know, delta, traitRevealed, band}` |
-| `toggleShortlist` | `{playerId}` | free | event `shortlist {on}` (max 40) |
-| `recruitPreview` | `{playerId, promises:[{type}]}` | – | preview `{score, threshold, parts:[{label,value}], thresholdParts, promiseOptions:[{type,label,add,text,due,target,fit,chosen,keepable,blocked,warning}], promiseBonus, canSign, cost, rival, gap}` (+`error`). `fit` = trait fit AND realistically keepable; new optional `keepable` / `blocked` / `warning` (Turkish reason or null): a `blocked` option adds nothing, makes `canSign` false and sets `error` to its `warning` |
-| `recruit` | `{playerId, promises:[{type:'minutes'\|'transfer_up'\|'wage'\|'stay'\|'visit'}] ≤3}` | 1E | event `signed {commissionPct,endSeason,promiseIds,fromRival}`; fails with the score gap text |
-| `visitClient` | `{playerId}` | 1E (1/client/month) | `line` (what he wants now) |
+| `searchPlayers` | `{}` | 1E | `candidates:[playerId]` (3, or 4 with "Gözlemci ağı"); they are added to `S.found` (newest first, max 6) |
+| `watchPlayer` | `{playerId}` | 1E | potential becomes exact (`know=100`) |
+| `signPlayer` | `{playerId}` | 1E | needs `S.agency.rep ≥ sel.repNeeded(p)`; no dice |
 | `releaseClient` | `{playerId}` | free | – |
-| `clubLunch` | `{clubId}` | 1E + € (`clubView.lunch.cash`) | event `lunch {trust, gain, needs, budgetHint}` |
-| `pitchPreview` | `{playerId, clubId}` | – | preview `{energy, cash, delta, levelBefore, levelAfter, deadlineAction}` (+`error`) |
-| `pitchPlayer` | `{playerId, clubId}` | 1E (on Son Gün: the hour's action) | `delta, interestId` |
-| `mediaPush` | `{playerId}` | 1E + € | event `media {hype, cash, value}` |
-| `openNegotiation` | `{interestId}` | 1E (Son Gün: the hour's action) | `negotiation` (= `negotiationView`) |
-| `negPreview` | `{package, koz?}` | – | preview `{cost, satisfaction, satisfactionParts, feeSharePct, feeWarning, clientOk, clientLean, transferFee, expectedMinutes, demandWage, promiseChecks:[{id,type,text,ok,note}]}` (+`error`); `promiseChecks` (new, optional) lists open wage/stay promises this package would keep (`ok`) or break |
-| `negPropose` | `{package, koz?:'rakip'\|…}` | patience | see §4 |
-| `negAcceptCounter` / `negWalkAway` / `negLeanOnClient` | `{}` | – | see §4 |
-| `upgradePreview` | `{branch:'scout'\|'table'\|'network'}` | – | preview `{name, level, nextLevel, maxed, cost, upkeep, upkeepDelta, text, currentText, canAfford}` |
-| `buyUpgrade` | `{branch}` | € | event `upgrade` |
-| `answerInbox` | `{inboxId, optionId}` | per option | `resultText, riskFired, title` |
-| `chooseObjective` | `{objectiveId}` | free | – |
-| `deadlineTakeCall` / `deadlineSkipHour` / `deadlineFinish` | `{callId}` / `{}` / `{}` | – | see §5 |
-| `takeLoan` | `{}` | – | only after the bank offer (`hub.loanOffered`) |
-| `continueEndless` | `{}` | – | only after a finished career that was not `iflas`/`yalniz` |
+| `pitchPlayer` | `{playerId, clubId}` | 1E | `offer:boolean`, `interestId`. A club whose appetite is high enough ("İlgilenir") makes an offer at once; "Belki" warms up; "Zor" barely moves |
+| `openNegotiation` | `{interestId}` | 1E | `negotiation` (= `negotiationView`) |
+| `negPreview` | `{package:{wage,fee}}` | – | `{preview:{cost, hint:'Yüksek'\|'Orta'\|'Düşük', happy, greedy, feeSharePct, transferFee, error?}}` |
+| `negPropose` | `{package:{wage,fee}}` | patience | see §4 |
+| `negAcceptCounter` / `negWalkAway` | `{}` | – | – |
+| `buyUpgrade` | `{upgradeId}` | € | one of `BAL.upgrades` (≤ 6) |
+| `answerInbox` | `{inboxId, optionId}` | per option | `resultText`, `title` |
+| `skipGuide` | `{}` | – | – |
+| `takeLoan` | `{}` | – | only after the bank offer |
+| `continueEndless` | `{}` | – | after a finished career that was not `iflas`/`yalniz` |
 
-Package: `{wage (monthly €), years 1..5, bonus, fee (your commission, lump sum), clauses:{minutes:bool, release:bool}}`; bounds in `negotiation.limits`.
+While `S.time.phase==='over'` every action fails except `continueEndless`. A failed action never costs anything. `events` are for toasts/animation (`signed scout watch pitch tableOpen tell dealDone feeNoticed directorLeft walkAway upgrade effect …`); unknown types: ignore.
+There is no Son Gün, no transfer window (offers can be answered in any month), no promises, no traits/dreams, no lunch/media/visit, no Koz/bluff, no clauses, no free agents / pre-contracts / renewal tables (contracts of clients are renewed automatically in June).
 
 ## 3. Reading state (selectors)
-`sel.hubSummary(S)` → `{season, seasons, month, monthName, window, deadlineMonth, phase, energy, energyMax, cash, rep, rank, rankScore, clients, inbox, must, openInterests, monthlyCommission, upkeep, loan, negMonths, loanOffered, objective, objectivesOffered, tutorialStep, advanceBlock, alerts:[{kind,text,playerId?}]}`. `advanceBlock` is the Turkish reason "Ayı Oynat" is disabled (or null).
-`sel.clientList(S)` → rows `{id,name,age,pos,ca,form,value,loyalty,morale,injured,clubId,clubName,minutesShare,openPromises,interestCount,trait,hasPreContract}`.
-`sel.clientView(S,id)` → full dossier `{…, trait/traitLabel, dream:{type,label,text,target,done}, wage, fairWage, wageRatio, value, hype, morale/loyalty (+Word), club, league, minutesShare, expectedShare, avgRating, avgRecent, stats, career, band:{lo,hi,width}, contractEnd, contractYearsLeft, preContract, rep:{commissionPct,endSeason}, promises:[{…, progress:{value,target,text}}], interests, visitedThisMonth, flags:{expiring,freeAgent,unhappy}}` (null if not your client).
-`sel.prospectList(S,{shortlistedOnly?,leagueId?})` → discovered, recruitable players `{id,name,age,nat,pos,ca,form,hype,value,clubName,leagueName,contractEnd,know,band,trait|null,dream|null,heat,heatPerMonth,shortlisted,level,rival:{id,agency}|null,score,threshold,canSign,gap}`. `trait` appears at know≥60, `dream` at ≥85; `band` always contains the true potential.
-`sel.clubView(S,id)` / `sel.clubList(S,leagueId)`; `needs`, `director.persona`, `budgetHint` are `null` until `lunchKnown` (reset every July).
-`sel.interestList(S[,playerId])` → your clients' interests `{id,playerId,clubId,level,kind:'transfer'|'free'|'renewal',cooldown,negotiable,reason,clubName,playerName,fitSat,fitWord,expectedMinutes}`. `negotiable` = level≥60 and window/contract rules satisfied; `reason` is Turkish when not (also when an open `stay` promise would be broken by the move); `fitSat<40` = the client will refuse a realistic package ("Reddeder").
-`sel.financeSeries(S)` (oldest first `{season,month,label,net,cash,items:[{k,label,amt}]}`), `sel.rankingView(S)` (5 rows `{rank,id,name,owner,score,isYou,personaLabel,rep,clients,color}`), `sel.upgradeView(S)` (3 previews), `sel.objectiveView(S)` (`{offered,active:{progress,target,pct,reward,failed,endOnly,…},history}`), `sel.deadlineView(S)`, `sel.negotiationView(S)`, `sel.tableSorted(S,leagueId)`, `sel.monthName(S)`, `sel.isWindowOpen(S)`, `sel.myClients(S)`, `sel.upgradeEffects(S)`.
-`sel.availableActions(S,{playerId?,clubId?})` → `[{id,label,payload,cost:{energy,cash},ok,reason}]`; `{playerId}` of a client → visit/media/(pitch with `clubId`)/release, of a prospect → watch/recruit/shortlist, `{clubId}` → lunch, `{}` → scout trip per league, upgrades, loan. `reason` is the Turkish disabled text ("Enerjin yok", "Bu ay zaten ziyaret ettin", "Yeterli paran yok", …).
-Also: `sel.advanceBlock`, `sel.potentialBand`, `sel.minutesShare`, `sel.avgRating`, `sel.canAfford`, `sel.deadlineCalls`.
+- `sel.hubSummary(S)` → `{season, seasons, month, monthName, phase, energy, energyMax, cash, rep, rank, rankScore, clients, offers, monthlyCommission, upkeep, loan, negMonths, loanOffered, goal:{title,kind,progress,target,status:'active'|'done'|'failed',reward}|null, guide:{step:'search'|'pitch'|'deal',title,text,index,total}|null, card:EventCard|null, advanceBlock, alert, noClients}`.
+- `sel.clientList(S)` → rows `{id,name,age,pos,stars,value,mood,moodTone:'good'|'mid'|'bad',moodWord,injured,clubName,offers}` (value desc).
+- `sel.clientView(S,id)` → dossier `{id,name,age,pos,stars,potential:{lo,hi,exact},club,league,value,wage,contractEnd,contractYearsLeft,mood,moodTone,moodWord,injured,form,minutesShare,avgRecent,offers:[offer]}`.
+- `sel.candidateList(S)` → `S.found` still unsigned: `{id,name,age,pos,clubName,leagueName,stars,potential:{lo,hi,exact},watched,value,repNeeded,canSign,block}`. **Stars**: `sel.starsOf(ca)` = 1 (<50) … 5 (80+). Potential of an unwatched player is a range 2–3 stars wide (`lo<hi`) that always contains the truth; after `watchPlayer` it is exact (`lo===hi`, `exact:true`).
+- `sel.offerList(S[,playerId])` → negotiable interests (level ≥ 60, no cooldown) `{id,playerId,playerName,pos,clubId,clubName,colors,crest,leagueName,level,fee,wage,plays,playsWord:'İlk 11'|'Yedek'|'Kadro dışı'}` best first.
+- `sel.pitchOptions(S,playerId,limit)` → clubs to pitch to `{clubId,name,leagueName,prestige,fit:'İlgilenir'|'Belki'|'Zor',needs:[pos],cooldown,offered}`.
+- `sel.clubList(S,leagueId)`, `sel.clubView(S,clubId)` (needs, your clients' fit), `sel.rankingView(S)` (5 agencies), `sel.agencyView(S)` (`{name,cash,rep,income,upkeep,loan,ranking,upgrades:[{id,name,text,price,owned,canAfford}],goal}`), `sel.negotiationView(S)`.
+- Also: `sel.myClients`, `sel.myRank`, `sel.tableSorted`, `sel.monthName`, `sel.potentialStars`, `sel.repNeeded`, `sel.signLevel`, `sel.hasUpgrade`, `sel.energyMaxFor`, `sel.monthlyCommission`, `sel.officeUpkeep`.
 
 ## 4. The Masa (negotiation)
-1. `interestList` → pick a `negotiable` row → `act('openNegotiation',{interestId})`. `S.time.phase` stays; `advance` is blocked while `S.negotiation` exists.
-2. Render `sel.negotiationView(S)`: `{id,interestId,kind,kindLabel,playerId,clubId,fromClubId,round,patience,patienceMax,insults,fair,limits:{wage:[lo,hi],years,bonus,fee},transferFee,demandWage,feeThreshold,hand:[Koz],package,counter,lastTell,ceilingBand:{lo,hi,source}|null,pending,log,deadline}`. Koz = `{id:'rakip'|'formda'|'taraftar'|'sozlesme'|'dostluk'|'songun'|'blof',label,text,effect,kPct,patience,risk:null|pct,clubId?,used}`; one per round; `blof` shows its real catch chance in `risk`.
-3. Sliders → `negPreview` each change (client mood `satisfaction` 0..100: ≥50 signs, 40..49 "İkna et", <40 refuses; `feeWarning` when your fee share > `feeThreshold`).
-4. "Teklif Et" → `negPropose({package, koz})` → `{ok, outcome, round, patience, tell?, counter?, insult?, koz?, line, events}`:
-   - `accepted`: deal executed; `events[0]` is `dealDone {playerId,fromClubId,toClubId,fee,commission,wage,years,kind,bonus,preContract,repGain,expectedMinutes,fit:{morale,loyalty,notes[]},clauses}` (+`feeNoticed`). Table is closed → play the ceremony.
-   - `countered`: `tell {level 0..4, face:'smile'|'neutral'|'frown'|'angry'|'stand', line}`, `counter {package,cost,satisfaction,clientOk,clientLean}`, `insult` (patience −2). Counters creep upward with `round`; a counter never cuts your `fee` below `BAL.neg.feeFloor` unless your own offer asked for less.
-   - `hesitates`: club said yes but client satisfaction 40..49 → `negLeanOnClient` (loyalty −8) signs, or change the package.
-   - `left`: patience 0 / bluff caught at 0 → director walked (`directorLeft`, trust −10, 3-month cooldown); table closed.
-   - Client refusal (<40) is `ok:false` with a message; nothing is spent.
-5. `negAcceptCounter` → `{outcome:'accepted'|'hesitates', …}` (same as above). `negWalkAway` closes without penalty. `S.negotiation.hidden` (ceiling) is **never** readable by the UI.
-`feeThreshold` shrinks on very big packages (up to half the base 12 %/15 %). Promise rules (keepable types, `minutes` window restart, `stay`): see DESIGN.md §Promises.
-Kinds: `transfer` (window open or Son Gün), `free` (pre-contract from January for a client whose contract ends this season → commission now, move at season end; or a clubless free agent), `renewal` (contract ends this season, from October). There is no sponsor table.
+1. A suitor is an offer (`offerList`). `act('openNegotiation',{interestId})` costs 1 energy; `advance` is blocked while `S.negotiation` exists.
+2. `sel.negotiationView(S)` → `{id,interestId,playerId,clubId,fromClubId,round,patience,patienceMax:3,fair:{wage,years,bonus,fee},years,bonus,minWage,limits:{wage:[lo,hi],fee:[lo,hi]},transferFee,demandWage,package,counter:{package,cost}|null,lastTell:{level,face,line}|null,log,first,openLine}`. The director's ceiling lives in `S.negotiation.hidden` and is **never** readable by the UI.
+3. **Two sliders only**: the player's monthly `wage` (from `minWage` — he refuses less — to `limits.wage[1]`) and your commission `fee` (lump sum, € ≥ 0). `years` and signing `bonus` are filled by the engine from the club's fair package whenever the UI omits them.
+4. `negPreview` → `hint` "Kabul şansı": `Yüksek` = surely accepted (cost ≤ 96 % of the ceiling), `Düşük` = surely refused (> 110 %), `Orta` = could go either way. The exact ceiling is never shown. `happy` = wage ≥ 112 % of his ask; `greedy` = commission > 17 % of the package (the client's mood drops when you close such a deal).
+5. `negPropose({package:{wage,fee}})` → `{ok, outcome, round, patience, tell?, counter?, line, events}`:
+   - `accepted`: the deal is executed; `events[0]` is `dealDone {playerId,fromClubId,toClubId,fee,commission,wage,years,bonus,repGain,expectedMinutes}` (+`feeNoticed`). Play the ceremony.
+   - `countered`: patience −1; `tell {level 0..4, face:'smile'|'neutral'|'frown'|'angry'|'stand', line}`; `counter {package:{wage,fee,years,bonus},cost}` (cost ≤ the ceiling and wage ≥ `minWage`: accepting it always closes the deal).
+   - `left`: patience reached 0 (**hard cap 3 rounds**): trust −10, 3-month cooldown on that offer; table closed.
+   `negAcceptCounter` → `{outcome:'accepted', …}`. `negWalkAway` closes without penalty. Every table can be closed at its minimum (min wage + a small fee). The very first table of a game is generous (ceiling ≥ 112 % of the fair package).
 
-## 5. Son Gün (deadline day) — Ağustos & Ocak
-1. `advance(S)` in month 1 or 6 → `{ok:true, phase:'deadline', season, month}` **only if** there are panic calls or an open transfer interest, else the month simply plays. `S.time.phase==='deadline'`.
-2. `sel.deadlineView(S)` → `{hour 18..23, hoursLeft, actionsLeft, actionsMax(1|2), ended, deals, calls:[{id,clubId,clubName,playerId,playerName,fromHour,expiresHour,level,taken,available,kind,fitSat,fitWord,expectedMinutes}], log, hasTable, interests}`.
-3. Per hour: `deadlineTakeCall({callId})` (opens a quick table: patience −1, K +3..9 %, `songun` Koz; result like `openNegotiation`), or `openNegotiation({interestId})`, or `pitchPlayer`, or `deadlineSkipHour`. Each uses the hour's action (two with network L4); the hour advances automatically (`deadlineHour` event). A table opened stays playable even when the clock passes 23:00.
-4. When `deadlineView.ended` (or any time) → `act('deadlineFinish')` collapses open talks (`negotiationCollapsed`), clears `S.deadline`, sets phase `plan` → call `advance(S)` again for the month report. `deadlineFinish` outside Son Gün fails.
+## 5. advance(S) → MonthReport
+Blocked by an open table or `phase==='over'`. Otherwise
+`{ok, season, month, matchdays:[…], clients:[{playerId,apps,mins,goals,assists,rating,caDelta,valueDelta}], finance:{items,net,cash}, news:[…], rivalMoves:[{type:'rival',rivalId,text,playerId?,sniped?}], events:[…], seasonEnd:null|SeasonEnd, ending:null|Ending}`.
+Report `events`: `interest {interestId,playerId,clubId,level}` (new suitor), `aiTransfer`, `loanOffer`, `inboxNew`, `goal {status:'done'|'failed',title,reward}`, `clientLeft {name}`, `retire`, `renewed`, `noClients {left}`.
+`SeasonEnd` (June): `{season, champions:{leagueId:clubId}, promoted, relegated, retired, released, renewed, awards, clientEvents}`; `S.history` gets `{season,rank,cash,rep,clients,champions,awards}`; the next season's goal is assigned.
 
-## 6. advance(S) → MonthReport
-Blocked (`{ok:false,error}`) by an open table, a `must` inbox card, `phase` deadline/over. Otherwise
-`{ok, season, month, matchdays:[{leagueId, md, results:[{home,away,hg,ag,scorers:[{playerId,minute,clubId,assistId}]}]}], clients:[{playerId,apps,mins,goals,assists,rating,caDelta,valueDelta}], finance:{items:[{k,label,amt}],net,cash}, news:[{season,month,kind,text,playerId,clubId}], promises:[{type:'promise',id,playerId,status:'kept'|'broken',promiseType,text}|{type:'walkout'}], rivalMoves:[{type:'rival',rivalId,text,playerId?,poached?,approach?}], events:[…], seasonEnd:null|SeasonEnd, ending:null|Ending}`.
-Month report `events` include `interest {interestId,playerId,clubId,level,kind}` (new ≥60 suitor), `aiTransfer`, `dream`, `clientLeft`, `repRenewed`, `repExpiring`, `inboxNew`, `inboxExpired`, `objective {status:'done'|'failed',title,reward}`, `loanOffer`, `freeAgentPlaced`.
-`SeasonEnd` (June, before the counter moves to July of next season): `{season, champions:{leagueId:clubId}, promoted, relegated, retired:[{id,name,age,client}], released, renewed, awards:[{kind:'champion'|'topscorer',leagueId,clubId|playerId,goals?}], clientEvents:[{type:'retire'|'renewed',playerId}]}`. `S.history` gets `{season,rank,cash,rep,clients,champions,awards}`. A new objective set is offered (`S.objectives.offered`).
+## 6. Inbox (Gündem), goal, guide
+- `S.inbox` holds 0 or 1 card per month: `{id,key,title,body,playerId,clubId,amount,options:[{id,label,cost:{energy,cash}}]}` — ≤ 2 options, ≤ 2 short sentences, always a free option. Unanswered cards simply vanish at month end (no hidden penalty). The bank's `loan` card appears the first time cash goes negative.
+- Goal: exactly one per season, auto-assigned (`deals`, `clients`, `commission`, `rank`), shown on one line; reward €40K + 4 rep when completed, no penalty when missed.
+- Guide: `hubSummary.guide` = the first open of 3 steps (`search` → `pitch` → `deal`), driven by the real actions; `skipGuide` ends it.
 
-## 7. Inbox (Gündem)
-`S.inbox` cards: `{id,key,kind,title,body,from,playerId,clubId,must,expiresIn,defaultOption,pinned?,ctx,options:[{id,label,hint,cost:{energy,cash},risk:null|{pct,text},preview:[{key,label,value,target:'you'|'player'|'club',playerId,clubId}],summary,riskPreview,riskSummary}]}`. Kinds: `sakatlik form dakika sahne aile medya kulup maas transfer rakip sponsor ajans para kesif banka rehber`. `must` cards block `advance`. Unanswered cards expire after `expiresIn` months and apply `defaultOption` (a free option). 2–4 new cards per month (fewer in the tutorial, ≤8 waiting). `answerInbox` returns `resultText` to show; if `riskFired` the `risk.text` outcome happened. Card keys `tut_*` are tutorial cards (pinned), `poach:<playerId>` rival approach, `repend:<id>` contract renewal, `loan_offer`.
+## 7. Rules that matter
+- **Mood** (`p.mood` 0–100, the only client feeling): drifts with minutes played, form, wage vs fair, injuries; +8 for a generous wage at a deal, −8 for a greedy commission. Low mood slows development; mood ≤ 15 → the client leaves you.
+- **Money**: you earn 7 % of every client's wage each month (10 % with "Avukat") plus the commission of each deal; office upkeep grows with clients, upgrades and reputation. Cash < 0 for 3 month ends → bankruptcy (one bank loan is offered first). Zero clients for 3 month ends → `yalniz`.
+- **Rivals** (4 agencies) hold portfolios, sign unseen players in the background, may snipe a candidate you found but did not sign (flat 14 %/month, no meters) and are ranked against you (`rankingView`).
+- **Ending**: after June of season 5 (or bankruptcy / no clients) `report.ending` and `S.ending = {kind:'efsane'|'buyuk'|'saygin'|'siradan'|'iflas'|'yalniz', rank, legacy, title, text, stats, epilogues, careerOver:true}`; `phase==='over'`. `continueEndless` (not after `iflas`/`yalniz`) removes the season cap.
 
-## 8. Flows
-- **Start**: `newGame` → 3 clients (gem 17y with wide band, 2 journeymen), `tut_welcome` card, objectives offered (pick one with `chooseObjective`), phase `plan`, July.
-- **Tutorial** (`S.flags.tutorial` object; use `hub.tutorialStep`): welcome(answer card) → `visit` (visitClient) → `scout` (scoutTrip) → `market` (clubLunch or pitchPlayer) → `interest` (a guaranteed suitor with an honest director appears in `interestList`, level 72 — open the Masa; this table is slightly generous; the suitor is the club where the client plays most, expected minutes ≥55%, and the fair package is accepted without "İkna et") → promises/ranking cards next months → done. Doing the steps in July leaves 1 energy for the table in the same month. The `skip` option on the welcome card ends it.
-- **Month**: read `hubSummary` + inbox → spend energy (`availableActions`) → `advance` → show MonthReport (matchdays ticker, clients, finance, news) → next month. Refill happens at the end of `advance`.
-- **Season end**: month 11 `advance` returns `seasonEnd` (awards, promotions, retirements) → show the season-review sheet; `S.time` is now month 0 of the next season. Contracts: your client's club contract ends in June (renewed automatically, or a pre-contract executes, or he may become a clubless free agent until the August deadline). Representation contracts ending in June auto-renew at loyalty ≥55, else a `repend:` card.
-- **Ending**: when the last season ends (or bankruptcy: cash<0 three month-ends; or zero clients at a season end from season 2, or zero clients for `BAL.econ.noClientMonthsEnd` month ends in a row (3; a `no_clients` inbox card, kind `ajans`, warns in each such month; counter `S.agency.noClientMonths`)) `report.ending` and `S.ending` = `{kind:'efsane'|'buyuk'|'saygin'|'siradan'|'iflas'|'yalniz', rank, legacy, title, text, stats:[{label,value,raw?}], epilogues:[{playerId,name,tone:'good'|'neutral'|'bitter',text}], careerOver:true}`; `phase==='over'`. `act('continueEndless')` (not after `iflas`/`yalniz`) sets phase `plan` and removes the season cap.
-- **Poaching/loyalty**: clients with loyalty <35 may get a rival approach card (`poach:`); ignore it and he leaves after ~3 months. Visits (+8 loyalty) and kept promises protect them.
-- **Free agent client**: `clientView.flags.freeAgent`, `club:null`; `interestList` rows of kind `free` can be negotiated in July/Ağustos; otherwise a club signs him after the August deadline (no commission).
-
-## 9. State fields: may read / must not read
-May read (via the listed selectors preferably): `S.time`, `S.meta`, `S.agency` (cash, rep, energy, energyMax, upgrades, loan, negMonths, stats), `S.ledger`, `S.leagues[*]` (name, prestige, clubIds, matchday, table, champions), `S.clubs[*]` (name, short, colors, crest, leagueId, trust, facilities, youthTrust, director.name), `S.players[*]` basic: `name age nat pos ca form injured clubId wage contractEnd value hype st` and — for **your clients only** — `trait dream loyalty morale rep promises`; `S.inbox`, `S.promises`, `S.news`, `S.deals`, `S.ranking`, `S.history`, `S.objectives`, `S.rivals` (name, agency, persona, rep, color), `S.ending`, `S.deadline`.
-Must NOT read: `S.negotiation.hidden`, `p.pa`, `p.cf` (true potential/fraction), `p.trait/dream` of players you have not scouted enough, `club.director.persona/info`, `club.needs`, `club.budget` before lunch (use `clubView`), `S.rng`, `S.seed`, `S.seq`, `S.flags` (internal bookkeeping; `S.flags.tutorial` via `hubSummary`), `S.interests[*].boost`.
-Persist with `serialize(S)` (~0.6 MB) and restore with `deserialize(json)`; both are lossless mid-negotiation and mid-Son Gün.
+## 8. State fields: may read / must not read
+May read (preferably through selectors): `S.time`, `S.meta`, `S.agency` (cash, rep, energy, energyMax, upgrades, loan, stats), `S.leagues[*]`, `S.clubs[*]` (name, colors, crest, leagueId, needs, director.name), `S.players[*]` basic fields (`name age nat pos ca form injured clubId wage contractEnd value hype st`) and, for your clients, `mood`, `S.found`, `S.inbox`, `S.news`, `S.deals`, `S.ranking`, `S.history`, `S.goal`, `S.rivals`, `S.ending`.
+Must NOT read: `S.negotiation.hidden`, `p.pa`, `p.cf`, `S.rng`, `S.seed`, `S.seq`, `S.flags` (internal; guide/goal come via `hubSummary`), `S.interests[*].boost`.

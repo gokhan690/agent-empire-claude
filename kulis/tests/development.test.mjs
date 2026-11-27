@@ -44,10 +44,10 @@ test('decline from 30+', () => {
   assert.ok(young[2] >= 68);
 });
 
-test('profesyonel trait develops faster', () => {
-  const run = trait => { const S = newGame({ seed: 4 }); const p = myClients(S).find(q => q.age === 17); Object.assign(p, { ca: 50, cf: 50, pa: 90, trait }); p.st.sh = 0.9;
-    for (let m = 0; m < 36; m++) { S.time.month = m % 12; p.st.m = 0.9 * MONTHS[S.time.month].matchdays * 90; developMonth(S); } return p.cf; };
-  assert.ok(run('profesyonel') > run('sadik'));
+test('minutes drive growth: a regular starter outgrows a bench player', () => {
+  const run = sh => { const S = newGame({ seed: 4 }); const p = myClients(S).find(q => q.age === 17); Object.assign(p, { ca: 50, cf: 50, pa: 90 }); p.st.sh = sh;
+    for (let m = 0; m < 36; m++) { S.time.month = m % 12; p.st.m = sh * MONTHS[S.time.month].matchdays * 90; developMonth(S); } return p.cf; };
+  assert.ok(run(0.9) > run(0.1) + 2);
 });
 
 test('valuation orders of magnitude', () => {

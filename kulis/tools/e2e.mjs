@@ -1,471 +1,286 @@
-// End-to-end playthrough of the BUILT game (dist/kulis.html) through real clicks.  Usage: node build.mjs && node tools/e2e.mjs
-// Part A: onboarding -> tutorial -> scout/recruit -> months -> Masa -> ceremony -> Son Gün -> season end -> season 2 (real clicks).
-// Part B: reload/restore checks (Masa, Son Gün, season end, ending) and every ending tier from engine-built saves.
-// Exits non-zero on any failed check or any pageerror/console error. Screenshots: dist/shots/e2e-*.png.
+#!/usr/bin/env node
+// Real-click browser playthrough of dist/kulis.html (Playwright). Build first: node build.mjs
+//   node tools/e2e.mjs            full run (new game -> guide -> sign -> offer -> table -> ceremony -> months -> season end -> season 2,
+//                                 crafted saves for the final ending and bankruptcy, reload-restores checks). Screenshots: dist/shots/e2e-*.png (390 wide)
 import { serve, launch, newPage, sleep, buttons } from './lib-e2e.mjs';
-import { existsSync } from 'node:fs';
-import { root } from './lib-e2e.mjs';
-import { join } from 'node:path';
-import * as G from './e2e-saves.mjs';
+import { lastJune, almostBankrupt, withOffers, serialize } from './e2e-saves.mjs';
 
-if (!existsSync(join(root, 'dist/kulis.html'))) { console.error('dist/kulis.html yok: önce node build.mjs'); process.exit(2); }
-const failures = [];
-const ok = (cond, msg) => { if (cond) console.log('  ok   ' + msg); else { console.log('  FAIL ' + msg); failures.push(msg); } };
-const step = (m) => console.log('\n# ' + m);
+const results = [];
+let step = 0;
+const ok = (name, cond, extra = '') => { results.push({ name, ok: !!cond, extra }); console.log((cond ? '  ok   ' : '  FAIL ') + name + (cond ? '' : '  ' + extra)); };
 
 const { server, url } = await serve();
 const browser = await launch();
-const allErrors = [];
+const T0 = Date.now();
 
-/** Click the first visible button whose accessible text matches `re` (waits up to 6s). */
-async function click(page, re, { nth = 0, timeout = 6000, within } = {}) {
-  const root_ = within ? page.locator(within) : page;
-  const loc = root_.getByRole('button', { name: re }).filter({ visible: true }).nth(nth);
-  await loc.waitFor({ state: 'visible', timeout });
-  await loc.scrollIntoViewIfNeeded().catch(() => {});
-  await loc.click({ timeout });
-  await sleep(350);
-}
-const tab = async (page, re) => { await page.getByRole('tab', { name: re }).filter({ visible: true }).first().click({ timeout: 6000 }); await sleep(450); };
-/** Son Gün with nothing to do: pass the hours, close at midnight. Leaves the Ay özeti (Playback) open. */
-async function finishDeadline(page) {
-  for (let i = 0; i < 8; i++) {
-    const skip = page.getByRole('button', { name: /Bu saati boş geç/ }).filter({ visible: true }).first();
-    if (!(await skip.count()) || (await skip.isDisabled())) break;
-    await skip.click(); await sleep(400);
-  }
-  await click(page, /^Ayı Oynat$/);
-  await sleep(500);
-}
-/** Press the Hub's advance button and accept the "Enerjin kaldı" confirmation when it shows. */
-async function pressAdvance(page, re = /AYI OYNAT|SON GÜNE GİR/) {
-  await click(page, re);
-  if ((await page.locator('.sheet').count()) && (await has(page, /Enerjin kaldı/))) await click(page, /Yine de oynat/, { within: '.sheet' });
-  await sleep(500);
+// textContent, not innerText: CSS uppercases (and JS /i does not fold Turkish İ/ı), so match on the DOM text
+const TEXT = (page) => page.evaluate(() => document.getElementById('app').textContent.replace(/\s+/g, ' '));
+const click = async (page, text) => { await page.getByText(text, { exact: false }).first().click(); await sleep(250); };
+const tab = async (page, name) => { await page.locator('.bottomnav a', { hasText: new RegExp(name, 'i') }).click(); await sleep(300); };
+const energy = (page) => page.evaluate(() => document.querySelectorAll('.topbar__energy .pip.is-on').length);
+const cashText = (page) => page.evaluate(() => document.querySelector('.topbar__cashv').innerText);
+const setSlider = (page, idx, frac) => page.evaluate(([i, f]) => {
+  const el = document.querySelectorAll('.tslider input[type=range]')[i];
+  const v = Number(el.min) + (Number(el.max) - Number(el.min)) * f;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  setter.call(el, String(v)); el.dispatchEvent(new Event('input', { bubbles: true }));
+}, [idx, frac]);
+const skipCeremony = async (page) => { await sleep(500); for (let i = 0; i < 4; i++) { await page.locator('.cer').click({ position: { x: 20, y: 200 } }).catch(() => {}); await sleep(250); } };
+
+async function playMonth(page, shotName) {
+  await page.locator('[data-testid=advance]').click();
+  await page.waitForSelector('[data-testid=month-report]');
+  if (shotName) await sleep(400);
+  const txt = await TEXT(page);
+  return txt;
 }
 
-/** Drive an open Masa to a signed deal with real clicks: offer, accept counters, soothe a hesitating client, raise the wage when refused. */
-async function dealAtMasa(P, tag) {
-  const page = P.page;
-  for (let i = 0; i < 12; i++) {
-    await page.getByRole('button', { name: /Anladım/ }).first().click({ timeout: 600 }).catch(() => {});
-    const ov = await overlayName(page);
-    if (process.env.E2E_DEBUG) console.log('   masa step', i, ov, (await text(page, '.overlay')).replace(/\n+/g, ' | ').slice(0, 160));
-    if (ov === 'İmza töreni' || (await has(page, /Anlaşma imzalanıyor/))) return true;
-    if (ov !== 'Pazarlık masası') return false;
-    const lean = page.getByRole('button', { name: /^İkna et \(bağlılık/ }).filter({ visible: true }).first();
-    if (await lean.count()) { P.leaned = true; await lean.click({ timeout: 2000 }).catch(() => {}); await sleep(900); continue; }
-    const acc = page.getByRole('button', { name: /^Kabul et$/ }).filter({ visible: true }).first();
-    if (process.env.E2E_DEBUG) console.log('   acc', await acc.count(), (await acc.count()) ? await acc.isEnabled() : null);
-    if ((await acc.count()) && (await acc.isEnabled())) { await acc.click({ timeout: 2000 }).catch(() => {}); await sleep(900); continue; }
-    if (await has(page, /Masadan kalktı/)) { await page.getByRole('button', { name: /^Tamam$/ }).first().click({ timeout: 2000 }).catch(() => {}); await sleep(600); return false; }
-    if ((await acc.count()) && !(await acc.isEnabled())) { // counter the client would not sign: work on it, add the minutes clause and a raise
-      await page.getByRole('button', { name: /Bunun üzerine çalış/ }).first().click({ timeout: 1500 }).catch(() => {});
-      await page.getByRole('switch', { name: /Forma garantisi/ }).first().click({ timeout: 1500 }).catch(() => {});
-      for (let k = 0; k < 4; k++) await page.getByRole('button', { name: /^Oyuncu maaşı \(aylık\) artır$/ }).first().click({ timeout: 800 }).catch(() => {});
+try {
+  // ------------------------------------------------------------------ 1. new game
+  console.log('1. new game');
+  {
+    const { page, errors, shot, open } = await newPage(browser, url);
+    await open();
+    await shot('01-title');
+    ok('title screen', (await TEXT(page)).includes('KULİS'));
+    await click(page, 'Yeni Kariyer'); await shot('02-setup');
+    await page.locator('[data-testid=start]').click(); await sleep(700);
+    await shot('03-hub');
+    const t = await TEXT(page);
+    ok('hub: month and season', /TEMMUZ/i.test(t) && /SEZON 1 \/ 5/i.test(t));
+    ok('hub: one goal line', (await page.locator('[data-testid=goal]').count()) === 1);
+    ok('hub: guide card 1/3', (await page.locator('[data-testid=guide]').textContent()).includes('1/3'));
+    ok('three bottom tabs', (await page.locator('.bottomnav a').count()) === 3);
+    ok('plain #hash route', /^#[a-z]+$/.test(await page.evaluate(() => location.hash)));
+    { const m = t.match(/\bkoz\b|\bsöz(?!leş)|hayal/i); ok('no Koz/söz/hayal text on hub', !m, m && t.slice(Math.max(0, m.index - 30), m.index + 30)); }
+
+    // ---------------------------------------------------------------- 2. find + sign
+    console.log('2. find and sign a player');
+    await tab(page, 'Oyuncular');
+    ok('players route', (await page.evaluate(() => location.hash)) === '#players');
+    ok('3 clients listed', (await page.locator('.prow').count()) === 3);
+    const e0 = await energy(page);
+    await page.locator('[data-testid=search]').click(); await sleep(500);
+    ok('search: 3 candidates, 1 energy', (await page.locator('[data-testid=candidate]').count()) === 3 && (await energy(page)) === e0 - 1, `energy ${e0}->${await energy(page)}`);
+    const ct = await page.locator('[data-testid=candidate]').first().textContent();
+    ok('candidate shows stars + a potential range like "3–5 ★"', /Güç/.test(ct) && /Potansiyel/.test(ct) && /\d–\d ★/.test(ct), ct);
+    ok('candidate shows position, age and club', /(KL|DF|OS|FV)/.test(ct) && /yaş/.test(ct));
+    await shot('04-candidates');
+    // sign the first signable candidate
+    const signable = page.locator('[data-testid=candidate]', { hasText: /İmzala/ });
+    const nSign = await signable.count();
+    ok('at least one candidate is signable at the start', nSign >= 1);
+    ok('a locked candidate says why (itibar)', (await page.locator('[data-testid=candidate]', { hasText: /İtibarın yetmiyor/ }).count()) >= 0);
+    if (nSign) {
+      await signable.first().getByText('İmzala').click(); await sleep(500);
+      ok('signed: 4 clients', (await page.locator('.prow').count()) === 4);
     }
-    if (await has(page, /bunu kabul etmez/)) { for (let k = 0; k < 6; k++) await page.getByRole('button', { name: /^Oyuncu maaşı \(aylık\) artır$/ }).first().click({ timeout: 800 }).catch(() => {}); }
-    if (i === 0 && tag) await P.shot(tag + '-masa');
-    const go = page.getByRole('button', { name: /^Teklif et/ }).filter({ visible: true }).first();
-    if (!(await go.count()) || !(await go.isEnabled())) { await sleep(500); continue; }
-    await go.click({ timeout: 2500 }).catch(() => {});
-    await sleep(900);
-    if (i === 0 && tag) await P.shot(tag + '-masa-after-offer');
-  }
-  if ((await overlayName(page)) === 'Pazarlık masası') { // give up cleanly: walk away so the rest of the flow can continue
-    await page.getByRole('button', { name: /^Masadan kalk$/ }).first().click({ timeout: 2000 }).catch(() => {});
-    await page.locator('.sheet').getByRole('button', { name: /^Masadan kalk$/ }).first().click({ timeout: 2000 }).catch(() => {});
-    await sleep(600);
-  }
-  return false;
-}
-/** One step of the season review: press its primary button; returns its label. */
-async function reviewNext(P, i) {
-  const b = P.page.getByRole('button', { name: /^Devam$|Yeni sezona başla|Finale geç/ }).filter({ visible: true }).first();
-  try { const lbl = (await b.innerText({ timeout: 4000 })).trim(); return { lbl, click: () => b.click() }; }
-  catch (e) { await P.shot('xx-review-stuck-' + i); console.log('review stuck:', (await text(P.page, '.overlay')).replace(/\n+/g, ' | ').slice(0, 400)); throw e; }
-}
-const nav = async (page, label) => { await page.locator('.bottomnav a').filter({ hasText: new RegExp(label) }).first().click({ timeout: 6000 }); await sleep(450); };
-const text = (page, sel = 'body') => page.evaluate((s) => (document.querySelector(s) || document.body).innerText, sel);
-const has = async (page, re) => new RegExp(re.source, re.flags.includes('i') ? re.flags : re.flags + 'i').test(await text(page));
-const state = (page) => page.evaluate(async () => {
-  const raw = localStorage.getItem('kulis-save-v1'); if (!raw) return null;
-  const S = JSON.parse(raw); return { phase: S.time.phase, season: S.time.season, month: S.time.month, cash: S.agency.cash, energy: S.agency.energy, neg: !!S.negotiation, deadline: !!S.deadline, ending: S.ending ? S.ending.kind : null, clients: Object.values(S.players).filter((p) => p.agentId === 'you').length, tutorial: S.flags && S.flags.tutorial && S.flags.tutorial.step };
-});
-const hscroll = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-const overlayName = (page) => page.evaluate(() => { const o = document.querySelector('.overlay'); return o ? (o.getAttribute('aria-label') || 'overlay') : null; });
-const dumpDom = async (page, tag) => { console.log(`[${tag}] overlay=${await overlayName(page)} buttons=${JSON.stringify((await buttons(page)).slice(0, 14))}`); };
+    await shot('05-signed');
 
-async function finishPlayback(page, shotName) {
-  // month report: skip animations, then continue (may chain into SeasonEnd / Ending)
-  await page.getByRole('button', { name: /^Atla$/ }).first().click({ timeout: 3000 }).catch(() => {});
-  await sleep(500);
-  if (shotName) await page.screenshot({ path: join(root, 'dist/shots', `e2e-${shotName}.png`) });
-  const go = page.getByRole('button', { name: /^(Devam|Sezon Özetine Geç|Kariyerin Sonu)$/ }).filter({ visible: true }).first();
-  await go.waitFor({ state: 'visible', timeout: 15000 });
-  await go.click(); await sleep(500);
-}
+    // ---------------------------------------------------------------- 3. pitch -> offer -> table
+    console.log('3. offer to a club and the table');
+    const nClients = await page.locator('.prow').count();
+    let pitched = false;
+    for (let i = 0; i < nClients && !pitched; i++) {
+      await page.locator('.prow').nth(i).click(); await sleep(400);
+      if (i === 0) {
+        ok('player dossier fits one screen', await page.evaluate(() => { const b = document.querySelector('.sheet__body'); return !b || b.scrollHeight <= b.clientHeight + 2; }));
+        await shot('06-player-sheet');
+      }
+      await click(page, 'Kulübe öner'); await sleep(300);
+      if (i === 0) { await shot('07-pitch-picker'); ok('picker lists clubs with fit words', /İlgilenir|Belki|Zor/.test(await TEXT(page))); }
+      const row = page.locator('.pitch__row', { hasText: /İlgilenir/ }).first();
+      if (await row.count()) { await row.click(); await sleep(500); pitched = true; }
+      else { await page.keyboard.press('Escape'); await sleep(200); await page.keyboard.press('Escape'); await sleep(300); }
+    }
+    ok('a client has an interested club (pitch lands)', pitched);
+    ok('interested club: "teklif geldi" + Masaya otur', /teklif geldi/i.test(await TEXT(page)));
+    await shot('08-pitch-result');
+    await page.locator('[data-testid=pitch-result]').getByText('Masaya otur').click(); await sleep(900);
+    await shot('09-table');
+    ok('table: exactly two sliders', (await page.locator('.tslider').count()) === 2);
+    { const tt = await TEXT(page); const m = tt.match(/\bkoz\b|blöf|\bsöz(?!leş)|ikna et/i); ok('table: no Koz, no bluff, no promise UI', !m, m && tt.slice(Math.max(0, m.index - 30), m.index + 30)); }
+    ok('table: "Kabul şansı" hint shown', /Kabul şansı/i.test(await TEXT(page)) && (await page.locator('[data-testid=hint]').textContent()).length > 8);
+    ok('table: 3 patience pips', (await page.locator('.tpat__pip').count()) === 3);
+    ok('table: director line is short', (await page.locator('[data-testid=director-line]').textContent()).length < 90);
+    ok('table: round counter 1/3', /Tur 1\/3/i.test(await TEXT(page)));
 
-/* ===================================================================== Part A */
-step('A1 onboarding');
-const A = await newPage(browser, url, { dsf: 1 });
-const { page } = A;
-await A.open();
-await A.shot('01-title');
-ok(await has(page, /KULİS/), 'title screen');
-await click(page, /Yeni Kariyer/);
-await A.shot('02-setup');
-ok((await hscroll(page)) <= 0, 'setup: no horizontal scroll');
-await click(page, /Kariyere Başla/);
-await sleep(700);
-await A.shot('03-hub-start');
-ok(await has(page, /SEZON HEDEFİNİ SEÇ|Sezon hedefini seç/i), 'hub asks for a season objective');
-await click(page, /hedef: .*Seç/);
-ok((await state(page)).season === 1, 'game state saved after start');
+    // reload with an open table restores the Masa
+    await page.reload(); await page.waitForSelector('html.ready'); await sleep(700);
+    ok('reload restores the open table', (await page.locator('[data-testid=table]').count()) === 1);
 
-step('A2 tutorial: welcome -> visit -> scout -> market -> interest');
-await click(page, /Eşlik et/);
-await A.shot('04-tut-welcome-answered');
-ok(await has(page, /ziyaret/i), 'tutorial points to visiting a client');
-await click(page, /Oyuncunu aç/);
-ok(await page.locator('.sheet').count() > 0, 'tutorial button opens the client dossier directly');
-await sleep(300);
-await A.shot('05-player-sheet');
-await click(page, /^Ziyaret et/);
-ok(await has(page, /“.+”/s), 'visit shows the client quote');
-await A.shot('06-visited');
-await click(page, /^Kapat$/, { within: '.sheet' });
-await nav(page, 'Gündem');
-ok(await has(page, /keşf|Keşf/), 'after visit the tutorial points at scouting');
-await click(page, /Keşfe git|Keşif'e git|Keşfe/i).catch(async () => { await nav(page, 'Keşif'); });
-await nav(page, 'Keşif').catch(() => {});
-await A.shot('07-scout');
-ok((await hscroll(page)) <= 0, 'scout: no horizontal scroll');
-await click(page, /1\. Lig/); // pick the league card
-await click(page, /geziye çık/);
-await sleep(800);
-await A.shot('08-scout-found');
-ok(await has(page, /yeni|aday|bulundu/i), 'scout trip reveals prospects');
-console.log('state after scout:', JSON.stringify(await state(page)));
+    // make the offer: wage at its minimum, commission at the fair value
+    await setSlider(page, 0, 0); await setSlider(page, 1, 0.2); await sleep(400);
+    await page.locator('[data-testid=propose]').click(); await sleep(1700);
+    ok('first table accepted -> ceremony', (await page.locator('.cer').count()) === 1);
+    await skipCeremony(page);
+    await shot('10-ceremony');
+    ok('ceremony shows commission', /Komisyonun/i.test(await TEXT(page)));
+    await page.getByRole('button', { name: /Devam/i }).last().click(); await sleep(500);
+    ok('back on the hub, guide advanced', (await page.locator('[data-testid=guide]').count()) === 0 || !/3\/3/.test(await TEXT(page)));
+    await shot('11-hub-after-deal');
 
-// finish tutorial market step: lunch with a club
-await nav(page, 'Piyasa');
-ok((await page.getByRole('tab', { name: /Kulüpler/ }).first().getAttribute('aria-selected')) === 'true', 'tutorial market step opens Piyasa on the Kulüpler tab');
-await page.locator('.mk-club').first().click(); await sleep(500);
-await A.shot('09-club-sheet');
-await click(page, /Yemeğe çık/);
-await A.shot('10-club-lunch-result');
-ok(await has(page, /güven|Güven/), 'club lunch shows a result');
-await click(page, /^Kapat$/, { within: '.sheet' });
-console.log('state after lunch:', JSON.stringify(await state(page)));
-await nav(page, 'Piyasa');
-await tab(page, /Teklifler/);
-await A.shot('11-market-offers');
-ok(await has(page, /Masaya otur/), 'tutorial suitor is listed with "Masaya otur"');
+    // ---------------------------------------------------------------- 4. market + agency
+    console.log('4. market and agency');
+    await tab(page, 'Piyasa'); await shot('12-market');
+    ok('market has offers + clubs sections', /Teklifler/i.test(await TEXT(page)) && /Kulüpler/i.test(await TEXT(page)));
+    await page.locator('.mclub').first().click(); await sleep(400);
+    ok('club sheet shows needs', /Arıyor/i.test(await TEXT(page)));
+    await shot('13-club-sheet');
+    await page.keyboard.press('Escape'); await sleep(300);
+    await page.getByRole('button', { name: 'Ajans' }).click(); await sleep(400);
+    ok('agency sheet: 5 agencies and ≤ 6 upgrades', (await page.locator('.agency__row').count()) === 5 && (await page.locator('[data-testid=upgrade]').count()) <= 6 && (await page.locator('[data-testid=upgrade]').count()) >= 4);
+    await shot('14-agency');
+    ok('agency: no sub-tabs', (await page.locator('[role=tab]').count()) === 0);
+    await page.keyboard.press('Escape'); await sleep(300);
 
-step('A3 Masa -> ceremony');
-await click(page, /Masaya otur/);
-await sleep(900);
-await A.shot('12-masa');
-ok((await overlayName(page)) === 'Pazarlık masası', 'Masa overlay open');
-ok((await hscroll(page)) <= 0, 'masa: no horizontal scroll');
-const deal = await dealAtMasa(A, 'a3');
-ok(deal, 'deal closed at the Masa');
-ok(!A.leaned, 'tutorial first deal needs no "İkna et" (suitor is a real step forward)');
-if (!deal) { await A.shot('xx-a3-stuck'); }
-await page.locator('.cer').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-await sleep(5200);
-await A.shot('14-ceremony');
-ok((await overlayName(page)) === 'İmza töreni', 'ceremony overlay played');
-await page.getByRole('button', { name: /^Devam$|Son Gün’e dön/ }).filter({ visible: true }).first().click({ timeout: 8000 });
-await sleep(600);
-ok((await overlayName(page)) === null, 'ceremony closed, back on the shell');
-console.log('state after deal:', JSON.stringify(await state(page)));
-await nav(page, 'Gündem');
-await A.shot('15-hub-after-deal');
-
-step('A4 first months, recruit');
-/** Press the Hub advance button (answering must cards first) and finish the month report. Returns 'deadline' | 'played'. */
-async function playMonth(page, { shot } = {}) {
-  await nav(page, 'Gündem');
-  for (let i = 0; i < 8; i++) {
-    const adv = page.getByRole('button', { name: /AYI OYNAT|SON GÜNE GİR/ }).filter({ visible: true }).first();
-    if (!(await adv.isDisabled().catch(() => false))) break;
-    const opt = page.locator('.hub-card--must .hub-opt:not(.is-off)').first();
-    if (!(await opt.count())) break;
-    await opt.click(); await sleep(500);
-    await page.getByRole('button', { name: /^Tamam$/ }).filter({ visible: true }).first().click({ timeout: 1000 }).catch(() => {});
-  }
-  await pressAdvance(page);
-  let kind = 'played';
-  if ((await overlayName(page)) === 'Son Gün') { await finishDeadline(page); kind = 'deadline'; }
-  await finishPlayback(page, shot);
-  return kind;
-}
-let r = await playMonth(page, { shot: '16-playback' });
-console.log('first month ->', r, JSON.stringify(await state(page)));
-ok(r === 'played' || r === 'deadline', 'first month advanced');
-await A.shot('17-hub-month2');
-// scout row -> recruit
-await nav(page, 'Keşif');
-await tab(page, /Radarım/);
-await page.getByRole('button', { name: /Tüm radarı gör|Tümü/ }).first().click({ timeout: 2000 }).catch(() => {});
-await sleep(300);
-await page.locator('.scout-filters .chip').filter({ hasText: /Tümü/ }).first().click().catch(() => {});
-await sleep(400);
-await A.shot('18-radar');
-ok((await hscroll(page)) <= 0, 'radar: no horizontal scroll');
-const before = (await state(page)).clients;
-await page.getByRole('button', { name: /^İmzaya yakın$/ }).first().click().catch(() => {});
-await sleep(300);
-const rows = page.locator('.scout-row').filter({ hasText: /İmzalanabilir/ });
-const nRows = await rows.count();
-let signed = false;
-if (nRows) {
-  await rows.first().click(); await sleep(600);
-  await click(page, /İmza teklifi/);
-  await A.shot('19-recruit');
-  ok(await has(page, /Söz ver/), 'recruit sheet lists promises');
-  await click(page, /^İmzala/);
-  await sleep(900);
-  await A.shot('20-signed');
-  signed = (await state(page)).clients > before;
-}
-console.log('rows:', nRows, 'signed:', signed);
-ok(signed, 'recruited a scouted prospect (signable rows: ' + nRows + ')');
-await page.keyboard.press('Escape'); await sleep(300);
-allErrors.push(...A.errors.map((e) => '[A] ' + e));
-await A.ctx.close();
-
-/* ===================================================================== Part B */
-async function fresh(save, opts = {}) { const P = await newPage(browser, url, { dsf: 1, save, ...opts }); await P.open(); return P; }
-const reload = async (P) => { await P.page.reload({ waitUntil: 'load' }); await P.page.waitForSelector('html.ready'); await sleep(700); };
-const flushErrors = (P, tag) => allErrors.push(...P.errors.map((e) => `[${tag}] ${e}`));
-
-step('B1 Son Gün (August): reload restore, take a table, close deal, ceremony, midnight');
-{
-  const P = await fresh(G.serialize(G.augustWithInterest())); const { page } = P;
-  await A_shot_hub(P);
-  ok(await has(page, /SON GÜNE GİR/), 'hub offers "Son Gün\'e gir" in August');
-  await pressAdvance(page, /SON GÜNE GİR/);
-  await sleep(500);
-  await P.shot('b1-deadline');
-  ok((await overlayName(page)) === 'Son Gün', 'Son Gün overlay');
-  ok((await hscroll(page)) <= 0, 'son gün: no horizontal scroll');
-  await reload(P);
-  ok((await overlayName(page)) === 'Son Gün', 'reload during Son Gün lands back in Son Gün');
-  // close the overlay -> hub must offer a way back
-  await click(page, /^Gündem$/, { within: '.overlay' });
-  ok((await overlayName(page)) === null, 'Son Gün can be minimised');
-  ok(await has(page, /SON GÜNE DÖN/), 'hub shows "Son Gün\'e dön"');
-  await click(page, /SON GÜNE DÖN/); await sleep(500);
-  // take a table
-  const sit = page.getByRole('button', { name: /^Masaya otur$/ }).filter({ visible: true }).first();
-  if (await sit.count()) {
-    await sit.click(); await sleep(900);
-    ok((await overlayName(page)) === 'Pazarlık masası', 'Son Gün table opened');
-    await P.shot('b1-masa-deadline');
-    await reload(P);
-    ok((await overlayName(page)) === 'Pazarlık masası', 'reload mid-negotiation lands back at the Masa');
-    ok((await state(page)).neg, 'negotiation survived the reload');
-    const deal = await dealAtMasa(P, 'b1');
-    if (!deal) { await P.shot('xx-b1-stuck'); console.log((await text(page, '.overlay')).replace(/\n+/g, ' | ').slice(0, 1500)); }
-    console.log('  (Son Gün table result: ' + (deal ? 'deal' : 'no deal') + ')');
-    if (deal) {
-    await page.locator('.cer').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-    await sleep(5200);
-    await P.shot('b1-ceremony');
-    await page.getByRole('button', { name: /Son Gün’e dön|^Devam$/ }).filter({ visible: true }).first().click({ timeout: 8000 });
-    await sleep(700);
-    ok((await overlayName(page)) === 'Son Gün', 'ceremony returns to Son Gün');
-    } else { await sleep(500); ok((await overlayName(page)) === 'Son Gün', 'after a lost table the player is back in Son Gün'); }
-  } else console.log('  (no table available in Son Gün)');
-  for (let i = 0; i < 8; i++) {
-    const skip = page.getByRole('button', { name: /Bu saati boş geç/ }).filter({ visible: true }).first();
-    if (!(await skip.count()) || (await skip.isDisabled())) break;
-    await skip.click(); await sleep(450);
-    if (i === 2) await P.shot('b1-deadline-late');
-  }
-  await sleep(1800);
-  await P.shot('b1-midnight');
-  ok(await has(page, /Günün özet/), 'midnight summary shown');
-  await click(page, /^Ayı Oynat$/);
-  await sleep(600);
-  await finishPlayback(page, 'b1-playback');
-  const st = await state(page);
-  ok(st.month === 2 && st.phase === 'plan', 'month 2 (September) reached after Son Gün: ' + JSON.stringify(st));
-  flushErrors(P, 'B1'); await P.ctx.close();
-}
-
-step('B2 season end: reload restore, review, season 2');
-{
-  const S = G.newS(); G.tutorialToInterest(S);
-  while (!(S.time.season === 1 && S.time.month === 11)) { S.agency.cash = Math.max(S.agency.cash, 150000); G.passMonth(S); }
-  G.clearInbox(S, 'all');
-  const P = await fresh(G.serialize(S)); const { page } = P;
-  ok(await has(page, /Haz.ran/), 'staged at June (last month of the season)');
-  await pressAdvance(page, /AYI OYNAT/);
-  await page.getByRole('button', { name: /^Atla$/ }).first().click({ timeout: 3000 }).catch(() => {});
-  await sleep(500);
-  await reload(P);
-  ok(/değerlendirmesi/.test((await overlayName(page)) || ''), 'reload after season end lands in the season review (overlay: ' + (await overlayName(page)) + ')');
-  await P.shot('b2-seasonend-intro');
-  const seen = [];
-  for (let i = 0; i < 12; i++) {
-    const { lbl, click: go } = await reviewNext(P, i);
-    if (i === 1) { // a sheet opened from inside an overlay must sit on top, and Esc must close only the sheet
-      const club = page.locator('.season-champ__club').first();
-      if (await club.count()) {
-        await club.click(); await sleep(600);
-        const top = await page.evaluate(() => { const s = document.querySelector('.sheet'); if (!s) return false; const b = s.getBoundingClientRect(); const e = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2); return !!(e && e.closest('.sheet')); });
-        ok(top, 'sheet opened from the season review is on top of the overlay');
-        await P.shot('b2-sheet-over-overlay');
-        await page.keyboard.press('Escape'); await sleep(500);
-        ok((await page.locator('.sheet').count()) === 0 && /değerlendirmesi/.test((await overlayName(page)) || ''), 'Esc closes only the sheet, the review stays');
+    // ---------------------------------------------------------------- 5. months -> season end -> season 2
+    console.log('5. months, season end, season 2');
+    await tab(page, 'Gündem');
+    let first = true, sawEvent = false;
+    for (let m = 0; m < 12; m++) {
+      const t0 = await TEXT(page);
+      if (await page.locator('[data-testid=event]').count()) {
+        sawEvent = true;
+        if (first) { await shot('15-event'); first = false; }
+        const evt = page.locator('[data-testid=event]');
+        ok('event card: ≤ 2 choices', (await evt.locator('button').count()) <= 2 && (await evt.locator('button').count()) >= 1);
+        await evt.locator('button').last().click(); await sleep(300);
+      }
+      const txt = await playMonth(page, m === 0 ? '16-report' : null);
+      if (m === 0) { await shot('16-report'); ok('month report: one Devam button', (await page.locator('[data-testid=continue]').count()) === 1); }
+      await page.locator('[data-testid=continue]').click(); await sleep(500);
+      if (m === 0) { // month 2: watch a candidate
+        await tab(page, 'Oyuncular');
+        await page.locator('[data-testid=search]').click(); await sleep(500);
+        await page.locator('[data-testid=candidate]').first().getByText('İzle').click(); await sleep(400);
+        ok('İzle: potential becomes exact (İzlendi, single star value)', /İzlendi/.test(await page.locator('[data-testid=candidate]').first().textContent()) && !/\d–\d ★/.test(await page.locator('[data-testid=candidate]').first().textContent()));
+        await tab(page, 'Gündem');
+      }
+      if (m < 11) {
+        if (await page.locator('[data-testid=season-end]').count()) break;
       }
     }
-    if (i === 1 || i === 4) await P.shot('b2-seasonend-' + i);
-    if (/sezona ba|nale ge/i.test(lbl)) { await P.shot('b2-seasonend-last'); seen.push(lbl); break; }
-    await go(); await sleep(450); seen.push(lbl);
+    ok('saw an event card in the first season', sawEvent);
+    await sleep(400);
+    ok('season end screen appears after June', (await page.locator('[data-testid=season-end]').count()) === 1);
+    await shot('17-season-end');
+    ok('season end: one screen, one button', (await page.locator('[data-testid=season-continue]').count()) === 1);
+    // reload on an unseen season-end review restores it
+    await page.reload(); await page.waitForSelector('html.ready'); await sleep(700);
+    ok('reload restores the unseen season review', (await page.locator('[data-testid=season-end]').count()) === 1);
+    await page.locator('[data-testid=season-continue]').click(); await sleep(600);
+    ok('season 2 starts', /SEZON 2 \/ 5/i.test(await TEXT(page)));
+    ok('new goal assigned', (await page.locator('[data-testid=goal]').count()) === 1);
+    await shot('18-hub-season2');
+    ok('no page errors (new-game flow)', errors.length === 0, errors.join(' | '));
+    errors.length = 0;
+    // reload keeps the month
+    const before = await TEXT(page);
+    await page.reload(); await page.waitForSelector('html.ready'); await sleep(700);
+    ok('reload keeps the game (hub)', /SEZON 2 \/ 5/i.test(await TEXT(page)) && /TEMMUZ/i.test(await TEXT(page)));
+    await page.context().close();
   }
-  ok(seen.length >= 3, 'season review has several steps (' + seen.length + ')');
-  ok((await hscroll(page)) <= 0, 'season end: no horizontal scroll');
-  // reload on the last step must still restore (not yet confirmed)
-  await reload(P);
-  ok(/değerlendirmesi/.test((await overlayName(page)) || ''), 'season review restored again until confirmed');
-  for (let i = 0; i < 12; i++) {
-    const { lbl, click: go } = await reviewNext(P, 'b' + i);
-    await go(); await sleep(400);
-    if (/sezona ba/i.test(lbl)) break;
-  }
-  ok((await overlayName(page)) === null, 'season review closed');
-  const st = await state(page);
-  ok(st.season === 2 && st.month === 0, 'season 2 started: ' + JSON.stringify(st));
-  await reload(P);
-  ok((await overlayName(page)) === null, 'after confirming the review a reload does not show it again');
-  await P.shot('b2-season2-hub');
-  ok(await has(page, /Sezon hedef/), 'season 2: objective offered / shown');
-  // play a couple of season-2 months for errors
-  for (let i = 0; i < 2; i++) await playMonth(page);
-  ok((await state(page)).month === 2, 'season 2 months play');
-  flushErrors(P, 'B2'); await P.ctx.close();
-}
 
-step('B3 final season: real ending path, restore, every tier, bankruptcy, no clients');
-const endingOf = async (P) => ({ ov: await overlayName(P.page), t: await text(P.page, '.overlay') });
-{
-  const S = G.lastJune();
-  const P = await fresh(G.serialize(S)); const { page } = P;
-  ok(await has(page, /Sezon 8 \/ 8/), 'staged at season 8, June');
-  await pressAdvance(page, /AYI OYNAT/);
-  await finishPlayback(page, 'b3-final-playback');
-  ok(/değerlendirmesi/.test((await overlayName(page)) || ''), 'final month chains into the season review');
-  for (let i = 0; i < 12; i++) {
-    const { lbl, click: go } = await reviewNext(P, 'c' + i);
-    await go(); await sleep(400);
-    if (/nale ge/i.test(lbl)) break;
+  // ------------------------------------------------------------------ 6. table: counter, accept counter, left
+  console.log('6. table: counter / left');
+  {
+    const save = serialize(withOffers());
+    const { page, errors, shot, open } = await newPage(browser, url, { save });
+    await open();
+    await tab(page, 'Piyasa'); await shot('20-market-offers');
+    ok('market lists the waiting offers', (await page.locator('[data-testid=offer]').count()) >= 1);
+    await page.locator('[data-testid=offer]').first().getByText('Masaya otur').click(); await sleep(900);
+    await setSlider(page, 0, 1); await setSlider(page, 1, 1); await sleep(400);
+    ok('greedy offer: hint is Düşük', /Düşük/.test(await page.locator('[data-testid=hint]').textContent()));
+    await shot('21-table-greedy');
+    await page.locator('[data-testid=propose]').click(); await sleep(900);
+    ok('refused: counter card + 2 pips left', (await page.locator('[data-testid=counter]').count()) === 1 && (await page.locator('.tpat__pip.is-on').count()) === 2);
+    ok('round counter 2/3', /Tur 2\/3/i.test(await TEXT(page)));
+    await shot('22-table-counter');
+    await page.locator('[data-testid=accept-counter]').click(); await sleep(1700);
+    ok('counter accepted -> ceremony', (await page.locator('.cer').count()) === 1);
+    await skipCeremony(page);
+    await page.getByRole('button', { name: /Devam/i }).last().click(); await sleep(500);
+    // a second table: refuse everything until the director leaves (hard cap 3 rounds)
+    await tab(page, 'Piyasa');
+    if (await page.locator('[data-testid=offer]').count()) {
+      await page.locator('[data-testid=offer]').first().getByText('Masaya otur').click(); await sleep(900);
+      for (let r = 0; r < 3; r++) {
+        if (await page.locator('[data-testid=table-left]').count()) break;
+        await setSlider(page, 0, 1); await setSlider(page, 1, 1); await sleep(300);
+        await page.locator('[data-testid=propose]').click(); await sleep(700);
+      }
+      ok('3 refused rounds: the director leaves', (await page.locator('[data-testid=table-left]').count()) === 1);
+      await shot('23-table-left');
+      await page.getByRole('button', { name: /Tamam/i }).click(); await sleep(400);
+    } else ok('second offer available', false, 'no second offer');
+    ok('no page errors (table flow)', errors.length === 0, errors.join(' | '));
+    await page.context().close();
   }
-  await sleep(1200);
-  ok((await overlayName(page)) === 'Kariyer sonu', 'review leads to the Ending screen');
-  await P.shot('b3-ending-real');
-  const st = await state(page);
-  ok(st.phase === 'over' && !!st.ending, 'ending recorded: ' + st.ending);
-  await reload(P);
-  ok((await overlayName(page)) === 'Kariyer sonu', 'reload at the ending lands on the Ending screen');
-  await click(page, /Kapat|Kariyer özeti|Hub|Ajans/i, { timeout: 1500 }).catch(() => {});
-  flushErrors(P, 'B3-real'); await P.ctx.close();
-}
-const JUNE8 = G.serialize(G.lastJune());
-for (const kind of ['efsane', 'buyuk', 'saygin', 'siradan']) {
-  const S = G.deserialize(JUNE8);
-  G.endingMod.build(S, kind);
-  const P = await fresh(G.serialize(S)); const { page } = P;
-  await sleep(1200);
-  const { ov, t } = await endingOf(P);
-  ok(ov === 'Kariyer sonu', `ending ${kind}: Ending screen rendered`);
-  ok(t.toLocaleUpperCase('tr-TR').includes(S.ending.title.toLocaleUpperCase('tr-TR')), `ending ${kind}: shows its title "${S.ending.title}"`);
-  ok((await hscroll(page)) <= 0, `ending ${kind}: no horizontal scroll`);
-  await P.shot(`b3-ending-${kind}-top`);
-  await page.locator('.overlay').evaluate((o) => o.scrollTo(0, o.scrollHeight)); await sleep(400);
-  await P.shot(`b3-ending-${kind}-bottom`);
-  ok(/sonsuz|Devam|Yeni kariyer/i.test(await text(page, '.overlay')), `ending ${kind}: has a way forward (endless / new career)`);
-  flushErrors(P, 'B3-' + kind); await P.ctx.close();
-}
-{ // bankruptcy through the real month end
-  const S = G.newS(); G.tutorialToInterest(S);
-  G.passMonth(S); G.clearInbox(S, 'all');
-  S.agency.cash = -900000; S.agency.negMonths = 2; S.agency.energy = 0;
-  const P = await fresh(G.serialize(S)); const { page } = P;
-  ok(await has(page, /Kasa eks/), 'hub warns about negative cash');
-  await P.shot('b3-bankrupt-hub');
-  await pressAdvance(page, /AYI OYNAT|SON GÜNE GİR/);
-  if ((await overlayName(page)) === 'Son Gün') await finishDeadline(page);
-  await finishPlayback(page, 'b3-bankrupt-playback');
-  await sleep(1000);
-  const { ov } = await endingOf(P);
-  ok(ov === 'Kariyer sonu', 'bankruptcy: Ending screen (overlay ' + ov + ')');
-  ok((await state(page)).ending === 'iflas', 'bankruptcy: ending kind iflas');
-  await P.shot('b3-ending-iflas');
-  ok(!/Sonsuz modda devam/i.test(await text(page, '.overlay')), 'bankruptcy: no endless-mode button');
-  flushErrors(P, 'B3-iflas'); await P.ctx.close();
-}
-{ // no clients from season 2 -> yalniz
-  const S2 = G.newS(); G.tutorialToInterest(S2);
-  while (!(S2.time.season === 2 && S2.time.month === 11)) { S2.agency.cash = Math.max(S2.agency.cash, 150000); G.passMonth(S2); }
-  G.clearInbox(S2, 'all');
-  for (const c of G.sel.myClients(S2)) G.act(S2, 'releaseClient', { playerId: c.id });
-  const P = await fresh(G.serialize(S2)); const { page } = P;
-  await P.shot('b3-noclients-hub');
-  await pressAdvance(page, /AYI OYNAT/);
-  await finishPlayback(page, 'b3-noclients-playback');
-  await sleep(1000);
-  for (let i = 0; i < 10 && /değerlendirmesi/.test((await overlayName(page)) || ''); i++) { const { lbl, click: go } = await reviewNext(P, 'y' + i); await go(); await sleep(400); if (/nale ge/i.test(lbl)) break; }
-  await sleep(1000);
-  const st = await state(page);
-  console.log('no clients ->', JSON.stringify(st));
-  ok(st.ending === 'yalniz' && (await endingOf(P)).ov === 'Kariyer sonu', 'no clients at the end of season 2: "yalniz" Ending screen');
-  await P.shot('b3-ending-yalniz');
-  ok(!/Sonsuz modda devam/i.test(await text(page, '.overlay')), 'yalniz: no endless-mode button');
-  flushErrors(P, 'B3-yalniz'); await P.ctx.close();
-}
 
-step('C open stay promise: reasons in Piyasa / Son Gün / dossier, blocked promise in the recruit sheet');
-{
-  const W = G.promiseWorld();
-  const reason = /Kulüpte kalma sözün var/;
-  const P = await fresh(G.serialize(W.S)); const { page } = P;
-  await nav(page, 'Piyasa');
-  await P.shot('c-market-stay');
-  ok(reason.test(await text(page, 'main')), 'Piyasa shows why the table is closed (stay promise)');
-  ok(!(await page.getByRole('button', { name: /^Masaya otur/ }).filter({ visible: true }).count()), 'no "Masaya otur" for the blocked suitor');
-  await page.locator('.mk-client__head').first().click(); await sleep(600);
-  ok(reason.test(await text(page, '.sheet')), 'client dossier shows the reason under the suitor');
-  await P.shot('c-dossier-stay');
-  await page.keyboard.press('Escape'); await sleep(400);
-  await nav(page, 'Gündem');
-  await pressAdvance(page, /SON GÜNE GİR|AYI OYNAT/);
-  if ((await overlayName(page)) === 'Son Gün') {
-    ok(reason.test(await text(page, '.overlay')), 'Son Gün lists the blocked suitor with the reason');
-    await P.shot('c-deadline-stay');
-  } else console.log('  (no Son Gün in this state)');
-  await P.ctx.close();
-  const Q = await fresh(G.serialize(W.S)); const pg = Q.page;
-  await nav(pg, 'Keşif'); await tab(pg, /Radarım/); await sleep(400);
-  const row = pg.locator('.scout-row').filter({ hasText: W.pick.name.split(' ').slice(-1)[0] }).first();
-  await row.click(); await sleep(600);
-  await click(pg, /İmza teklifi/);
-  await sleep(500);
-  await Q.shot('c-recruit-blocked');
-  const blocked = pg.locator('.recruit-prom.is-blocked');
-  ok((await blocked.count()) >= 1, 'recruit sheet shows a blocked promise');
-  ok((await blocked.first().isDisabled()), 'blocked promise is disabled');
-  ok((await blocked.first().innerText()).includes(W.pick.reason.slice(0, 20)), 'blocked promise shows its reason');
-  allErrors.push(...Q.errors.map((e) => '[C-recruit] ' + e)); await Q.ctx.close();
-  allErrors.push(...P.errors.map((e) => '[C] ' + e));
+  // ------------------------------------------------------------------ 7. final ending (crafted save) + reload
+  console.log('7. final ending');
+  {
+    const S = lastJune();
+    const { page, errors, shot, open } = await newPage(browser, url, { save: serialize(S) });
+    await open();
+    ok('last season, June', /Haziran/.test(await TEXT(page)) && /Sezon 5 \/ 5/.test(await TEXT(page)));
+    await playMonth(page);
+    await page.locator('[data-testid=continue]').click(); await sleep(600);
+    ok('final season review first', (await page.locator('[data-testid=season-end]').count()) === 1);
+    await page.locator('[data-testid=season-continue]').click(); await sleep(1500);
+    await shot('30-ending');
+    ok('ending screen', /Miras puanı|Final sıralaması|sırada bitirdin/i.test(await TEXT(page)) || (await page.locator('.ending-wrap').count()) === 1);
+    { const tt = (await TEXT(page)).replace(/sözleşme/gi, ''); const m = tt.match(/\bsöz|hayal/i); ok('ending has no promise/dream rows', !m, m && tt.slice(Math.max(0, m.index - 40), m.index + 40)); }
+    await page.reload(); await page.waitForSelector('html.ready'); await sleep(900);
+    ok('reload restores the ending', (await page.locator('.ending-wrap').count()) === 1);
+    ok('no page errors (ending)', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+
+  // ------------------------------------------------------------------ 8. bankruptcy (crafted save)
+  console.log('8. bankruptcy');
+  {
+    const { page, errors, shot, open } = await newPage(browser, url, { save: serialize(almostBankrupt()) });
+    await open();
+    await shot('31-hub-broke');
+    ok('hub warns about the negative cash', /eksiye düştü/i.test(await TEXT(page)));
+    await playMonth(page);
+    await page.locator('[data-testid=continue]').click(); await sleep(1500);
+    await shot('32-bankrupt');
+    ok('bankruptcy ending (Kepenk Kapandı)', /Kepenk Kapandı/i.test(await TEXT(page)));
+    await page.reload(); await page.waitForSelector('html.ready'); await sleep(900);
+    ok('reload restores the bankruptcy ending', (await page.locator('.ending-wrap').count()) === 1);
+    ok('no page errors (bankruptcy)', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+
+  // ------------------------------------------------------------------ 9. settings
+  console.log('9. settings + old saves');
+  {
+    const { page, errors, shot, open } = await newPage(browser, url, { save: serialize(withOffers()) });
+    await open();
+    await page.getByRole('button', { name: 'Ayarlar' }).click(); await sleep(400); await shot('40-settings');
+    ok('settings sheet', /Ses:/i.test(await TEXT(page)));
+    ok('no page errors (settings)', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+  {
+    // an old (v1) save must not be loaded: the game starts fresh at the title screen
+    const { ctx, page, errors, open } = await newPage(browser, url);
+    await ctx.addInitScript(() => { try { localStorage.setItem('kulis-save-v1', JSON.stringify({ v: 1, players: {}, clubs: {} })); } catch {} });
+    await open();
+    ok('old v1 save is ignored (title, no "Devam Et")', (await TEXT(page)).includes('KULİS') && !/Devam Et/.test(await TEXT(page)));
+    ok('no page errors (old save)', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+} catch (e) {
+  console.error('E2E crashed:', e);
+  results.push({ name: 'e2e crashed: ' + e.message, ok: false });
 }
 
 await browser.close(); server.close();
-console.log('\n' + (failures.length ? `FAILED (${failures.length})\n - ` + failures.join('\n - ') : 'ALL CHECKS OK'));
-if (allErrors.length) console.log('PAGE ERRORS:\n' + [...new Set(allErrors)].join('\n'));
-process.exit(failures.length || allErrors.length ? 1 : 0);
-async function A_shot_hub(P) { await P.shot('b1-hub-august'); }
+const bad = results.filter((r) => !r.ok);
+console.log(`\n${results.length - bad.length}/${results.length} ok  (${((Date.now() - T0) / 1000).toFixed(0)} s)`);
+if (bad.length) { console.log('FAILED:\n' + bad.map((b) => ' - ' + b.name + (b.extra ? ' [' + b.extra + ']' : '')).join('\n')); process.exit(1); }

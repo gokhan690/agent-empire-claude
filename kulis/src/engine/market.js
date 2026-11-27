@@ -1,16 +1,14 @@
-// Phase 2b — the market: club needs, interest in your clients, AI↔AI transfers, pitch / lunch / media actions,
+// The market: club needs, interest in your clients, AI↔AI transfers, "Kulübe öner" (pitch)
 // and executeTransfer (move, fee, commission, career-fit effects). Randomness only through rng.js.
-import { BAL, MONTHS, POS, POS_ORDER } from './constants.js';
-import { rint, chance, gauss, uid, shuffle, pickBy } from './rng.js';
+import { BAL, POS, POS_ORDER } from './constants.js';
+import { rint, gauss, uid, shuffle, pickBy } from './rng.js';
 import { clamp, hash01, mean, tidy } from './util.js';
-import { fairWage, playerValue } from './valuation.js';
+import { fairWage } from './valuation.js';
 import { squadIndex, squadOf, clubStrength, projectMinutes } from './selection.js';
-import { myClients, upgradeEffects, agencyScale } from './selectors.js';
-import { spend, earn, spendEnergy, addRep } from './economy.js';
+import { myClients, hasUpgrade } from './selectors.js';
+import { earn, spendEnergy, addRep } from './economy.js';
 import { genYouth } from './world.js';
 import * as news from './news.js';
-import { useAction } from './deadline.js';
-import * as promises from './promises.js';
 
 /** @typedef {{ok:true,events:object[],[k:string]:any}|{ok:false,error:string}} Result */
 
@@ -27,22 +25,10 @@ export function fmtMoney(v) {
 
 // ------------------------------------------------------------------------------------------ package math
 
-/** Club cost of a package: (wage·12·years + bonus + fee) · (1 + clause rates). */
-export function packageCost(pkg) {
-  const C = BAL.neg.clause;
-  const base = pkg.wage * 12 * pkg.years + pkg.bonus + pkg.fee;
-  const c = pkg.clauses || {};
-  return Math.round(base * (1 + (c.minutes ? C.minutes : 0) + (c.release ? C.release : 0)));
-}
+/** Club cost of a package: wage·12·years + bonus + fee. */
+export function packageCost(pkg) { return Math.round(pkg.wage * 12 * pkg.years + pkg.bonus + pkg.fee); }
 /** Share of the package cost that is your commission (0..1). */
 export function feeShare(pkg) { const c = packageCost(pkg); return c > 0 ? pkg.fee / c : 0; }
-/** Threshold above which the client notices your fee (archetype hukukcu 15%, else 12%). */
-export function feeThreshold(S, cost) {
-  const base = S.meta.archetype === 'hukukcu' ? BAL.archetype.hukukcu.feeThreshold : 0.12;
-  if (!cost) return base;
-  const B = BAL.neg.bigDeal;
-  return Math.round(base * (1 - B.cut * clamp(Math.log10(Math.max(1, cost / B.from)) / B.span, 0, 1)) * 1000) / 1000;
-}
 
 // ------------------------------------------------------------------------------------------ needs
 
@@ -74,12 +60,13 @@ export function computeNeeds(S, club, squad, A) {
   return out;
 }
 
-function strengthMap(S, idx) {
+export function strengthMap(S, idx) {
   const A = {};
   for (const cid in S.clubs) A[cid] = clubStrength(S, cid, idx[cid]);
   return A;
 }
-function refreshNeeds(S, idx, A) {
+/** Recompute every club's needs from its squad. */
+export function refreshNeeds(S, idx, A) {
   for (const cid in S.clubs) S.clubs[cid].needs = computeNeeds(S, S.clubs[cid], idx[cid], A[cid]);
 }
 
@@ -88,8 +75,8 @@ function refreshNeeds(S, idx, A) {
 function dropPlayer(S, id) {
   delete S.players[id];
   S.interests = S.interests.filter(i => i.playerId !== id);
-  S.promises = S.promises.filter(p => p.playerId !== id);
   S.inbox = S.inbox.filter(c => c.playerId !== id);
+  S.found = S.found.filter(x => x !== id);
 }
 
 /** Keep a club's squad inside 18–22 and every line above its minimum (trim worst non-clients / sign youths). */
@@ -115,14 +102,6 @@ export function balanceSquad(S, club) {
 
 // ------------------------------------------------------------------------------------------ interest
 
-/** Which interest kind applies to (player, club) right now. */
-export function kindFor(S, p, club) {
-  if (!p.clubId) return 'free';
-  if (club.id === p.clubId) return 'renewal';
-  if (p.contractEnd === S.time.season && S.time.month >= BAL.market.interest.freeFrom) return 'free';
-  return 'transfer';
-}
-
 /** Rough Bonservis (transfer fee) the buyer would pay: value × (0.95 + 0.05·(need−1)). */
 export function estimateTransferFee(S, p, club) {
   const D = BAL.market.deal;
@@ -130,7 +109,7 @@ export function estimateTransferFee(S, p, club) {
   return tidy(p.value * (D.feeFactorBase + D.feeFactorNeed * (nl - 1)));
 }
 
-export function interestTarget(S, p, club, A, kind) {
+export function interestTarget(S, p, club, A) {
   const W = BAL.market.interest;
   const nl = needLevel(club, p.pos);
   if (!nl) return 0;
@@ -138,72 +117,47 @@ export function interestTarget(S, p, club, A, kind) {
   const delta = p.ca - A;
   let t = nl * W.needW + clamp(W.fitBase + delta * W.fitK, W.fitMin, W.fitMax) + p.form * W.formW + p.hype / W.hypeDiv + club.trust / W.trustDiv;
   t += p.age <= 23 ? W.ageYoung : p.age <= 29 ? W.ageMid : p.age <= 30 ? 0 : p.age <= 32 ? W.age31 : W.age33;
-  if (kind === 'free') t += 6;
-  const ratio = kind === 'free' ? 9 : club.budget / Math.max(1, estimateTransferFee(S, p, club));
+  const ratio = club.budget / Math.max(1, estimateTransferFee(S, p, club));
   if (ratio < W.budgetMinRatio) t = Math.min(t, W.unaffordableCap);
   else if (ratio >= W.budgetRich) t += W.budgetBonus;
   return clamp(Math.round(t), 0, 100);
 }
 
-function renewalTarget(S, p, club) {
-  const W = BAL.market.interest;
-  const m = projectMinutes(S, p, club.id);
-  const P = BAL.sel.proj;
-  const base = m >= P.starter ? W.renewalStarter : m >= P.bench1 ? 52 : 30;
-  return clamp(Math.round(base + p.form * 0.5 + (p.loyalty - 50) / 10), 0, 100);
-}
-
-/** Players' interest bookkeeping for the month. */
+/** Interest bookkeeping for the month: every club may build interest in each of your clients. */
 function updateInterests(S, A, events) {
   const W = BAL.market.interest;
-  const { season, month } = S.time;
   for (const i of S.interests) {
     if (i.cooldown > 0) i.cooldown--;
     if (i.boost) { i.boost = Math.round(i.boost * W.boostDecay); if (i.boost < 1) i.boost = 0; }
   }
-  const mineIds = new Set();
   for (const p of myClients(S)) {
-    mineIds.add(p.id);
-    if (p.preContract) { S.interests = S.interests.filter(i => !(i.playerId === p.id && i.kind !== 'renewal')); }
     const byClub = new Map();
     for (const i of S.interests) if (i.playerId === p.id) byClub.set(i.clubId, i);
-    const clubs = Object.keys(S.clubs).sort();
-    for (const cid of clubs) {
+    for (const cid of Object.keys(S.clubs).sort()) {
+      if (cid === p.clubId) continue;
       const club = S.clubs[cid];
-      let kind, target;
-      if (cid === p.clubId) {
-        const want = p.contractEnd === season && month >= W.renewalFrom && !p.preContract;
-        if (!want) { const ex = byClub.get(cid); if (ex) S.interests = S.interests.filter(x => x !== ex); continue; }
-        kind = 'renewal'; target = renewalTarget(S, p, club);
-      } else {
-        if (p.preContract) continue;
-        kind = kindFor(S, p, club);
-        target = interestTarget(S, p, club, A[cid], kind);
-      }
+      const target = interestTarget(S, p, club, A[cid]);
       const ex = byClub.get(cid);
       if (ex) {
         const before = ex.level;
         const goal = target + (ex.boost || 0);
-        ex.kind = kind;
         if (target <= 0 && !(ex.boost > 0)) ex.level = Math.max(0, ex.level - W.decay);
         else ex.level = clamp(Math.round(ex.level + (goal - ex.level) * W.pull + gauss(S, 0, W.noise)), 0, 100);
         if (ex.level < W.drop) S.interests = S.interests.filter(x => x !== ex);
-        else if (before < W.open && ex.level >= W.open) events.push({ type: 'interest', interestId: ex.id, playerId: p.id, clubId: cid, level: ex.level, kind });
+        else if (before < W.open && ex.level >= W.open) events.push({ type: 'interest', interestId: ex.id, playerId: p.id, clubId: cid, level: ex.level });
       } else if (target >= W.create) {
-        const i = { id: uid(S, 'i'), playerId: p.id, clubId: cid, level: Math.round(target * 0.6), kind, cooldown: 0, boost: 0 };
+        const i = { id: uid(S, 'i'), playerId: p.id, clubId: cid, level: Math.round(target * 0.6), cooldown: 0, boost: 0 };
         S.interests.push(i);
-        if (i.level >= W.open) events.push({ type: 'interest', interestId: i.id, playerId: p.id, clubId: cid, level: i.level, kind });
+        if (i.level >= W.open) events.push({ type: 'interest', interestId: i.id, playerId: p.id, clubId: cid, level: i.level });
       }
     }
-    // cap per player (keep the strongest)
     const mine = S.interests.filter(i => i.playerId === p.id).sort((a, b) => b.level - a.level);
     if (mine.length > W.perPlayer) {
       const drop = new Set(mine.slice(W.perPlayer).map(i => i.id));
       S.interests = S.interests.filter(i => !drop.has(i.id));
     }
   }
-  // interests in players that are no longer clients fade out
-  S.interests = S.interests.filter(i => S.players[i.playerId] && S.clubs[i.clubId]);
+  S.interests = S.interests.filter(i => S.players[i.playerId] && S.players[i.playerId].agentId === 'you' && S.clubs[i.clubId]);
 }
 
 // ------------------------------------------------------------------------------------------ AI transfers
@@ -211,7 +165,7 @@ function updateInterests(S, A, events) {
 function aiTransfers(S, idx, A, events) {
   const AI = BAL.market.ai, SQ = BAL.squad;
   const month = S.time.month;
-  const mf = AI.monthFactor[month] ?? 0;
+  const mf = AI.monthFactor[month] ?? 0; // AI clubs trade in July, August and January only
   if (!mf) return;
   const negPid = S.negotiation ? S.negotiation.playerId : null;
   const order = shuffle(S, Object.keys(S.clubs).sort());
@@ -250,10 +204,9 @@ function aiTransfers(S, idx, A, events) {
       idx[seller.id] = idx[seller.id].filter(q => q !== p);
       idx[bid].push(p);
       const from = seller;
-      p.clubId = bid; p.guarantee = false; p.releaseClause = 0;
+      p.clubId = bid;
       p.wage = Math.max(BAL.wage.min, r100(fairWage(S, p, buyer.leagueId) * clamp(gauss(S, 1, 0.1), 0.8, 1.25)));
       p.contractEnd = S.time.season + rint(S, AI.contract[0], AI.contract[1]);
-      p.loyalty = rint(S, 40, 65);
       p.st.sh = Math.round(projectMinutes(S, p, bid, {}, idx[bid]) * 100) / 100;
       buyer.needs = computeNeeds(S, buyer, idx[bid], A[bid]);
       seller.needs = computeNeeds(S, seller, idx[seller.id], A[seller.id]);
@@ -267,89 +220,36 @@ function aiTransfers(S, idx, A, events) {
 }
 
 /**
- * Monthly (turn step 5): recompute needs, AI clubs trade in open windows (0–2 signings each),
- * build/decay interest in your clients (≥60 in an open window → negotiable), cool-downs, free-agent offers.
- * @param {object} S
+ * Monthly: recompute needs, AI clubs trade in their windows (0–2 signings each), build/decay interest in your clients.
  * @returns {object[]} UI events (`{type:'interest'|'aiTransfer', ...}`)
  */
 export function monthly(S) {
   const events = [];
-  if (S.time.month === 0) for (const cid in S.clubs) S.clubs[cid].lunchKnown = false;
   let idx = squadIndex(S);
   let A = strengthMap(S, idx);
   refreshNeeds(S, idx, A);
-  if (MONTHS[S.time.month].window) {
+  if (BAL.market.ai.windowMonths.includes(S.time.month)) {
     aiTransfers(S, idx, A, events);
     idx = squadIndex(S);
     A = strengthMap(S, idx);
     refreshNeeds(S, idx, A);
   }
-  if (S.time.month === 1) for (const p of myClients(S)) if (!p.clubId) { placeFreeAgent(S, p); events.push({ type: 'freeAgentPlaced', playerId: p.id, clubId: p.clubId }); }
   updateInterests(S, A, events);
   return events;
 }
 
-// ------------------------------------------------------------------------------------------ expiry
+// ------------------------------------------------------------------------------------------ pitch ("Kulübe öner")
 
-/**
- * Season-end hook for a CLIENT whose contract ends this June. Executes a signed pre-contract (the move happens
- * now); a client his club no longer wants may become a free agent (clubId null, placeable via kind 'free').
- * Returns true if handled; false → the engine auto-renews him at his club.
- * @param {object} S
- * @param {object} p player
- * @returns {boolean}
- */
-export function handleExpiry(S, p) {
-  if (!p.clubId) { placeFreeAgent(S, p, true); return true; }
-  const pc = p.preContract;
-  if (pc) {
-    delete p.preContract;
-    const to = S.clubs[pc.toClubId];
-    if (to) { applyMove(S, p, to, { ...pc, kind: 'free' }, { seasonEnd: true, arranged: true }); return true; }
-  }
-  const club = p.clubId ? S.clubs[p.clubId] : null;
-  const F = BAL.market.freeAgent;
-  if (club && p.age >= F.minAge - 4) {
-    const A = clubStrength(S, club.id);
-    if (p.ca < A - F.minGap && chance(S, F.chance)) {
-      news.push(S, { kind: 'transfer', playerId: p.id, clubId: club.id, text: p.name + ' ' + club.name + ' ile yollarını ayırdı, serbest kaldı.' });
-      p.clubId = null; p.wage = 0; p.contractEnd = S.time.season + 1; p.guarantee = false; p.releaseClause = 0;
-      p.loyalty = clamp(p.loyalty - 10, 0, 100); p.morale = clamp(p.morale - 10, 0, 100);
-      S.interests = S.interests.filter(i => i.playerId !== p.id);
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * A clubless client (free agent) who found no table in the window is signed by a fitting club at a modest wage
- * (no commission: you did not negotiate it). Keeps the world free of clubless players after September.
- */
-export function placeFreeAgent(S, p, seasonEnd = false) {
-  const leagues = Object.values(S.leagues).sort((a, b) => b.prestige - a.prestige);
-  const L = leagues.find(l => BAL.strengthByPrestige[l.prestige] - 8 <= p.ca) || leagues[leagues.length - 1];
-  const ids = L.clubIds.slice().sort();
-  const needy = ids.filter(id => needLevel(S.clubs[id], p.pos) > 0);
-  const pool = needy.length ? needy : ids;
-  const to = S.clubs[pool[rint(S, 0, pool.length - 1)]];
-  const wage = Math.max(BAL.wage.min, r100(fairWage(S, p, to.leagueId) * 0.9));
-  applyMove(S, p, to, { kind: 'free', wage, years: 1 + rint(S, 0, 1), bonus: 0, clauses: { minutes: false, release: false } }, { seasonEnd });
-  news.push(S, { kind: 'transfer', playerId: p.id, clubId: to.id, text: p.name + ' serbest kaldıktan sonra ' + to.name + ' ile anlaştı.' });
-  return to;
-}
-
-// ------------------------------------------------------------------------------------------ pitch / lunch / media
-
-function pitchDelta(S, p, club) {
-  const P = BAL.market.pitch;
+/** The club's natural appetite (0..100) for a client — what the pitch is judged by. Pure. */
+export function pitchTarget(S, p, club) {
   const A = clubStrength(S, club.id);
-  const nl = needLevel(club, p.pos);
-  const fit = clamp(p.ca - A + 4, P.fitMin, P.fitMax) * P.fitW;
-  let d = P.base + nl * P.perNeed + club.trust / BAL.market.interest.trustDiv + fit + p.hype / P.hypeDiv;
-  const ex = S.interests.find(i => i.playerId === p.id && i.clubId === club.id);
-  if (ex && ex.pitchedAt === S.time.season * 12 + S.time.month) d *= P.repeatMult;
-  return clamp(Math.round(d), P.min, P.max);
+  return interestTarget(S, p, club, A);
+}
+/** Word shown in the club picker: how likely the club listens. */
+export function pitchFit(S, p, club) {
+  const t = pitchTarget(S, p, club) * (hasUpgrade(S, 'network') ? BAL.upgrade.networkBoost : 1);
+  const P = BAL.market.pitch;
+  return t >= P.listen ? 'İlgilenir' : t >= P.maybe ? 'Belki' : 'Zor';
 }
 
 function pitchCheck(S, a) {
@@ -357,236 +257,102 @@ function pitchCheck(S, a) {
   const club = a && S.clubs[a.clubId];
   if (!p || p.agentId !== 'you') return 'Müşterin değil';
   if (!club) return 'Kulüp bulunamadı';
-  if (p.clubId === club.id) return 'Kendi kulübüne öneremezsin';
-  if (p.preContract) return 'Ön sözleşme zaten imzalı';
+  if (p.clubId === club.id) return 'Zaten bu kulüpte';
   const ex = S.interests.find(i => i.playerId === p.id && i.clubId === club.id);
   if (ex && ex.cooldown > 0) return 'Direktör küs (' + ex.cooldown + ' ay)';
   return null;
 }
 
 /**
- * Preview a pitch (shown, deterministic).
+ * "Kulübe öner": 1 energy. A club whose appetite is high enough listens at once (a table can be opened);
+ * a lukewarm one warms up a little.
  * @param {object} S
  * @param {{playerId:string, clubId:string}} a
- * @returns {{energy:number, cash:number, delta:number, levelBefore:number, levelAfter:number, error?:string}}
- */
-export function pitchPreview(S, a) {
-  const err = pitchCheck(S, a);
-  if (err) return { energy: 1, cash: 0, delta: 0, levelBefore: 0, levelAfter: 0, error: err };
-  const p = S.players[a.playerId], club = S.clubs[a.clubId];
-  const ex = S.interests.find(i => i.playerId === p.id && i.clubId === club.id);
-  const before = ex ? ex.level : 0;
-  const delta = pitchDelta(S, p, club);
-  return { energy: S.time.phase === 'deadline' ? 0 : 1, cash: 0, delta, levelBefore: before, levelAfter: Math.min(100, before + delta), deadlineAction: S.time.phase === 'deadline' };
-}
-
-/**
- * Pitch a client to a club: 1 energy (during Son Gün: the hour's action instead), raises that club's interest
- * by the previewed amount (the gain sticks as a slowly fading boost, capped).
- * @param {object} S
- * @param {{playerId:string, clubId:string}} a
- * @returns {Result}
+ * @returns {Result} `{ok, events:[{type:'pitch', fit, level, offer}], interestId, offer}`
  */
 export function pitchPlayer(S, a) {
   const err = pitchCheck(S, a);
   if (err) return fail(err);
+  if (S.agency.energy < 1) return fail('Enerjin yetmiyor');
   const p = S.players[a.playerId], club = S.clubs[a.clubId];
-  const dl = S.time.phase === 'deadline' && S.deadline;
-  if (dl) {
-    if (dl.ended) return fail('Gece yarısı geçti');
-    if (S.negotiation) return fail('Önce açık masayı kapat');
-    if (dl.actionsLeft <= 0) return fail('Bu saatin hakkı bitti');
-  } else if (S.agency.energy < 1) return fail('Enerjin yetmiyor');
-  const delta = pitchDelta(S, p, club);
+  const P = BAL.market.pitch, W = BAL.market.interest;
+  const mult = hasUpgrade(S, 'network') ? BAL.upgrade.networkBoost : 1;
+  let t = pitchTarget(S, p, club) * mult;
   let ex = S.interests.find(i => i.playerId === p.id && i.clubId === club.id);
-  if (!ex) { ex = { id: uid(S, 'i'), playerId: p.id, clubId: club.id, level: 0, kind: kindFor(S, p, club), cooldown: 0, boost: 0 }; S.interests.push(ex); }
+  if (!ex) { ex = { id: uid(S, 'i'), playerId: p.id, clubId: club.id, level: 0, cooldown: 0, boost: 0 }; S.interests.push(ex); }
   const before = ex.level;
-  ex.level = clamp(ex.level + delta, 0, 100);
-  ex.boost = Math.min(BAL.market.interest.boostMax, (ex.boost || 0) + delta);
-  ex.pitchedAt = S.time.season * 12 + S.time.month;
-  ex.kind = kindFor(S, p, club);
-  if (!dl) spendEnergy(S, 1);
-  const events = [{ type: 'pitch', playerId: p.id, clubId: club.id, delta, levelBefore: before, levelAfter: ex.level, interestId: ex.id }];
-  if (before < BAL.market.interest.open && ex.level >= BAL.market.interest.open) events.push({ type: 'interest', interestId: ex.id, playerId: p.id, clubId: club.id, level: ex.level, kind: ex.kind });
-  if (dl) events.push(...useAction(S));
-  return { ok: true, events, interestId: ex.id, delta };
-}
-
-/** Cost of a lunch with this club's director. */
-export function lunchCost(S, club) {
-  const L = BAL.market.lunch;
-  return tidy((L.cashBase + L.cashPerPrestige * S.leagues[club.leagueId].prestige) * agencyScale(S));
-}
-
-/**
- * Club lunch: 1 energy + € → trust +10 (+15 at network L2), reveals needs & budget hint (club.lunchKnown=true).
- * @param {object} S
- * @param {{clubId:string}} a
- * @returns {Result} `events:[{type:'lunch', clubId, trust, needs, budgetHint:{lo,hi}}]`
- */
-export function clubLunch(S, a) {
-  const club = a && S.clubs[a.clubId];
-  if (!club) return fail('Kulüp bulunamadı');
-  const cash = lunchCost(S, club);
-  if (S.agency.energy < 1) return fail('Enerjin yetmiyor');
-  if (S.agency.cash < cash) return fail('Yeterli paran yok');
+  const offer = t >= P.listen;
+  const fit = offer ? 'İlgilenir' : t >= P.maybe ? 'Belki' : 'Zor';
+  if (offer) { ex.level = Math.max(ex.level, P.offerLevel); ex.boost = Math.min(W.boostMax, Math.max(0, P.offerLevel - Math.round(t))); }
+  else ex.level = clamp(ex.level + (t >= P.maybe ? 12 : P.weak), 0, 59);
   spendEnergy(S, 1);
-  spend(S, cash, 'lunch', club.short + ' yemeği');
-  const L = BAL.market.lunch;
-  const gain = upgradeEffects(S).lunchTrust;
-  club.trust = clamp(club.trust + gain, 0, 100);
-  club.lunchKnown = true;
-  const f = hash01(club.id + ':bh' + S.time.season);
-  const lo = Math.round(club.budget * (1 - L.band * f) / 10000) * 10000;
-  const hi = Math.round((lo + club.budget * L.band * 1.0) / 10000) * 10000;
-  const hint = { lo: Math.min(lo, club.budget), hi: Math.max(hi, club.budget) };
-  return { ok: true, events: [{ type: 'lunch', clubId: club.id, trust: club.trust, gain, cash, needs: club.needs.map(n => ({ ...n })), budgetHint: hint }], budgetHint: hint, needs: club.needs.map(n => ({ ...n })) };
-}
-
-/** Cost of a media push for this player. */
-export function mediaCost(S, p) {
-  const M = BAL.market.media;
-  return tidy(clamp(M.cashBase + p.value * M.valueShare, M.min, M.max) * agencyScale(S));
-}
-
-/**
- * Media push: 1 energy + € → hype +15 (value & interest up; yildiz morale +, sadik −).
- * @param {object} S
- * @param {{playerId:string}} a
- * @returns {Result}
- */
-export function mediaPush(S, a) {
-  const p = a && S.players[a.playerId];
-  if (!p || p.agentId !== 'you') return fail('Müşterin değil');
-  const cash = mediaCost(S, p);
-  if (S.agency.energy < 1) return fail('Enerjin yetmiyor');
-  if (S.agency.cash < cash) return fail('Yeterli paran yok');
-  const M = BAL.market.media;
-  spendEnergy(S, 1);
-  spend(S, cash, 'media', 'Basın çalışması: ' + p.name);
-  p.hype = clamp(p.hype + M.hype, 0, 100);
-  if (p.trait === 'yildiz') p.morale = clamp(p.morale + M.yildizMorale, 0, 100);
-  if (p.trait === 'sadik') p.morale = clamp(p.morale + M.sadikMorale, 0, 100);
-  p.value = playerValue(S, p);
-  return { ok: true, events: [{ type: 'media', playerId: p.id, hype: p.hype, cash, value: p.value }] };
+  return { ok: true, events: [{ type: 'pitch', playerId: p.id, clubId: club.id, fit, levelBefore: before, level: ex.level, offer, interestId: ex.id }], interestId: ex.id, offer };
 }
 
 // ------------------------------------------------------------------------------------------ executing a move
 
-function careerFit(S, p, to, d, m, from, moved) {
+function careerFit(S, p, to, d, m, from) {
   const D = BAL.market.deal;
-  const notes = [];
-  let morale = clamp(Math.round((m - 0.5) * D.minutesMorale), -12, 12);
-  let loyalty = moved ? D.moveLoyalty : D.renewLoyalty;
-  const curPrest = from ? S.leagues[from.leagueId].prestige : 1;
-  const newPrest = S.leagues[to.leagueId].prestige;
-  notes.push(m >= 0.5 ? 'İlk 11 şansı yüksek' : m >= 0.2 ? 'Yedek başlayacak' : 'Kadro dışı kalma riski');
-  if (p.trait === 'hirsli' && m < 0.5) { morale += D.benchHirsliMorale; loyalty += D.benchHirsliLoyalty; notes.push('Hırslı: yedek kalmaktan nefret ediyor'); }
-  if (p.trait === 'sadik' && moved) { morale -= 3; loyalty -= 4; }
-  if (p.trait === 'yildiz') { if (newPrest > curPrest) morale += 5; else if (newPrest < curPrest) morale -= 6; }
-  if (p.trait === 'ailebabasi' && moved) {
-    const home = S.leagues[to.leagueId].country === 'Türkiye' ? p.nat === 'TR' : false;
-    morale += home ? 3 : -4;
-  }
-  const dr = p.dream;
-  if (dr && !dr.done) {
-    if (dr.type === 'top_league' && newPrest === 5 && curPrest < 5) { morale += D.dreamMorale; loyalty += D.dreamLoyalty; notes.push('Hayaline bir adım yaklaştı'); }
-    if (dr.type === 'big_wage' && d.wage >= dr.target) { morale += D.dreamMorale; loyalty += D.dreamLoyalty; notes.push('Hayalindeki maaşa kavuştu'); }
-  }
-  if (d.bonus > d.wage * 12 * 0.1) morale += 3;
-  return { morale, loyalty, notes };
+  const N = BAL.neg;
+  let mood = clamp(Math.round((m - 0.5) * D.minutesMood), -12, 12) + D.moveMood;
+  const demand = d.demand || d.wage;
+  if (d.wage >= demand * N.happyWage) mood += N.mood.happy;
+  return { mood };
 }
 
-/** Move/extend a player and apply every consequence. Commission and deals[] are handled by executeTransfer. */
-function applyMove(S, p, to, d, opts = {}) {
+/** Move a player and apply every consequence. Commission and deals[] are handled by executeTransfer. */
+function applyMove(S, p, to, d) {
   const D = BAL.market.deal;
   const season = S.time.season;
   const from = p.clubId ? S.clubs[p.clubId] : null;
-  const kind = d.kind;
-  const clauses = d.clauses || { minutes: false, release: false };
   const moved = !from || from.id !== to.id;
-  const m = projectMinutes(S, p, to.id, { guarantee: !!clauses.minutes });
-  const oldM = from ? projectMinutes(S, p, from.id) : 0;
-  let transferFee = 0;
-  if (kind === 'transfer' && moved) {
-    transferFee = d.transferFee ?? estimateTransferFee(S, p, to);
-    transferFee = Math.min(transferFee, Math.max(0, to.budget));
-    to.budget = Math.max(0, to.budget - transferFee);
-    if (from) from.budget += transferFee;
-  }
+  const m = projectMinutes(S, p, to.id);
+  let transferFee = d.transferFee ?? estimateTransferFee(S, p, to);
+  transferFee = Math.min(transferFee, Math.max(0, to.budget));
+  to.budget = Math.max(0, to.budget - transferFee);
+  if (from) from.budget += transferFee;
   p.clubId = to.id;
-  if (moved) p.moveAt = S.time.season * 12 + S.time.month;
+  p.moveAt = season * 12 + S.time.month;
   p.wage = Math.round(d.wage);
-  if (kind === 'renewal') p.contractEnd = Math.max(p.contractEnd, season) + d.years;
-  else p.contractEnd = (opts.seasonEnd ? season + 1 : season) + d.years - 1;
-  p.guarantee = !!clauses.minutes;
-  p.releaseClause = clauses.release ? tidy(p.value * D.releaseMult) : 0;
-  const fit = careerFit(S, p, to, d, m, from, moved);
-  p.morale = clamp(p.morale + fit.morale, 0, 100);
-  p.loyalty = clamp(p.loyalty + fit.loyalty, 0, 100);
+  p.contractEnd = season + d.years - 1;
+  const fit = careerFit(S, p, to, d, m, from);
+  p.mood = clamp(p.mood + fit.mood, 0, 100);
   if (moved) {
     to.trust = clamp(to.trust + D.newClubTrust, 0, 100);
-    if (kind === 'transfer' && from) from.trust = clamp(from.trust + D.oldClubTrust, 0, 100);
-  } else to.trust = clamp(to.trust + D.renewTrust, 0, 100);
-  S.interests = S.interests.filter(i => i.playerId !== p.id);
-  if (moved) {
-    if (from) balanceSquad(S, from);
-    balanceSquad(S, to);
-    if (p.agentId === 'you') promises.onMove(S, p, oldM, m, !!opts.arranged);
+    if (from) from.trust = clamp(from.trust + D.oldClubTrust, 0, 100);
   }
+  S.interests = S.interests.filter(i => i.playerId !== p.id);
+  if (from) balanceSquad(S, from);
+  balanceSquad(S, to);
   return { transferFee, minutes: m, fit, from };
 }
 
 /**
- * Execute an agreed move (used by negotiation.js and deadline.js): settle fee, pay commission
- * (economy.earn 'commission'), record S.deals, move/extend the player with career-fit effects, news.
- * `kind:'free'` for a client with a running contract is a PRE-CONTRACT: commission now, move at season end
- * (`p.preContract`, executed by handleExpiry; old club trust −20).
+ * Execute an agreed transfer (used by negotiation.js): settle the club-to-club fee, pay your commission
+ * (economy.earn 'commission'), record S.deals, move the player, news.
  * @param {object} S
- * @param {{playerId:string, toClubId:string, kind:'transfer'|'free'|'renewal', wage:number, years:number,
- *   bonus:number, fee:number, clauses:{minutes:boolean,release:boolean}, transferFee?:number}} deal
+ * @param {{playerId:string, toClubId:string, wage:number, years:number, bonus:number, fee:number, demand?:number, transferFee?:number}} deal
  * @returns {Result} `{ok:true, events:[{type:'dealDone', ...}], deal}`
  */
 export function executeTransfer(S, deal) {
   const p = S.players[deal.playerId];
   const to = S.clubs[deal.toClubId];
   if (!p || !to) return fail('Oyuncu veya kulüp bulunamadı');
-  if (!['transfer', 'free', 'renewal'].includes(deal.kind)) return fail('Geçersiz anlaşma türü');
   const D = BAL.market.deal;
-  const A = S.agency;
-  const from = p.clubId ? S.clubs[p.clubId] : null;
-  const clauses = { minutes: !!(deal.clauses && deal.clauses.minutes), release: !!(deal.clauses && deal.clauses.release) };
-  const d = { ...deal, clauses, fee: Math.max(0, Math.round(deal.fee || 0)) };
-  const commission = d.fee;
-  const share = feeShare({ wage: d.wage, years: d.years, bonus: d.bonus, fee: d.fee, clauses });
   const events = [];
-  const pre = d.kind === 'free' && !!from && p.contractEnd >= S.time.season && from.id !== to.id;
-  let transferFee = 0, fit = null, minutes = 0;
-  const fromClubId = from ? from.id : null;
-  if (pre) {
-    p.preContract = { toClubId: to.id, wage: d.wage, years: d.years, bonus: d.bonus, fee: 0, clauses, season: S.time.season };
-    from.trust = clamp(from.trust + D.oldClubTrustFree, 0, 100);
-    to.trust = clamp(to.trust + D.newClubTrust, 0, 100);
-    S.interests = S.interests.filter(i => !(i.playerId === p.id));
-    minutes = projectMinutes(S, p, to.id, { guarantee: clauses.minutes });
-    news.push(S, { kind: 'transfer', playerId: p.id, clubId: to.id, text: p.name + ', sezon sonunda ' + to.name + ' ile bedelsiz anlaştı (ön sözleşme). ' + from.name + ' öfkeli.' });
-  } else {
-    const r = applyMove(S, p, to, d, { arranged: true });
-    transferFee = r.transferFee; fit = r.fit; minutes = r.minutes;
-    const text = d.kind === 'renewal' ? p.name + ' ' + to.name + ' ile sözleşme uzattı.'
-      : d.kind === 'free' ? p.name + ', ' + to.name + ' ile bedelsiz anlaştı.'
-        : p.name + ', ' + (from ? from.name : '?') + ' → ' + to.name + ' (Bonservis: ' + fmtMoney(transferFee) + ')';
-    news.push(S, { kind: 'transfer', playerId: p.id, clubId: to.id, text });
-  }
-  if (commission > 0) earn(S, commission, 'commission', (d.kind === 'renewal' ? 'Sözleşme: ' : 'Transfer: ') + p.name);
-  if (share > (deal.feeThreshold || feeThreshold(S)) + 1e-9) { p.loyalty = clamp(p.loyalty + D.feeNoticeLoyalty, 0, 100); events.push({ type: 'feeNoticed', playerId: p.id, share }); }
-  const repRaw = d.kind === 'renewal' ? D.repRenewal : clamp(D.repBase + D.repLog * Math.log10(Math.max(1, p.value / D.repDiv)), D.repBase, D.repMax);
+  const d = { ...deal, fee: Math.max(0, Math.round(deal.fee || 0)) };
+  const share = feeShare(d);
+  const fromClubId = p.clubId || null;
+  const r = applyMove(S, p, to, d);
+  const from = r.from;
+  news.push(S, { kind: 'transfer', playerId: p.id, clubId: to.id, text: p.name + ', ' + (from ? from.name : '?') + ' → ' + to.name + ' (Bonservis: ' + fmtMoney(r.transferFee) + ')' });
+  const commission = d.fee;
+  if (commission > 0) earn(S, commission, 'commission', 'Transfer: ' + p.name);
+  if (share > BAL.neg.greedyShare + 1e-9) { p.mood = clamp(p.mood + BAL.neg.mood.greedy, 0, 100); events.push({ type: 'feeNoticed', playerId: p.id, share }); }
+  const repRaw = clamp(D.repBase + D.repLog * Math.log10(Math.max(1, p.value / D.repDiv)), D.repBase, D.repMax);
   const repGain = addRep(S, repRaw);
-  A.stats.deals++;
-  S.deals.push({ season: S.time.season, month: S.time.month, playerId: p.id, fromClubId, toClubId: to.id, fee: transferFee, commission, kind: d.kind });
-  events.unshift({
-    type: 'dealDone', playerId: p.id, fromClubId, toClubId: to.id, fee: transferFee, commission, wage: d.wage, years: d.years,
-    kind: d.kind, bonus: d.bonus, preContract: pre, repGain, expectedMinutes: minutes, fit: fit ? { ...fit } : null, clauses,
-  });
-  return { ok: true, events, deal: { ...d, fromClubId, transferFee, commission, preContract: pre } };
+  S.agency.stats.deals++;
+  S.deals.push({ season: S.time.season, month: S.time.month, playerId: p.id, fromClubId, toClubId: to.id, fee: r.transferFee, commission });
+  events.unshift({ type: 'dealDone', playerId: p.id, fromClubId, toClubId: to.id, fee: r.transferFee, commission, wage: d.wage, years: d.years, bonus: d.bonus, repGain, expectedMinutes: r.minutes });
+  return { ok: true, events, deal: { ...d, fromClubId, transferFee: r.transferFee, commission } };
 }

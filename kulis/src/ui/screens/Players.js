@@ -1,85 +1,45 @@
-import { html, useState, useStore, store, navigate, openSheet, cx, Avatar, Crest, PosChip, Badge, Chip, Meter, PotentialBand, Segmented, SectionTitle, EmptyState, Button, Icon, Money, MONTH_NAMES } from '../ui-kit.js';
+// Oyuncular: your clients + "Yeni oyuncu bul" (search, watch, sign).
+import { html, Card, Button, Badge, Icon, Stars, PosChip, PlayerRow, SectionTitle, EmptyState, Avatar, fmtMoney, toast, audio, haptics, store, useStore } from '../ui-kit.js';
 import * as sel from '../../engine/selectors.js';
-import { TRAITS, pct, moodTone, moodWord, minutesWord, minutesTone, monthsLeft, clubInfo, attentionScore } from './players/common.js';
+import { BAL } from '../../engine/constants.js';
+import { openPlayer } from './common.js';
 
-const SORTS = [{ id: 'durum', label: 'Durum' }, { id: 'deger', label: 'Değer' }, { id: 'yas', label: 'Yaş' }];
-
-function ClientCard({ S, c }) {
-  const cv = sel.clientView(S, c.id);
-  const club = clubInfo(S, c.clubId);
-  const league = cv && cv.league;
-  const open = (S.promises || []).filter((p) => p.playerId === c.id && p.status === 'open');
-  const nearest = open.length ? open.reduce((a, b) => (monthsLeft(S, a) <= monthsLeft(S, b) ? a : b)) : null;
-  const ml = nearest ? monthsLeft(S, nearest) : null;
-  const danger = c.loyalty < 35 || c.morale < 30;
-  const band = cv && cv.band;
-  const flags = cv ? cv.flags : {};
-  return html`<button type="button" class=${cx('players-card', danger && 'is-warn', c.injured > 0 && 'is-hurt')} onClick=${() => { openSheet('PlayerSheet', { playerId: c.id }); }}>
-    <div class="players-card__top">
-      <${Avatar} id=${c.id} size=${60} colors=${club && club.colors} ring />
-      <div class="players-card__id">
-        <div class="players-card__name">${c.name}</div>
-        <div class="players-card__meta"><${PosChip} pos=${c.pos} /><span>${c.age} yaş</span>${c.trait && TRAITS[c.trait] ? html`<span class="players-card__trait">${TRAITS[c.trait][0]}</span>` : null}</div>
-        <div class="players-card__club">${club ? html`<${Crest} colors=${club.colors} pattern=${club.crest} size=${14} /><span>${club.name}</span><em>${club.league}</em>` : html`<span class="gold">Kulüpsüz — serbest</span>`}</div>
-      </div>
-      <div class="players-card__ca"><b class="num">${c.ca}</b><small>GÜÇ</small></div>
+function Candidate({ c, S }) {
+  const watch = () => { const r = store.act('watchPlayer', { playerId: c.id }); if (r.ok) { audio.play('confirm'); toast.success(c.name + ' izlendi: potansiyeli artık net'); } };
+  const sign = () => { const r = store.act('signPlayer', { playerId: c.id }); if (r.ok) { audio.play('sign'); haptics.success(); toast.success(c.name + ' artık müşterin'); } };
+  return html`<${Card} class="cand" data-testid="candidate">
+    <div class="cand__top">
+      <${Avatar} id=${c.id} size=${46} />
+      <div class="cand__id"><b class="cand__name">${c.name}</b>
+        <span class="cand__meta"><${PosChip} pos=${c.pos} /> ${c.age} yaş · ${c.clubName}</span></div>
+      <span class="num gold cand__val">${fmtMoney(c.value)}</span>
     </div>
-    ${band ? html`<div class="players-card__band"><${PotentialBand} ca=${c.ca} lo=${band.lo} hi=${band.hi} compact /><span class="players-card__bandtxt num">Tavan ${band.lo}–${band.hi}</span></div>` : null}
-    <div class="players-card__minutes">
-      <div class="players-card__minhead"><span>Süre</span><b class=${minutesTone(c.minutesShare)}>${minutesWord(c.minutesShare)}</b><em class="num">${pct(c.minutesShare)}</em></div>
-      <${Meter} value=${c.minutesShare * 100} tone=${minutesTone(c.minutesShare)} size="sm" />
+    <div class="cand__stars">
+      <span><small>Güç</small> <${Stars} value=${c.stars} /></span>
+      <span><small>Potansiyel</small> <${Stars} lo=${c.potential.lo} hi=${c.potential.hi} /></span>
     </div>
-    <div class="players-card__moods">
-      <${Meter} label="Moral" valueText=${moodWord(c.morale)} value=${c.morale} tone=${moodTone(c.morale)} size="sm" />
-      <${Meter} label="Bağlılık" valueText=${moodWord(c.loyalty)} value=${c.loyalty} tone=${moodTone(c.loyalty)} size="sm" />
+    <div class="cand__act">
+      ${c.watched ? html`<${Badge} tone="lime" icon="check">İzlendi</${Badge}>` : html`<${Button} size="sm" variant="ghost" icon="eye" energy=${1} disabled=${S.agency.energy < 1} onClick=${watch}>İzle</${Button}>`}
+      ${c.canSign ? html`<${Button} size="sm" icon="pen" energy=${1} disabled=${S.agency.energy < 1} onClick=${sign}>İmzala</${Button}>` : html`<span class="cand__why small"><${Icon} name="lock" size=${13} /> ${c.block}</span>`}
     </div>
-    <div class="players-card__badges">
-      ${c.injured > 0 ? html`<${Badge} tone="danger" icon="alert">Sakat · ${c.injured} ay</${Badge}>` : null}
-      ${flags.freeAgent ? html`<${Badge} tone="gold" icon="swap">Serbest oyuncu</${Badge}>` : null}
-      ${flags.expiring && !flags.freeAgent ? html`<${Badge} tone="gold" icon="clock">Sözleşme bitiyor</${Badge}>` : null}
-      ${c.hasPreContract ? html`<${Badge} tone="info" icon="pen">Ön sözleşme</${Badge}>` : null}
-      ${c.loyalty < 35 ? html`<${Badge} tone="danger" icon="flame">Ayrılma riski</${Badge}>` : null}
-      ${open.length ? html`<${Badge} tone=${ml <= 1 ? 'danger' : ml <= 3 ? 'gold' : 'muted'} icon="handshake">${open.length} söz · ${MONTH_NAMES[nearest.dueMonth]}${nearest.dueSeason !== S.time.season ? ` S${nearest.dueSeason}` : ''}</${Badge}>` : null}
-      ${c.interestCount ? html`<${Badge} tone="lime" icon="eye">${c.interestCount} talip</${Badge}>` : null}
-    </div>
-  </button>`;
+  </${Card}>`;
 }
 
 export default function Players() {
   const S = useStore((s) => s.S);
-  const [sort, setSort] = useState('durum');
-  const [onlyAttn, setOnlyAttn] = useState(false);
-  if (!S) return html`<${EmptyState} icon="users" title="Oyun yok" body="Önce bir kariyer başlat." />`;
-  const clients = sel.clientList(S);
-  const hub = sel.hubSummary(S);
-  const total = clients.reduce((a, c) => a + c.value, 0);
-  const attn = (c) => attentionScore(S, c);
-  let list = clients.slice();
-  if (onlyAttn) list = list.filter((c) => attn(c) >= 4);
-  if (sort === 'durum') list.sort((a, b) => attn(b) - attn(a) || b.value - a.value);
-  else if (sort === 'deger') list.sort((a, b) => b.value - a.value);
-  else list.sort((a, b) => a.age - b.age || b.ca - a.ca);
-  const attnCount = clients.filter((c) => attn(c) >= 4).length;
+  if (!S) return null;
+  const rows = sel.clientList(S);
+  const cands = sel.candidateList(S);
+  const search = () => { const r = store.act('searchPlayers', {}); if (r.ok) { audio.play('whoosh'); } };
+  return html`<div class="players stack">
+    <${SectionTitle} right=${html`<span class="muted small">${rows.length}</span>`}>Oyuncularım</${SectionTitle}>
+    ${rows.length ? html`<div class="stack players__list">${rows.map((p) => html`<${PlayerRow} key=${p.id} p=${p} colors=${S.clubs[S.players[p.id].clubId] && S.clubs[S.players[p.id].clubId].colors} onClick=${() => openPlayer(p.id)} />`)}</div>`
+      : html`<${Card}><${EmptyState} icon="users" title="Henüz müşterin yok" body="Aşağıdan yeni oyuncu ara ve imzala." /></${Card}>`}
 
-  return html`<div class="players">
-    <header class="players-head">
-      <div class="eyebrow">Portföy</div>
-      <h1 class="players-head__title t-display">Oyuncular</h1>
-      <div class="players-sum">
-        <div><span>Toplam değer</span><b class="num gold"><${Money} value=${total} count /></b></div>
-        <div><span>Aylık komisyon</span><b class="num lime"><${Money} value=${hub.monthlyCommission} count /></b></div>
-        <div><span>Müvekkil</span><b class="num">${clients.length}</b></div>
-      </div>
-    </header>
-    ${clients.length === 0 ? html`<${EmptyState} icon="eye" title="Henüz müvekkilin yok"
-      body="Bir ajanı ajan yapan müvekkilleridir. Keşif'e çık, genç yetenekleri izle, itibarın yettiğinde imzalat."
-      action=${html`<${Button} icon="eye" size="lg" onClick=${() => navigate('scout')}>Keşfe git</${Button}>`} />` : html`
-    <div class="players-tools">
-      <${Segmented} items=${SORTS} value=${sort} onChange=${setSort} label="Sırala" />
-      <${Chip} active=${onlyAttn} icon="alert" onClick=${() => setOnlyAttn(!onlyAttn)}>İlgi bekleyen${attnCount ? ` (${attnCount})` : ''}</${Chip}>
+    <${SectionTitle}>Yeni oyuncu bul</${SectionTitle}>
+    <${Button} block icon="search" energy=${1} disabled=${S.agency.energy < 1} onClick=${search} data-testid="search">Oyuncu ara</${Button}>
+    <div class="stack">
+      ${cands.length ? cands.map((c) => html`<${Candidate} key=${c.id} c=${c} S=${S} />`) : html`<p class="muted small center">${BAL.scout.count} aday gelir. Beğendiğini izle, imzala.</p>`}
     </div>
-    ${list.length ? html`<div class="players-list cols-2">${list.map((c) => html`<${ClientCard} key=${c.id} S=${S} c=${c} />`)}</div>`
-      : html`<${EmptyState} icon="check" title="Her şey yolunda" body="Şu an acil ilgi bekleyen müvekkil yok." />`}
-    <div class="players-foot"><${Button} variant="ghost" icon="eye" onClick=${() => navigate('scout')}>Yeni yetenek ara</${Button}></div>`}
   </div>`;
 }

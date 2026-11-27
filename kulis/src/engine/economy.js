@@ -1,6 +1,6 @@
 // Cash, ledger, monthly income/expenses, loan and bankruptcy rule.
 import { BAL } from './constants.js';
-import { myClients, officeUpkeep } from './selectors.js';
+import { myClients, officeUpkeep, commissionPct } from './selectors.js';
 
 function entry(S) {
   const t = S.time;
@@ -59,7 +59,7 @@ export function monthlyEconomy(S) {
   const A = S.agency;
   const clients = myClients(S);
   let cut = 0;
-  for (const p of clients) cut += p.wage * (p.rep ? p.rep.commissionPct : 0) / 100;
+  for (const p of clients) cut += p.wage * commissionPct(S) / 100;
   if (cut > 0) earn(S, cut, 'wagecut', 'Müşteri komisyonları (' + clients.length + ')');
   spend(S, officeUpkeep(S), 'upkeep', 'Ofis gideri');
   if (A.loan) {

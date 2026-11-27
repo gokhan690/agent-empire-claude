@@ -18,7 +18,6 @@ export function squadIndex(S) {
 export function selScore(S, p, club, noise) {
   const B = BAL.sel;
   let s = p.ca + p.form * B.formW;
-  if (p.guarantee) s += B.guarantee;
   if (p.age <= B.youthMaxAge) s += B.youthStep * (club.youthTrust - 2);
   if (noise) s += gauss(S, 0, B.noiseSd);
   return s;
@@ -79,18 +78,17 @@ export function squadOf(S, clubId) {
 
 /**
  * Projected share of minutes (0..1) player `p` would get at club `clubId`
- * (squad hierarchy by selection score, youthTrust bonus for ≤21, guarantee flag).
- * Used by world generation, negotiation (satisfaction) and fit effects.
+ * (squad hierarchy by selection score, youthTrust bonus for ≤21).
+ * Used by world generation, negotiation and fit effects.
  * @param {object} S
  * @param {object} p player (may already be in that club)
  * @param {string} clubId
- * @param {{guarantee?:boolean}} [opts] pretend a minutes guarantee clause is signed
+ * @param {object} [opts] unused (kept for call symmetry)
  */
 export function projectMinutes(S, p, clubId, opts = {}, squad) {
   const club = S.clubs[clubId];
   const sq = squad || squadOf(S, clubId);
-  const probe = opts.guarantee ? { ...p, guarantee: true } : p;
-  const mine = selScore(S, probe, club, false);
+  const mine = selScore(S, p, club, false);
   let rank = 0;
   for (const q of sq) {
     if (q.id === p.id || q.pos !== p.pos) continue;

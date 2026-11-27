@@ -20,7 +20,7 @@ export function Meter({ value, max = 100, threshold, thresholdLabel = 'Eşik', l
 }
 
 /**
- * <PipMeter value max variant="energy|patience|loyalty" label />  — discrete pips (energy = slanted bolts, patience = dots)
+ * <PipMeter value max variant="energy|patience" label />  — discrete pips (energy = slanted bolts, patience = dots)
  */
 export function PipMeter({ value, max, variant = 'energy', label, class: cls }) {
   return html`<div class=${cx('pips', `pips--${variant}`, cls)} role="meter" aria-valuemin="0" aria-valuemax=${max} aria-valuenow=${value} aria-label=${label || variant}>
@@ -28,21 +28,14 @@ export function PipMeter({ value, max, variant = 'energy', label, class: cls }) 
   </div>`;
 }
 
-const LO = 40, HI = 99;
-const pos = (v) => clamp(((v - LO) / (HI - LO)) * 100, 0, 100);
-/**
- * <PotentialBand ca lo hi know compact />  — hidden-potential band on a 40–99 scale with a current-ability marker.
- * The band is the *shown* range (the truth is always inside, not necessarily centred). `know` (0-100) is optional caption.
- */
-export function PotentialBand({ ca, lo, hi, know, compact, class: cls }) {
-  const w = hi - lo;
-  return html`<div class=${cx('pband', compact && 'pband--compact', cls)} role="img" aria-label=${`Güç ${ca}, potansiyel ${lo} ile ${hi} arası`}>
-    <div class="pband__track">
-      ${[50, 60, 70, 80, 90].map((v) => html`<i class="pband__tick" style=${{ left: pos(v) + '%' }}></i>`)}
-      <div class=${cx('pband__range', w >= 14 && 'is-wide')} style=${{ left: pos(lo) + '%', width: Math.max(2, pos(hi) - pos(lo)) + '%' }}></div>
-      <div class="pband__ca" style=${{ left: pos(ca) + '%' }}><b class="num">${ca}</b></div>
-    </div>
-    ${compact ? null : html`<div class="pband__legend"><span>Güç <b class="num">${ca}</b></span>
-      <span class="pband__pot">Potansiyel <b class="num">${lo}–${hi}</b></span>${know != null ? html`<span class="pband__know"><${Icon} name="eye" size=${12} /> %${Math.round(know)}</span>` : null}</div>`}
-  </div>`;
+/** <Stars value=1..5 /> — filled stars of 5. <Stars lo hi /> shows a potential range as "3–5 ★" (filled up to lo, outlined up to hi). */
+export function Stars({ value, lo, hi, label, class: cls }) {
+  const range = lo != null && hi != null && lo !== hi;
+  const full = range ? lo : (value ?? lo ?? 0);
+  const upto = range ? hi : full;
+  const text = range ? `${lo}–${hi} ★` : `${full} ★`;
+  return html`<span class=${cx('stars', range && 'stars--range', cls)} role="img" aria-label=${(label ? label + ' ' : '') + text}>
+    ${[1, 2, 3, 4, 5].map((i) => html`<i class=${cx('stars__s', i <= full && 'is-on', i > full && i <= upto && 'is-maybe')}></i>`)}
+    ${range ? html`<small class="stars__txt num">${text}</small>` : null}
+  </span>`;
 }

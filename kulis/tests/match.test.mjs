@@ -27,7 +27,7 @@ test('matchday: shapes, scorers match scores, minutes add up, table updated', ()
   assert.equal(tableSorted(S, 'tr1').length, 10);
 });
 
-test('lineup 1-4-4-2 + 3 subs; injured excluded; guarantee & youthTrust matter', () => {
+test('lineup 1-4-4-2 + 3 subs; injured excluded; youthTrust matters', () => {
   const S = newGame({ seed: 8 });
   const idx = squadIndex(S);
   const club = S.clubs[S.leagues.es1.clubIds[0]];
@@ -40,18 +40,14 @@ test('lineup 1-4-4-2 + 3 subs; injured excluded; guarantee & youthTrust matter',
   star.injured = 2;
   assert.ok(!pickLineup(S, club, sq).xi.includes(star));
   star.injured = 0;
-  // a clearly worse bench player with the guarantee flag starts
   const bench = sq.filter(p => p.pos === 'DF' && !xi.includes(p)).sort((a, b) => a.ca - b.ca)[0];
   bench.ca = xi.filter(p => p.pos === 'DF').reduce((m, p) => Math.min(m, p.ca), 99) - 6;
   assert.ok(!pickLineup(S, club, sq).xi.includes(bench));
-  bench.guarantee = true; bench.age = 30;
-  assert.ok(pickLineup(S, club, sq).xi.includes(bench));
   // youth-trust: a young player projects more minutes at a club that trusts youth
-  const kid = { ...bench, id: 'kid', guarantee: false, age: 19, ca: bench.ca + 3, clubId: club.id };
+  const kid = { ...bench, id: 'kid', age: 19, ca: bench.ca + 3, clubId: club.id };
   club.youthTrust = 1; const lo = projectMinutes(S, kid, club.id, {}, sq.filter(p => p.id !== 'kid'));
   club.youthTrust = 5; const hi = projectMinutes(S, kid, club.id, {}, sq.filter(p => p.id !== 'kid'));
   assert.ok(hi >= lo);
-  assert.ok(projectMinutes(S, kid, club.id, { guarantee: true }, sq) >= lo);
 });
 
 test('rng: deterministic, in range, shuffle keeps elements', () => {

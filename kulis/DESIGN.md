@@ -1,273 +1,74 @@
 # KULİS — Design & Architecture Contract
 
-KULİS is a from-scratch successor to "Agent Empire" (the old single-file game in the repo root —
-do **not** read, copy or reuse its code). Same fantasy (you are a football agent), completely new
-design and codebase. This document is the contract every contributor builds against. If something
-here is ambiguous, pick the option that makes the game more *readable and fun for the player* and
-note the decision in your final report. Do not silently change names/shapes defined here.
+KULİS is a mobile-first, Turkish-language football-agent management game. All player-facing text is **Turkish**; code identifiers and comments are English. Fictional clubs and players only.
 
-All player-facing text is **Turkish**. Code identifiers and comments are English.
+The core loop must be explainable in one sentence:
 
----
+> **Find players, sign them, sell them to bigger clubs at the table, take your cut, grow your agency.**
 
-## 1. Why this game exists (design pillars)
-
-The old game was a spreadsheet: 42 "press Play" weeks per season, dice-roll negotiations, ten
-departments, no way to win or lose. KULİS fixes that with five pillars:
-
-1. **Every turn is a decision.** A turn is one *month*. You get a small Energy budget (4) and far
-   more things worth doing than you can afford. No dead time: outside transfer windows you scout,
-   build relationships, keep promises, set up deals.
-2. **Negotiation is a game of reading people, not dice.** The club director has a hidden budget
-   ceiling and visible patience. You read tells, play leverage cards ("Koz") earned from the real
-   game state, and split a fixed pie between your client's wage and your own commission.
-3. **Hidden potential.** A youngster's ceiling is shown as a band that narrows as you watch him.
-   Rival agents are watching too (a visible "heat" meter). Betting on the unknown is the core thrill.
-4. **People, not rows.** Clients have a trait, a dream, loyalty and promises you made to them.
-   The right move for a career is often not the highest bid. Broken promises cost you.
-5. **Stakes and an arc.** A career is 8 seasons. You can go bankrupt. Four named rival agencies are
-   ranked against you all the time. The run ends with a ranking, a legacy score and epilogues.
-
-Plus: **juice** (sound, animation, signing ceremonies, live match ticker) and a **mobile-first** UI.
-
-Scope discipline: no departments, no staff directory, no work permits, no sub-reputations. If a
-system is not in this document, do not add it.
+Everything below serves that sentence. If a system does not, it does not exist (an earlier, much bigger version had promises, traits, dreams, bluffing cards, lunches, media pushes, scouting trips, rival heat meters, deadline day, three upgrade trees and eight seasons — all removed after play-testing: "make it more basic").
 
 ---
 
-## 2. Game structure
+## 1. Game structure
 
-- Career: `careerSeasons` = 8 (option: 5). Season = 12 monthly turns, index `month` 0..11:
-
-| month | name | window | matchdays | notes |
-|---|---|---|---|---|
-| 0 | Temmuz | open | 0 | pre-season |
-| 1 | Ağustos | open | 2 | ends with **Son Gün** (deadline day) |
-| 2 | Eylül | – | 2 | |
-| 3 | Ekim | – | 2 | |
-| 4 | Kasım | – | 2 | |
-| 5 | Aralık | – | 2 | |
-| 6 | Ocak | open | 1 | ends with **Son Gün** |
-| 7 | Şubat | – | 2 | |
-| 8 | Mart | – | 2 | |
-| 9 | Nisan | – | 2 | |
-| 10 | Mayıs | – | 1 | league finishes (18 matchdays) |
-| 11 | Haziran | – | 0 | season end: awards, expiries, ageing, review |
-
-- A turn: (1) read the **Gündem** (inbox cards), (2) spend **Enerji** on actions, (3) press
-  **"Ayı Oynat"** → matches are simulated, world moves, report is shown.
-- Lose: cash < 0 for 3 consecutive month-ends → bankruptcy (one bank-loan lifeline is offered the
-  first time cash goes negative). Zero clients at a season end (from season 2 on) → career over; zero clients for 3 month-ends in a row (`BAL.econ.noClientMonthsEnd`, any season) → career over too, with an inbox warning card (`no_clients`) each of those months.
-- End: after June of the last season → final ranking among 5 agencies, legacy score, epilogues.
-  Then the player may continue in endless mode.
+- **Career**: `BAL.careerSeasons` = **5** seasons (one constant). A season is 12 monthly turns (Temmuz … Haziran); a league plays 18 matchdays (0–2 per month). After June of season 5 the game ends with a ranking among 5 agencies, a legacy score and a few epilogues; the player may then continue in endless mode.
+- **A turn** (a month): read the Gündem, spend **Enerji** (4; 5 with the "Büyük ofis" upgrade; **every action costs exactly 1**), press **"Ayı Oynat"** → matches are simulated, the world moves, a one-screen month report with one "Devam" button is shown.
+- **Lose**: cash < 0 for 3 consecutive month ends → bankruptcy (a one-time bank loan is offered as the first negative month's event card). No clients for 3 month ends → career over (`yalniz`).
+- **Win-ish**: the final ranking. Endings `efsane` (rank 1, legacy ≥ 3400), `buyuk` (rank ≤ 2, ≥ 2800), `saygin` (rank ≤ 3, ≥ 1200), `siradan`; `iflas`, `yalniz` are the failure endings. Thresholds were set from bot runs (careful ≈ 3400–4800 legacy, casual ≈ 1600–2500).
 
 ### Resources
-- **Para** `agency.cash` (€). In: transfer commissions (lump sums), monthly % of clients' wages,
-  objective rewards, event windfalls. Out: office upkeep (base + upgrade levels + staff per client above 3
-  and per €5M+ of client value + a reputation-tier term), travel/lunch/media prices that scale with agency
-  size (1 + 4% per client above 3 + rep above start), upgrade prices, loan instalments, and event /
-  loyalty-bonus prices that scale with how much cash you hold (×1 up to €400K, ×10 from ~€4M). Late upgrade levels cost
-  €2–5M and are real goals; a strong career should end with roughly €5–12M, not a pile of cash.
-- **İtibar** `agency.rep` 0..100. Gates which players will sign with you and which clubs listen.
-- **Enerji** `agency.energy`, refilled to `energyMax` (4 base, up to 6) every month.
-- **Güven** `club.trust` 0..100 — your relationship with each club's director.
-- **Bağlılık** `player.loyalty` 0..100 and **Moral** `player.morale` 0..100 for each client.
+- **Para** `agency.cash`: in — a lump-sum commission per deal, 7 % (10 % with "Avukat") of every client's wage each month, goal rewards, event windfalls; out — office upkeep (base + upgrades + staff per client above 5 + a reputation-tier term), event prices, upgrade prices, loan instalments.
+- **İtibar** `agency.rep` 0..100: gates which players will sign with you and counts for the ranking.
+- **Enerji**: refilled every month.
+- **Ruh hali** `player.mood` 0..100 — the only client feeling (shown as one dot + word): minutes played, form, wage, injuries; a generous wage at a deal +8, a greedy commission −8; low mood slows development, ≤ 15 → the client leaves.
 
 ### World
-6 leagues × 10 clubs, **fictional club names** (no real club names, no real player names):
+6 leagues × 10 clubs (Süper Lig, 1. Lig, Hollanda, İtalya, İspanya, İngiltere; fictional names). Squads 18–22, positions `KL DF OS FV`, line-up 1-4-4-2. Bottom 2 of Süper Lig ↔ top 2 of 1. Lig swap each season. Players have `ca` (current, 1..99), hidden `pa` (potential), age, form, a club contract (`contractEnd` = the season whose June ends it; clients are renewed automatically), a market `value` and `wage`. Development: growth toward `pa`, driven by minutes played, club facilities and mood; decline from 30+. **Minutes matter** — the offer list tells you whether he would play ("İlk 11" / "Yedek"). League strength is regulated so the world stays stable over a career.
 
-| id | name | country | prestige |
-|---|---|---|---|
-| tr2 | 1. Lig | Türkiye | 1 |
-| tr1 | Süper Lig | Türkiye | 2 |
-| nl1 | Hollanda Ligi | Hollanda | 3 |
-| it1 | İtalya Ligi | İtalya | 4 |
-| es1 | İspanya Ligi | İspanya | 5 |
-| en1 | İngiltere Ligi | İngiltere | 5 |
-
-Double round-robin = 18 matchdays. Bottom 2 of tr1 ↔ top 2 of tr2 swap each season.
-Squads 18–22 players. Positions (4 lines): `KL` `DF` `OS` `FV`; line-up 1-4-4-2.
-Club strength by prestige (average CA of XI): p1 ≈ 52, p2 ≈ 62, p3 ≈ 68, p4 ≈ 76, p5 ≈ 82, with
-spread inside a league (title contenders vs relegation fodder).
-
-### Players
-`ca` (Güç, 1..99 current ability), hidden `pa` (potential), `age` 16..36, `form` (-10..+10),
-`trait`, `dream`, contract with club (`wage` monthly €, `contractEnd` season number — expires in
-June of that season), `value`, `hype` 0..100.
-
-Traits (`trait`): `hirsli` (Hırslı — wants bigger clubs, hates the bench), `sadik` (Sadık — loyalty
-decays slowly, dislikes moving), `paraci` (Paracı — wage matters most), `ailebabasi` (Aile Babası —
-wants stability / home country), `yildiz` (Yıldız Adayı — loves hype, fragile morale),
-`profesyonel` (Profesyonel — steady, develops well).
-
-Dreams (`dream.type`): `top_league` (play in a prestige-5 league), `big_wage` (wage ≥ target),
-`champion` (win a league title), `star` (reach CA ≥ 85), `hometown` (3 seasons as a starter at one
-Turkish club). Fulfilling a client's dream: loyalty +30, rep +4, legacy points.
-
-Reference curves (tune in balance pass, keep the orders of magnitude):
-- value(€) ≈ 150_000 · e^(0.16·(ca−50)) · ageMult · potentialMult · contractMult · (1 + hype/400)
-  (ca 50 → ~150K, 60 → ~750K, 70 → ~3.7M, 80 → ~18M, 90 → ~90M);
-  ageMult: ≤21 1.5, 22–25 1.25, 26–28 1.0, 29–30 0.7, 31–32 0.45, 33+ 0.2.
-- fair monthly wage(€) ≈ 2_000 · e^(0.12·(ca−50)) · leagueWageMult.
-- League strength is regulated: each league's average XI is stored at creation (`S.flags.leagueBase`);
-  every month the drift from it slows (or speeds) the growth of non-client players, and clubs that change
-  league at season end move 60 % of the way to their new league's level, so the average CA per league
-  stays within ~±1 (worst case ~±2) over 8 seasons. Your own clients are never dampened.
-- Development: youngsters grow toward `pa` mainly through **minutes played**, then club
-  `facilities`, morale and the `profesyonel` trait. Target: a 17-year-old with pa 90 who plays
-  regularly is ~85 at 23; the same player rotting on a bench is ~74. Decline from 30+.
-  **Minutes are the heart of the "right club vs highest bid" dilemma — make them matter.**
-
-### The agent loop (actions, each costs Energy; costs shown before confirming)
-| action id | cost | effect |
-|---|---|---|
-| `scoutTrip` {leagueId, focus} | 1 E + travel € | reveals 3 prospects from that league (focus: `u21`, `form`, `expiring`, `any`) |
-| `watchPlayer` {playerId} | 1 E | knowledge +30 → narrower potential band; reveals trait at ≥60 |
-| `recruit` {playerId, promises[]} | 1 E | signing pitch (see below) |
-| `visitClient` {playerId} | 1 E | morale +10, loyalty +8, reveals dream/what he wants now |
-| `clubLunch` {clubId} | 1 E + € | trust +10, reveals club needs & a budget hint |
-| `pitchPlayer` {playerId, clubId} | 1 E | raises that club's interest by a shown, deterministic amount |
-| `mediaPush` {playerId} | 1 E + € | hype +15 (value & interest up; `yildiz` morale +, `sadik` −) |
-| `openNegotiation` {interestId} | 1 E | opens the Masa (below) |
-| `buyUpgrade` {branch} | € | office upgrade |
-| `answerInbox` {inboxId, optionId} | per option | resolve an inbox card |
-
-### Scouting & hidden potential
-`player.know` 0..100 is *your* knowledge. Shown potential band width ≈ (100−know)·0.44 CA points
-(~40 at a first sighting, ~13 after two watches); the true `pa` is **always inside the band** but the band
-is randomly offset, so the centre is not the truth. Low-knowledge picks are risky on purpose: ~1 in 5
-scouted slots is a *decoy* (looks the part today, almost no upside left) and `know` also adds to the recruit
-score. know ≥ 60 reveals trait; dream is revealed by visiting (clients) or know ≥ 85.
-Each unrepresented prospect you have discovered has `heat` 0..100 (rival interest) that rises
-every month — faster for obvious talents. At 100 a rival agency signs him. Heat is visible.
-
-### Recruiting (signing a client) — no dice
-`recruitScore = 1.6·rep + 0.3·know + 3 (+ archetype / expiring / promise bonuses)` vs a visible threshold
-`15 + 1.8·max(0, level−40) + 2.0·max(0, level−70) + 0.04·hype (+18 if a rival agent holds him)`, where
-`level` = CA + half (≤21) / 30 % (22–24) of the potential gap. Stars therefore need reputation ~60–70. The UI shows the meter and what each promise would add. Promises are real
-obligations (see below). If score ≥ threshold the player signs a representation contract
-(`rep: {commissionPct 5..10, endSeason}`). ~16% of world players start with a rival agent (only ~5% of the
-stars, CA ≥ 68 or a top prospect; each rival also has a cap on stars it will hold, so the best players
-stay on the market and churn: rival contracts are renewed only 55 % / 40 % (stars) of the time). Rival-held
-players are recruitable only when their rep contract is in its last season, at a higher threshold; ~10%
-start as *your* potential pool via the intro; the rest are unrepresented.
-
-### Promises (Söz)
-`{id, playerId, type, text, dueSeason, dueMonth, status:'open'|'kept'|'broken'}`.
-Types: `minutes` (≥50% minutes share over the window), `transfer_up` (move to a higher-prestige
-league by due date), `wage` (wage ≥ target by due date), `stay` (no transfer YOU arrange before due date),
-`visit` (visited at least once each half-season). Kept: loyalty +15, rep +2. Broken: loyalty −25,
-rep −3, and a `hirsli`/`yildiz` client may walk out.
-Fairness rules: the recruit preview marks every option `keepable`/`blocked` with a Turkish `warning`
-(`fit` = trait fit AND keepable; unkeepable promises are worth little, blocked ones nothing and the
-signing is refused with the same text): `minutes` only for a starter, `transfer_up` never at prestige 5 and only
-when the next league is within reach, `wage` only when a renewal table will exist before the due date,
-`stay` only for players who want to stay. The `minutes` window restarts (from that month's stats) after a
-transfer you arrange to a club with more expected minutes. An arranged move breaks an open `stay`; a forced
-move (club released him / free-agent placement) voids it; while one is open, transfer tables are closed
-with a Turkish `reason`. Cards that offer "give your word" only offer a keepable type. `negPreview.promiseChecks`
-lists open wage/stay promises a package would keep or break.
-
-### Transfers & interest
-Each month clubs compute **needs** (weak/thin positions) and build **interest** (0..100) in
-players that fit level, age profile and budget. Interest in *your* clients is listed in
-`S.interests`. Interest ≥ 60 during an open window → you may open a negotiation. Outside windows
-you can still pitch, lunch and hype to build interest for the next window, and you may negotiate a
-**pre-contract** (free transfer at season end) for clients whose contract ends this June, from
-January on (the "Bosman" play: no fee, so a much bigger pie — but the current club is furious:
-trust −20). AI clubs also trade among themselves in windows (0–2 signings per club) so the world
-and the news feed stay alive. Your clients only move through you.
-
-**Free agents.** At season end a client whose contract is up may be let go by a club that no longer needs him
-(age ≥ 26 and CA ≥ 8 below the club's strength, 40 % chance): he becomes a clubless *free agent* (wage 0,
-loyalty/morale −10). In July/August his `free` interests can be negotiated (commission as usual); if nothing is
-signed, a fitting club takes him after the August deadline at ~90 % of the fair wage and **no commission**
-(`freeAgentPlaced`). Forced moves like this void a `stay` promise instead of breaking it.
-
-After a move, **career fit** is real: minutes at the new club come from the squad hierarchy and
-`club.youthTrust`; development, morale and loyalty follow. A dream move to a giant where he never
-plays will stall him and he will blame you.
-
-### Masa — the negotiation mini-game (centerpiece)
-One table per deal, kinds: `transfer`, `free` (pre-contract/free agent), `renewal` (with current
-club). (There is no sponsor table; sponsor cards live in the Gündem.) You propose a **package**:
-
-`{ wage (monthly €), years 1..5, bonus (signing bonus to player €), fee (your commission, lump sum €), clauses: { minutes: bool, release: bool } }`
-
-- Club cost `C = wage·12·years + bonus + fee + clauseCosts` (`minutes` +8%, `release` +5%).
-- The director has a hidden **ceiling** `K` and visible **patience** (3..6 pips). The transfer
-  fee between clubs is settled automatically and shown ("Bonservis: €X"); for `free` deals part of
-  the saved fee is added to K.
-- `K = fairPackage · generosity`, generosity ≈ 0.72..1.30 from need level (shown by lunch), interest,
-  budget health (lunch hint), persona and a persona-specific noise (±5..9 %), then Koz cards. The
-  suggested "fair" package usually sits slightly ABOVE K (median ≈ 0.9), and the client's own minimum
-  (wage ≥ ~0.96 × his demand, demand = 1.04 × fair wage) is about as high as K: the margin that is
-  left over for your fee is small and sometimes negative until a Koz is played — Koz and the
-  fee/wage trade-off decide deals; a greedy fee regularly loses the deal.
-- Each round: adjust the package, optionally play **one** Koz, press "Teklif Et".
-  - `C ≤ K` → accepted.
-  - else patience −1 (−2 if C > 1.35·K: "hakaret"), the director gives a **tell** (5 levels by gap:
-    ≤5%, ≤12%, ≤22%, ≤35%, >35%; each with a face + line) and a **counter-package** costing
-    `K·(0.80 + 0.05·round ± 4 % noise)` — counters creep upward, so they leak information (not to the euro).
-  - You may accept his counter, or walk away (no penalty). Patience 0 → he leaves: trust −10,
-    that club is on cooldown for this player for 3 months.
-- Director personas (`club.director.persona`): `durust` (true tells), `kurnaz` (tell shown one
-  level angrier than reality unless trust ≥ 60 or table upgrade ≥ 2), `cimri` (K −8%, patience 6),
-  `sabirsiz` (K +8%, patience 3), `gosterisci` (K +12% for players with hype ≥ 60, else −3%).
-- **The client must agree too.** `satisfaction` 0..100 from wage vs his demand, bonus, expected
-  minutes vs trait, dream match, league prestige. ≥ 50 → signs. 40..49 → you can lean on him
-  ("İkna et": loyalty −8). Shown live as you move sliders. If your fee is > 12% of the package
-  cost the client notices (threshold 12 %, 15 % hukukcu, shrinking to half on packages above ~€30M):
-  loyalty −5 (warned in UI). **Wage vs. your fee vs. the ceiling is the
-  three-way tension — never remove it.**
-- **Koz cards** are generated from real state at table open (max 4 in hand, one per round):
-  `rakip` (another club has interest ≥ 50: K +12%), `formda` (avg rating ≥ 7.2 over last 4 apps:
-  K +8%), `taraftar` (hype ≥ 60: patience +1, K +4%), `sozlesme` (free/expiring: K +6%),
-  `dostluk` (trust ≥ 60: reveals a band K ±8% and patience +1), `songun` (deadline day & club need
-  high: K +10%), `blof` (always available when `rakip` is not: K +10% with a **shown** risk
-  `15% + 8%·director.info`, −10 points at table level 3, clamped 5..60 %; caught → patience −2, trust −15, rep −2).
-  Bluff is the only dice in the mini-game and its odds are always visible.
-
-### Son Gün (deadline day)
-Triggered when the player presses "Ayı Oynat" in Ağustos or Ocak. Six hourly slots 18:00…23:00,
-one action per hour (two with the top `network` upgrade): take one of the incoming **panic calls**
-(clubs with an unfilled need bid for your clients; each call has an expiry hour), run a quick Masa
-(patience −1, K +3..9% by need, `songun` Koz), or pitch. At midnight everything open collapses
-and the month simulation continues. If the player has no clients/interests it is skipped.
-
-### Rivals
-4 named rival agencies with personas: `kopekbaligi` (poaches unhappy clients), `akademisyen`
-(snipes young prospects — heat rises faster on U21s), `eskidost` (fair, slow), `holding` (rich,
-goes after stars). They hold portfolios (`player.agentId`), sign prospects when heat hits 100,
-approach your clients whose loyalty < 35 (inbox event: match with a promise / pay a loyalty bonus
-/ let go). **Ranking**: agencyScore = Σ over the 10 most valuable clients of 80 000·√(value in €M) +
-cash·0.3 + rep·50 000, computed for all five every month; shown as a ladder. Portfolio value, cash and
-reputation all count, so neither hoarding cash nor one star wins alone.
-
-### Office upgrades (3 branches × 4 levels, cost € + monthly upkeep)
-- `scout` Gözlem: L1 trips reveal 4 prospects; L2 starting knowledge +15; L3 passive discovery
-  each month; L4 heat rises 30% slower on your shortlist.
-- `table` Masa: L1 +1 patience; L2 kurnaz tells are true; L3 `blof` risk −10% and 5 Koz in hand;
-  L4 see the ceiling band (±15%) at table open.
-- `network` Ağ: L1 +1 energy; L2 lunches give +15 trust and loyalty decays slower; L3 +1 energy;
-  L4 two actions per deadline hour.
-
-### Season objectives
-In July pick 1 of 3 offered goals (safe / balanced / bold) with rep/cash rewards, e.g.
-"€300K komisyon kazan", "2 genç yetenek imzala", "Bir oyuncunu üst lige taşı", "Hiç söz bozma".
-
-### Start
-One onboarding screen: agent name, agency name, archetype — `mahalle` (Mahalle Abisi: loyalty
-+, recruit bonus on Turkish youngsters, starts with a local gem), `eskifutbolcu` (Eski Futbolcu:
-all club trust +15, rep +8), `hukukcu` (Hukukçu: +1 patience, client-noticed fee threshold 15%).
-Start: cash €60K, rep 12, 3 clients in Türkiye (1 gem aged 17 with a wide band, 2 journeymen
-CA 55–60), office upkeep €4K/month. The first months are a **playable tutorial** driven by scripted
-inbox cards (first visit, first scout trip, first negotiation) — no wall of text. The guaranteed first suitor is chosen deterministically as the club where the client would play most (≥55% expected minutes, best satisfaction at the fair package) and its first Masa ceiling is at least 1.08× the fair package, so the first deal is winnable without "İkna et".
-Counter-offers never squeeze your fee below `BAL.neg.feeFloor` (max(3% of the counter, €1.500), or your own lower ask).
+### Stars (the only level language in the UI)
+`1★` CA < 50, `2★` 50–59, `3★` 60–69, `4★` 70–79, `5★` 80+. A player's **potential** is a small range ("3–4 ★") until you spend one "İzle" action on him, then exact. The range is 2–3 stars wide and always contains the truth.
 
 ---
 
-## 3. Architecture
+## 2. The agent loop (every action = 1 Enerji)
+| action | what it does |
+|---|---|
+| **Oyuncu ara** | 3 new candidates (4 with "Gözlemci ağı") from anywhere in the world, quality tracking your reputation. Candidates wait in a list of at most 6; rivals may sign one you leave alone (14 %/month). |
+| **İzle** | the candidate's potential becomes exact. |
+| **İmzala** | the candidate becomes your client. Works whenever your reputation ≥ `repNeeded` (≈ (CA + youth premium − 50) / 0.55). No dice; the reason is shown when locked. |
+| **Kulübe öner** | pick a club (the picker lists them best fit first: *İlgilenir / Belki / Zor*). An interested club makes an offer at once; a lukewarm one warms up. |
+| **Masaya otur** | opens the Masa for an offer. |
+| **Yükseltme** | no energy; one price each (see §4). |
+
+Offers also appear on their own every month (clubs with a need at his position). They live in **Piyasa → Teklifler** and decay when ignored.
+
+### Masa — the negotiation
+Exactly **two sliders**: the player's monthly **wage** and your **commission** (lump sum). Contract years and signing bonus are the club's suggestion (the engine fills them when the UI omits them); there are no clauses, no cards, no bluffing, no persuasion button.
+- The director has a hidden ceiling `K` on the total package cost (`wage·12·years + bonus + fee`), derived from his need, the player's level, the club's budget and a little noise. Every table can be closed at its minimum: the player refuses a wage below `minWage` (≈ what he asks), and `K ≥` the minimum package.
+- The UI shows the director's face, **one short line**, **3 patience pips** (hard cap 3 rounds) and one honest line: **"Kabul şansı: Yüksek / Orta / Düşük"** — Yüksek = surely accepted, Düşük = surely refused, Orta = either way; the ceiling itself is never shown.
+- Refused → patience −1, a face + line (how far you are) and a **counter-package** you can accept in one tap (it always closes the deal; it cuts your commission first, then the wage, never below the floors). Patience 0 → the director leaves: club trust −10 and a 3-month cooldown on that offer. Walking away is free.
+- The client minds a **greedy commission** (> 17 % of the package): mood −8. A generous wage (≥ 112 % of his ask) cheers him up (+8).
+- The first table of a career is generous (ceiling ≥ 112 % of the fair package) and the guide leads there.
+- Close rates (bots, 32 seeds): a careful player's tables close ~100 % (he takes the counter by round 2), a sloppy one's ~88 %; typical tables take 1–2 rounds, 3 rounds only when the player digs in.
+
+---
+
+## 3. Rivals, goal, events, guide
+- **Rivals**: 4 named agencies hold portfolios, sign unseen players in the background, lose some, and are ranked against you every month with `Σ top-10 client values (80 000·√€M) + 0.6·cash + 50 000·rep`. No heat meters, no poaching.
+- **Goal**: exactly one auto-assigned goal per season, one line on the hub (sell a player / reach N clients / earn X commission / finish in the top 2). Completing it pays €40K + 4 rep; missing it costs nothing.
+- **Events**: at most one Gündem card per month, ≤ 2 choices, ≤ 2 short sentences, always a free choice (~10 templates: sponsor offer, doctor, low mood, press, club president dinner, scout tip, windfall, insurance, social media, conference). Unanswered cards vanish.
+- **Guide**: at most 3 short cards on the hub (Oyuncu bul → Kulüp bul → Masaya otur) driven by the real actions; skippable.
+
+## 4. Upgrades (one list, ≤ 6, one-time purchases)
+`Büyük ofis` (+1 enerji), `Gözlemci ağı` (4 candidates per search), `Avukat` (10 % instead of 7 % of wages), `Kulüp ağı` (pitches land more easily), `Akademi bağı` (more high-potential candidates), `Marka` (+3 rep every season). Each shows a one-line effect and a price.
+
+## 5. Start
+One onboarding screen: agent name + agency name (both with a "Rastgele" button). Start: cash €60K, rep 12, 3 Turkish clients (a 17-year-old with hidden upside and two journeymen), upkeep €4K/month, the guide, and a goal.
+
+---
+
+## 6. Architecture
 
 ```
 kulis/
@@ -276,145 +77,31 @@ kulis/
   src/engine/            PURE: no DOM, no Date, no Math.random, no globals. Deterministic per seed.
   src/ui/                Preact + htm (vendored at src/ui/vendor/preact-htm.js), no other deps
   tests/*.test.mjs       node --test
-  tools/bot.mjs          headless auto-player for balance & crash testing
+  tools/bot.mjs          headless bots (passive / casual / sharp / fuzz) for balance and crash testing
+  tools/e2e.mjs          Playwright click-through of dist/kulis.html (+ e2e-saves.mjs crafted saves)
 ```
 
 ### Engine rules
-- State `S` is one plain JSON-serialisable object (no classes, Maps, Sets, functions, undefined).
-- All randomness through `rng.js` with the generator state stored in `S.rng`.
-- Engine functions **mutate S in place** and return a `Result`:
-  `{ ok: true, events: [...] }` or `{ ok: false, error: 'türkçe kısa mesaj' }`.
-  `events` are plain objects `{type, ...}` the UI turns into toasts/animations.
-- Never throw for player mistakes (return `ok:false`); throw only for programmer errors.
-- Every balance number lives in `constants.js` as `BAL.*` — no magic numbers in logic.
-- All Turkish strings produced by the engine (event texts, tells, news) live in `data/` modules.
+- State `S` is one plain JSON-serialisable object. All randomness goes through `rng.js` (state in `S.rng`). Every balance number lives in `constants.js` as `BAL.*`.
+- Engine functions mutate `S` and return `{ok:true, events:[…]}` or `{ok:false, error:'türkçe kısa mesaj'}`; they never throw for player mistakes.
+- The UI imports only `game.js`, `selectors.js` (read-only views) and `constants.js`. See `src/engine/API.md`.
 
-### State shape (authoritative)
-```js
-S = {
-  v: 1, seed, rng,                       // rng: uint32 generator state
-  meta: { agentName, agencyName, archetype, careerSeasons },
-  time: { season: 1, month: 0, phase: 'plan' },   // phase: 'plan' | 'deadline' | 'over'
-  agency: {
-    cash, rep, energy, energyMax,
-    upgrades: { scout: 0, table: 0, network: 0 },
-    loan: null,                          // { principal, monthly, monthsLeft }
-    negMonths: 0, loanOffered: false,
-    stats: { deals: 0, commission: 0, promisesKept: 0, promisesBroken: 0, bluffsCaught: 0, dreams: 0 },
-  },
-  ledger: [ { season, month, items: [ { k, label, amt } ], net } ],        // last 24 months
-  leagues: { [id]: { id, name, country, prestige, clubIds: [], fixtures: [ [ [homeId, awayId] ] ],
-                     matchday: 0, table: { [clubId]: { p, w, d, l, gf, ga, pts } }, champions: [] } },
-  clubs: { [id]: { id, name, short, leagueId, colors: [c1, c2], crest: 0..5,
-                   budget, wageBudget, facilities: 1..5, youthTrust: 1..5,
-                   director: { name, persona, info: 0..3 },
-                   trust: 0..100, needs: [ { pos, level: 1..3 } ], lunchKnown: false } },
-  players: { [id]: { id, name, age, nat, pos, ca, pa, form, trait, dream: { type, target, done },
-                     clubId, wage, contractEnd, value, hype, injured: 0,
-                     guarantee: false, releaseClause: 0,
-                     st: { apps, mins, goals, assists, ratingSum, last: [ratings…max 4] },   // this season
-                     career: [ { season, clubId, apps, goals, avg } ],
-                     agentId: null | 'you' | rivalId,
-                     rep: null | { commissionPct, endSeason },
-                     loyalty: 50, morale: 60,
-                     know: 0, seen: false, heat: 0, shortlisted: false, dreamKnown: false,
-                     lastVisit: null } },
-  rivals: [ { id, name, agency, persona, rep, cash, color, score } ],
-  inbox: [ { id, key, kind, title, body, from, playerId, clubId, must: false, expiresIn: 2,
-             options: [ { id, label, hint, cost: { energy, cash }, risk: null | { pct, text } } ] } ],
-  promises: [ … ],
-  interests: [ { id, playerId, clubId, level, kind: 'transfer' | 'free' | 'renewal', cooldown: 0 } ],
-  negotiation: null | { … },             // owned by negotiation.js
-  deadline: null | { … },                // owned by deadline.js
-  objectives: { offered: [], active: null, history: [] },
-  news: [ { season, month, kind, text, playerId, clubId } ],               // newest first, max 80
-  deals: [ { season, month, playerId, fromClubId, toClubId, fee, commission, kind } ],
-  ranking: [ { id, name, score } ],      // 5 agencies, sorted desc; id 'you' for the player
-  history: [ { season, rank, cash, rep, clients, champions: { [leagueId]: clubId }, awards: [] } ],
-  flags: { tutorial: null | { step, done, target, … }, seen: {}, … },   // tutorial is an object (see tutorial.js; UI reads hubSummary.tutorialStep); the rest is internal bookkeeping
-  ending: null | { kind, rank, legacy, epilogues: [] },
-}
-```
+### Modules
+`rng util constants` · `world` (leagues, clubs, squads, the 3 start clients) · `fixtures match selection development valuation` (the simulated football world) · `market` (club needs, interest, AI transfers, **pitch**, executing a transfer) · `negotiation` (the Masa) · `scouting` (search, watch) · `clients` (sign, release, mood) · `rivals` (portfolios, sniping, ranking) · `economy upgrades` · `events` + `data/events` (the monthly card) · `goal` · `guide` · `season` (June: awards, promotion/relegation, ageing, contracts, youth) · `ending` + `data/ending` · `news` + `data/news` (headlines) · `turn` (the monthly orchestrator) · `game` (facade) · `save` (compact JSON, `SAVE_VERSION` 2) · `views` + `selectors` (UI-facing read-only helpers).
 
-### Engine modules (file → owner phase → exports)
-Foundation (phase 1):
-- `rng.js` — `seedRng(S, seed)`, `rnd(S)`, `rint(S,a,b)`, `pick(S,arr)`, `chance(S,p)`, `gauss(S,m,sd)`, `shuffle(S,arr)`, `uid(S,prefix)`.
-- `constants.js` — `BAL`, `MONTHS` (names, window, matchdays), `POS`, `TRAITS`, `DREAMS`, `PERSONAS`, `ARCHETYPES`.
-- `data/names.js`, `data/clubs.js` — name pools per nationality, 60 fictional clubs with colours.
-- `world.js` — `createWorld(S)`; `fixtures.js` — round robin; `match.js` — `playMatchday(S, leagueId)` → results; `selection.js` — line-ups/minutes; `development.js` — `developMonth(S)`; `valuation.js` — `playerValue(S,p)`, `fairWage(S,p,leagueId)`, `refreshValues(S)`.
-- `effects.js` — `applyEffects(S, effects, ctx)` → events. Effect primitives used by inbox options
-  and others: `{cash}`, `{rep}`, `{energy}`, `{loyalty, playerId}`, `{morale, playerId}`,
-  `{trust, clubId}`, `{hype, playerId}`, `{form, playerId}`, `{injure, playerId, months}`,
-  `{know, playerId}`, `{promise: {...}}`, `{interest: {playerId, clubId, level}}`, `{news: {...}}`,
-  `{flag: key}`, `{releaseClient: playerId}`.
-- `economy.js` — `monthlyEconomy(S)` (ledger, loan, bankruptcy check), `spend(S, amt, k, label)`, `earn(S, amt, k, label)`.
-- `season.js` — `endSeason(S)` (table awards, promotion/relegation, ageing, retirements, youth
-  intake, contract expiries/renewals for AI players, history row, new fixtures).
-- `turn.js` — `advanceMonth(S)` orchestrator (order in §4) → `MonthReport`.
-- `selectors.js` — read-only helpers: `myClients(S)`, `clubOf(S,p)`, `leagueOf(S,club)`,
-  `potentialBand(S,p)` → `{lo, hi}`, `minutesShare(S,p)`, `tableSorted(S,leagueId)`,
-  `isWindowOpen(S)`, `monthName(S)`, `canAfford(S, cost)`, `avgRating(p)`.
-- `game.js` — facade: `newGame(opts)` → S, `act(S, actionId, payload)` → Result,
-  `advance(S)` → MonthReport, `serialize(S)`, `deserialize(json)`. **The UI only imports
-  `game.js`, `selectors.js` and `constants.js`.**
+### `advanceMonth(S)` order
+1. Guard: open table → `ok:false`. 2. Matchdays for all leagues. 3. `developMonth`, `refreshValues`. 4. `market.monthly` (needs, AI transfers in July/August/January, interest in your clients). 5. `clients.monthly` (mood drift, leavers). 6. `rivals.monthly` (sniping, ranking). 7. `monthlyEconomy` (income, upkeep, loan, bankruptcy). 8. `events.monthly` (the one card), `goal.check`, no-clients check. 9. In June `endSeason`, then the next season (goal, "Marka" rep) or the ending. 10. Refill energy.
 
-Agency systems (phase 2a): `scouting.js`, `clients.js` (recruit, visit, loyalty/morale drift,
-dreams), `promises.js`, `upgrades.js`, `rivals.js` (heat, poaching, AI portfolios, ranking),
-`objectives.js`.
+---
 
-Market (phase 2b): `market.js` (needs, interest, AI transfers, pitch, lunch, media, executing a
-transfer: move, fee, commission, fit effects), `negotiation.js`, `deadline.js`.
+## 7. UI
 
-Narrative (phase 2c): `events.js` (inbox deck: conditions, generation, expiry, `answerInbox`),
-`data/events.js` (≥ 40 Turkish event templates), `news.js` + `data/news.js` (headline generator),
-`tutorial.js` (scripted first-months cards), `ending.js` (legacy score, ranking tier, epilogues),
-`data/tells.js` (director lines per persona × tell level — exported for negotiation.js).
-
-The foundation phase creates **stub files** for every later module with the exact export names
-used by `turn.js`/`game.js` (no-op bodies + JSDoc), so later phases only fill in their own files.
-
-### 4. `advanceMonth(S)` order
-1. Guards: active negotiation → `ok:false`; any inbox card with `must:true` → `ok:false`.
-2. If month ∈ {1, 6} and phase is `plan` and deadline not yet played this month →
-   `deadline.start(S)`; if it started, return `{ok:true, phase:'deadline'}` (UI runs Son Gün; when
-   it ends, `deadline.finish(S)` sets a flag and the UI calls `advance` again).
-3. Matchdays for the month (all leagues) → results, stats, form.
-4. `developMonth`, `refreshValues`.
-5. `market.monthly` (needs, interest, AI transfers in windows).
-6. `clients.monthly` (morale/loyalty drift, dreams), `promises.check`.
-7. `rivals.monthly` (heat, signings, poaching approaches, ranking).
-8. `scouting.monthly` (passive discovery).
-9. `monthlyEconomy` (ledger; bankruptcy → phase `over`, ending kind `iflas`).
-10. `events.monthly` (expire, then generate next month's inbox), `objectives.check`.
-11. If month == 11: `endSeason(S)`; season++ ; if season > careerSeasons → `ending.build(S)`,
-    phase `over` (endless mode flips it back). Else month++. Refill energy.
-12. Return `MonthReport { ok, season, month, matchdays: [ { leagueId, md, results: [ { home, away, hg, ag,
-    scorers: [ { playerId, minute, clubId } ] } ] } ], clients: [ { playerId, apps, mins, goals,
-    assists, rating, caDelta, valueDelta } ], finance: { items, net, cash }, news: [], promises: [],
-    rivalMoves: [], seasonEnd: null | {…}, ending: null | {…} }`.
-
-### UI
-- Preact + htm, hash router, one global store (`store.js`): holds `S`, `act(id, payload)`,
-  `advance()`, subscribe; autosave to `localStorage['kulis-save-v1']` after every successful
-  action (wrapped in try/catch — storage may be unavailable), export/import JSON.
-- Mobile-first. Content column max 560px, centred; ≥ 900px may use two columns. Touch targets ≥ 44px.
-- Bottom nav, 5 tabs: **Gündem** (hub: inbox cards, energy, "Ayı Oynat"), **Oyuncular** (clients),
-  **Keşif** (scouting, shortlist, recruit), **Piyasa** (interest/offers, clubs, tables),
-  **Ajans** (upgrades, finance, ranking ladder, objectives, news).
-- Full-screen overlays: Masa (negotiation), Son Gün, month playback, signing ceremony, season end,
-  ending, onboarding.
-- Art direction — **"gece maçı"**: near-black pitch green base, floodlight glow, chalk-line motifs,
-  big condensed numerals, warm gold for money, lime for positive. Tokens:
-  `--bg:#0A0F0C; --surface:#121A15; --raised:#1A2620; --line:#26352D; --text:#EEF4EF;
-  --muted:#8DA397; --lime:#3DDC84; --gold:#F5C451; --danger:#FF5D5D; --info:#5AB0FF; --rival:#B48CFF`.
-  Procedural SVG player avatars (deterministic from id) and club crests (from `colors`+`crest`).
-  No emoji as icons — inline SVG icon set. Respect `prefers-reduced-motion`.
-- Audio: WebAudio-synthesised SFX only (no audio files), muted by default until first user gesture,
-  toggle in settings.
-- No inline `onclick` strings, no `innerHTML` with game data.
+- Preact + htm, hash router with **plain `#name` routes** (`#hub #players #market`), one global store (`store.js`): `store.act`, `store.advance`, autosave to `localStorage['kulis-save-v2']` after every successful action (try/catch), restore after reload (an open Masa, an unseen season review or the ending come back). No `alert/confirm/prompt`.
+- **3 bottom tabs**: **Gündem** (headline, one-line goal, guide card, one event card, offer count, "AYI OYNAT"), **Oyuncular** (your clients — name, position, age, value, one mood dot — and "Yeni oyuncu bul": the search button and the candidate cards), **Piyasa** (offers with "Masaya otur", clubs of each league with what they need). **Ajans** is one scrolling sheet opened from the top bar (rank among the 5 agencies, money, the upgrade list).
+- Sheets: player dossier (stars, club, contract end, value, mood, ≤ 3 buttons, fits one phone screen), club picker ("Kulübe öner"), club, agency, settings. Overlays: onboarding, Masa, signing ceremony, month report, season review, ending.
+- Art direction — **"gece maçı"**: near-black pitch-green base, floodlight glow, chalk lines, big condensed numerals, warm gold for money, lime for positive. Tokens in `styles/tokens.css`. Procedural SVG avatars and crests, the director's procedural face (5 expressions), confetti, WebAudio sfx (muted until the first gesture), no emoji icons, `prefers-reduced-motion` respected.
+- Text diet: a player row shows name, position, age, value and one mood indicator; month report and season review are one screen each; no traits/loyalty/dream breakdowns anywhere.
 
 ### Quality bar
-- `npm test` green; `npm run sim` plays full careers on many seeds without exceptions.
-- A new player must reach their first negotiation within ~5 minutes and understand why they won
-  or lost it.
-- Every number the player is asked to gamble on is visible (costs, odds, meters).
+- `npm test` green; `npm run sim` plays full careers (≥ 16 seeds per bot) with no exceptions: passive fails (bankrupt in season 2), casual finishes mid-table (rank 3–4) and almost never goes bankrupt, careful finishes rank 1–2 about 94 % of the time.
+- A new player reaches the first Masa in their first month (4 energy: search, sign, pitch, table) and understands why they won or lost it.

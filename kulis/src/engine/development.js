@@ -1,4 +1,4 @@
-// Monthly player development: growth toward `pa` driven by minutes, facilities, morale, trait;
+// Monthly player development: growth toward `pa` driven by minutes, facilities, mood;
 // decline from 30+; form decay; hype drift; injuries tick down.
 import { BAL, MONTHS } from './constants.js';
 import { gauss } from './rng.js';
@@ -38,17 +38,16 @@ export function developMonth(S) {
       if (cf < p.pa) {
         const club = S.clubs[p.clubId];
         const fac = D.facBase + D.facStep * (club ? club.facilities : 2);
-        const mor = D.moraleBase + D.moraleSlope * (p.morale / 100);
-        const tr = p.trait === 'profesyonel' ? D.profesyonel : 1;
+        const mor = D.moodBase + D.moodSlope * (p.mood / 100);
         const dd = club && p.agentId !== 'you' ? drift[club.leagueId] || 0 : 0; // never dampens your own clients
         const reg = dd > 0 ? Math.max(D.driftMin, 1 - D.driftGain * dd) : 1 + Math.min(D.driftBoostMax, -dd * D.driftBoost);
-        const rate = D.rate * (D.ageFactor[p.age] || 0.4) * minutesFactor(st.sh) * fac * mor * tr * reg;
+        const rate = D.rate * (D.ageFactor[p.age] || 0.4) * minutesFactor(st.sh) * fac * mor * reg;
         cf += (p.pa - cf) * rate;
       }
       cf += gauss(S, 0, D.noiseSd * (p.age < 24 ? 1 : 0.5));
     } else {
       const yr = D.declinePerYear[Math.min(35, p.age)] || 0;
-      cf -= (yr / 12) * (p.trait === 'profesyonel' ? D.profDecline : 1);
+      cf -= yr / 12;
       cf += gauss(S, 0, D.noiseSd * 0.5);
     }
     cf = clamp(cf, 1, p.pa);

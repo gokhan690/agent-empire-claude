@@ -1,6 +1,6 @@
 import { html, useState, useEffect, useRef, Overlay, Button, Card, Badge, Icon, Avatar, Crest, NumberTicker, Money, store, audio, confetti, toast, useStore, fmtInt, fmtMoney } from '../ui-kit.js';
 import * as sel from '../../engine/selectors.js';
-import { downloadText, openPlayer, useGrow } from './agency/common.js';
+import { downloadText, openPlayer, useGrow } from './common.js';
 
 const MOOD = {
   efsane: { tone: 'gold', icon: 'trophy', eyebrow: 'Efsane', accent: 'gold', rank: 'Sen bir efsanesin' },
@@ -34,7 +34,7 @@ function Podium({ rows }) {
   const max = Math.max(1, ...rows.map((r) => r.score));
   return html`<div class="ending-podium">
     <div class="ending-podium__stage">${order.map((r) => html`<div class=${'ending-pod ending-pod--' + r.rank + (r.isYou ? ' is-you' : '')} style=${{ '--rc': r.color }}>
-      <div class="ending-pod__who"><span class="ending-pod__name">${r.name}</span>${r.isYou ? html`<${Badge} tone="lime">Sen</${Badge}>` : html`<span class="muted small">${r.personaLabel}</span>`}</div>
+      <div class="ending-pod__who"><span class="ending-pod__name">${r.name}</span>${r.isYou ? html`<${Badge} tone="lime">Sen</${Badge}>` : null}</div>
       <div class=${'ending-pod__block' + (grown ? ' is-up' : '')}><b class="num">${r.rank}</b><span class="num">${fmtMoney(r.score)}</span></div>
     </div>`)}</div>
     ${rest.map((r) => html`<div class=${'ending-pod-rest' + (r.isYou ? ' is-you' : '')} style=${{ '--rc': r.color }}><b class="num">${r.rank}</b><span class="grow">${r.name}${r.isYou ? html` <${Badge} tone="lime">Sen</${Badge}>` : ''}</span><span class="num muted">${fmtMoney(r.score)}</span></div>`)}
@@ -82,7 +82,7 @@ export default function Ending({ close }) {
       <${Reveal}><section class="ending-block ending-legacy">
         <div class="eyebrow">Miras puanı</div>
         <div class=${'ending-legacy__n num is-' + mood.accent}><${NumberTicker} value=${E.legacy} duration=${2200} format=${(n) => fmtInt(n)} /></div>
-        <p class="muted small">Komisyon, transferler, gerçekleşen hayaller, tutulan sözler, şampiyonluklar ve sıralaman tek bir sayıda toplanır.</p>
+        <p class="muted small">Komisyon, transferler, şampiyonluklar ve sıralaman tek bir sayıda toplanır.</p>
       </section></${Reveal}>
 
       <${Reveal}><section class="ending-block">

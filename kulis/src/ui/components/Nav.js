@@ -8,16 +8,14 @@ import { audio } from '../fx/audio.js';
 export const NAV_TABS = [
   { id: 'hub', label: 'Gündem', icon: 'inbox' },
   { id: 'players', label: 'Oyuncular', icon: 'users' },
-  { id: 'scout', label: 'Keşif', icon: 'eye' },
   { id: 'market', label: 'Piyasa', icon: 'swap' },
-  { id: 'agency', label: 'Ajans', icon: 'building' },
 ];
 
 /**
  * <TopBar cash rep energy energyMax season month onSettings /> — values are props (app.js feeds them from the store).
  * Pass `cash=null` to show dashes (no game yet).
  */
-export function TopBar({ cash, rep, energy, energyMax = 4, season, month, onSettings, muted, onMute }) {
+export function TopBar({ cash, rep, energy, energyMax = 4, season, month, onSettings, onAgency, muted, onMute }) {
   const has = cash != null;
   return html`<header class="topbar">
     <div class="topbar__row">
@@ -30,6 +28,7 @@ export function TopBar({ cash, rep, energy, energyMax = 4, season, month, onSett
         <b class="topbar__repv num"><${Icon} name="star" size=${15} />${has ? Math.round(rep) : '—'}</b>
       </div>
       <div class="topbar__tools">
+        ${onAgency ? html`<${IconButton} icon="building" label="Ajans" onClick=${onAgency} />` : null}
         <${IconButton} icon=${muted ? 'soundOff' : 'soundOn'} label=${muted ? 'Sesi aç' : 'Sesi kapat'} onClick=${onMute} sfx=${false} />
         <${IconButton} icon="settings" label="Ayarlar" onClick=${onSettings} />
       </div>

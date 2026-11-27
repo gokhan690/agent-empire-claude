@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { newGame } from '../src/engine/game.js';
 import { BAL, LEAGUE_DEFS, POS_ORDER } from '../src/engine/constants.js';
 import { squadIndex, clubStrength } from '../src/engine/selection.js';
-import { myClients, potentialBand } from '../src/engine/selectors.js';
+import { myClients, potentialStars, starsOf } from '../src/engine/selectors.js';
 import { generateFixtures } from '../src/engine/fixtures.js';
 import { CLUB_DATA } from '../src/engine/data/clubs.js';
 import { assertClean, LEAGUES } from './helpers.mjs';
@@ -44,13 +44,11 @@ test('strength follows prestige (≈52/62/68/76/82)', () => {
   }
 });
 
-test('start: 3 Turkish clients, gem aged 17 with wide band, rivals hold ~25%', () => {
+test('start: 3 Turkish clients, gem aged 17 with an unknown potential, rivals hold ~16%', () => {
   const cl = myClients(S);
   assert.equal(cl.length, 3);
   const gem = cl.find(p => p.age === 17);
   assert.ok(gem && gem.pa >= 82);
-  const b = potentialBand(S, gem);
-  assert.ok(b.lo <= gem.pa && gem.pa <= b.hi && b.hi - b.lo >= 15, JSON.stringify(b));
   for (const p of cl) { assert.equal(p.nat, 'TR'); assert.ok(['tr1', 'tr2'].includes(S.clubs[p.clubId].leagueId)); }
   const all = Object.values(S.players);
   const rival = all.filter(p => p.agentId && p.agentId !== 'you').length / all.length;
@@ -58,33 +56,31 @@ test('start: 3 Turkish clients, gem aged 17 with wide band, rivals hold ~25%', (
   const elite = all.filter(p => p.ca >= BAL.rivalAI.eliteCa);
   const eliteRival = elite.filter(p => p.agentId && p.agentId !== 'you').length / Math.max(1, elite.length);
   assert.ok(eliteRival < 0.12, 'rivals hold few stars at the start: ' + eliteRival);
-  for (const r of S.rivals) assert.ok(all.filter(p => p.agentId === r.id && (p.ca >= BAL.rivalAI.eliteCa)).length <= (BAL.rivals.find(x => x.id === r.id).eliteCap || 99) + 6);
   assert.equal(S.rivals.length, 4);
   assert.equal(S.ranking.length, 5);
   assert.equal(S.agency.cash, 60000); assert.equal(S.agency.rep, 12);
+  assert.equal(S.meta.careerSeasons, 5);
 });
 
-test('potential band always contains pa and narrows with knowledge', () => {
-  const ps = Object.values(S.players).slice(0, 300);
+test('stars: potential is a small range that always contains the truth and becomes exact after watching', () => {
+  const ps = Object.values(S.players).slice(0, 400);
   for (const p of ps) {
     const save = p.know;
-    let prev = 1e9;
-    for (const k of [0, 30, 60, 90, 100]) {
-      p.know = k;
-      const b = potentialBand(S, p);
-      assert.ok(b.lo <= p.pa && p.pa <= b.hi, p.id + ' k' + k + JSON.stringify(b) + p.pa);
-      assert.ok(b.hi - b.lo <= prev); prev = b.hi - b.lo;
-    }
+    p.know = 0;
+    const r = potentialStars(S, p);
+    assert.ok(!r.exact && r.hi > r.lo && r.hi - r.lo <= 2, p.id + JSON.stringify(r));
+    assert.ok(r.lo <= starsOf(p.pa) && starsOf(p.pa) <= r.hi, p.id + ' truth outside ' + JSON.stringify(r) + p.pa);
+    assert.ok(r.lo >= 1 && r.hi <= 5);
+    p.know = 100;
+    const e = potentialStars(S, p);
+    assert.ok(e.exact && e.lo === e.hi && e.lo === starsOf(p.pa));
     p.know = save;
   }
 });
 
-test('archetype bonuses', () => {
-  const E = newGame({ seed: 11, archetype: 'eskifutbolcu' });
-  assert.equal(E.agency.rep, BAL.start.rep + BAL.archetype.eskifutbolcu.rep);
-  const base = newGame({ seed: 11, archetype: 'hukukcu' });
-  const c = Object.keys(E.clubs)[0];
-  assert.ok(E.clubs[c].trust >= base.clubs[c].trust + 10);
+test('every club knows its needs from day one', () => {
+  assert.ok(Object.values(S.clubs).some(c => c.needs.length > 0));
+  for (const p of myClients(S)) assert.ok(!('trait' in p) && !('dream' in p) && !('loyalty' in p));
 });
 
 test('fixtures: double round robin, 18 matchdays', () => {

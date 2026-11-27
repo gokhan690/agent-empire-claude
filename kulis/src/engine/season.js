@@ -11,13 +11,12 @@ import { computeRanking, isElite } from './rivals.js';
 import { genYouth, refreshClubFinance, resetLeague, leagueMeans } from './world.js';
 import { LEAGUE_DEFS } from './constants.js';
 import * as news from './news.js';
-import * as market from './market.js';
 
 /** Remove a player from the world and every list that references him. */
 export function purgePlayer(S, id) {
   delete S.players[id];
   S.interests = S.interests.filter(i => i.playerId !== id);
-  S.promises = S.promises.filter(p => p.playerId !== id);
+  S.found = S.found.filter(x => x !== id);
   S.inbox = S.inbox.filter(c => c.playerId !== id);
 }
 
@@ -98,7 +97,7 @@ export function endSeason(S) {
     }
   }
 
-  // 4. contracts (clients first offer the market module a chance)
+  // 4. contracts: clients are always renewed by their club; other players renew or move on
   let idx = squadIndex(S);
   const size = {};
   for (const cid in idx) size[cid] = idx[cid].length;
@@ -108,7 +107,6 @@ export function endSeason(S) {
     if (p.contractEnd > season) continue;
     const lid = clubLeague[p.clubId];
     if (p.agentId === 'you') {
-      if (market.handleExpiry(S, p)) continue;
       newContract(S, p, lid); out.renewed++;
       out.clientEvents.push({ type: 'renewed', playerId: p.id, clubId: p.clubId });
     } else if (chance(S, R.renewChance)) {
@@ -119,17 +117,14 @@ export function endSeason(S) {
       let dest = dests[0];
       for (const c of dests) if (size[c] < size[dest]) dest = c;
       size[p.clubId]--; size[dest]++;
-      p.clubId = dest; p.guarantee = false; p.loyalty = rint(S, 35, 70);
+      p.clubId = dest;
       newContract(S, p, lid); out.released++;
     }
   }
-  // rival representation contracts churn
+  // rivals: some of their players leave them
   for (const id in S.players) {
     const p = S.players[id];
-    if (p.agentId && p.agentId !== 'you' && p.rep && p.rep.endSeason <= season) {
-      if (chance(S, isElite(p) ? BAL.rivalAI.renewChanceElite : BAL.rivalAI.renewChance)) p.rep.endSeason = season + rint(S, 1, 2);
-      else { p.agentId = null; p.rep = null; }
-    }
+    if (p.agentId && p.agentId !== 'you' && chance(S, 1 - (isElite(p) ? BAL.rivalAI.renewChanceElite : BAL.rivalAI.renewChance) - 0.1)) p.agentId = null;
   }
 
   // 5. promotion / relegation tr1 <-> tr2
@@ -189,9 +184,7 @@ export function endSeason(S) {
       const v = cands[0];
       cnt[v.pos]--; sq.splice(sq.indexOf(v), 1); purgePlayer(S, v.id);
     }
-    if (chance(S, BAL.directorChangeChance)) {
-      club.director = { name: makeName(S, LEAGUE_DEFS.find(d => d.id === L.id).nat), persona: pickWeighted(S, BAL.persona.weights), info: club.director.info };
-    }
+    if (chance(S, BAL.directorChangeChance)) club.director = { name: makeName(S, LEAGUE_DEFS.find(d => d.id === L.id).nat) };
     club.facilities = clamp(club.facilities + (chance(S, 0.08) ? 1 : chance(S, 0.05) ? -1 : 0), 1, 5);
     if (chance(S, 0.12)) club.youthTrust = clamp(club.youthTrust + (chance(S, 0.5) ? 1 : -1), 1, 5);
   }

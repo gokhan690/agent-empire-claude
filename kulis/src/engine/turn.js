@@ -1,4 +1,4 @@
-// advanceMonth(S): the monthly orchestrator (DESIGN §4).
+// advanceMonth(S): the monthly orchestrator.
 import { BAL, MONTHS } from './constants.js';
 import { playMatchday } from './match.js';
 import { squadIndex } from './selection.js';
@@ -6,41 +6,30 @@ import { developMonth } from './development.js';
 import { refreshValues } from './valuation.js';
 import { monthlyEconomy } from './economy.js';
 import { endSeason } from './season.js';
-import { myClients, energyMaxFor } from './selectors.js';
+import { myClients, energyMaxFor, hasUpgrade } from './selectors.js';
+import { addRep } from './economy.js';
 import * as market from './market.js';
 import * as clients from './clients.js';
-import * as promises from './promises.js';
 import * as rivals from './rivals.js';
-import * as scouting from './scouting.js';
 import * as events from './events.js';
-import * as objectives from './objectives.js';
-import * as tutorial from './tutorial.js';
-import * as deadline from './deadline.js';
+import * as goal from './goal.js';
 import * as ending from './ending.js';
 
 function snap(p) { const s = p.st; return { apps: s.apps, mins: s.mins, goals: s.goals, assists: s.assists, rs: s.ratingSum, ca: p.ca, value: p.value }; }
 
 /**
- * Advance one month (see DESIGN §4 for order). Mutates S.
+ * Advance one month. Mutates S.
  * @param {object} S
- * @returns {object} MonthReport `{ok, season, month, matchdays, clients, finance, news, promises, rivalMoves, events, seasonEnd, ending}`
- *   or `{ok:true, phase:'deadline'}` when Son Gün starts, or `{ok:false,error}`.
+ * @returns {object} MonthReport `{ok, season, month, matchdays, clients, finance, news, rivalMoves, events, seasonEnd, ending}` or `{ok:false,error}`.
  */
 export function advanceMonth(S) {
   if (S.time.phase === 'over') return { ok: false, error: 'Kariyer sona erdi' };
-  if (S.time.phase === 'deadline') return { ok: false, error: 'Son Gün sürüyor' };
   if (S.negotiation) return { ok: false, error: 'Açık bir masa var' };
-  if (S.inbox.some(c => c.must)) return { ok: false, error: 'Önce zorunlu kartı yanıtla' };
   const { season, month } = S.time;
-  const key = season + ':' + month;
-  if (MONTHS[month].deadline && S.flags.deadlineDone !== key) {
-    if (deadline.start(S)) { S.time.phase = 'deadline'; return { ok: true, phase: 'deadline', season, month }; }
-  }
-  const report = { ok: true, season, month, matchdays: [], clients: [], finance: null, news: [], promises: [], rivalMoves: [], events: [], seasonEnd: null, ending: null };
-  const mine = myClients(S);
-  const before = new Map(mine.map(p => [p.id, snap(p)]));
+  const report = { ok: true, season, month, matchdays: [], clients: [], finance: null, news: [], rivalMoves: [], events: [], seasonEnd: null, ending: null };
+  const before = new Map(myClients(S).map(p => [p.id, snap(p)]));
 
-  // 3. matchdays
+  // matchdays
   const idx = squadIndex(S);
   for (let k = 0; k < MONTHS[month].matchdays; k++) {
     for (const lid in S.leagues) {
@@ -48,16 +37,13 @@ export function advanceMonth(S) {
       if (r) report.matchdays.push(r);
     }
   }
-  // 4. development + values
   developMonth(S);
   refreshValues(S);
-  // 5-8. world systems
+  // world systems
   report.events.push(...market.monthly(S));
   report.events.push(...clients.monthly(S));
-  report.promises = promises.check(S);
   report.rivalMoves = rivals.monthly(S);
-  report.events.push(...scouting.monthly(S));
-  // 9. economy
+  // economy
   const fin = monthlyEconomy(S);
   report.finance = { items: fin.items, net: fin.net, cash: fin.cash };
   if (fin.loanOffer) report.events.push({ type: 'loanOffer' });
@@ -66,34 +52,34 @@ export function advanceMonth(S) {
     finish(S, report, before);
     return report;
   }
-  // 10. narrative
+  // narrative
+  ending.track(S);
   report.events.push(...events.monthly(S));
-  report.events.push(...tutorial.monthly(S));
-  report.events.push(...objectives.check(S));
-  // 10b. zero-client grace: warning card each month, career ends after BAL.econ.noClientMonthsEnd month ends in a row
+  report.events.push(...goal.check(S));
+  // zero clients: warning, then the career ends after BAL.econ.noClientMonthsEnd month ends in a row
   if (myClients(S).length === 0) {
     S.agency.noClientMonths = (S.agency.noClientMonths || 0) + 1;
-    if (S.agency.noClientMonths >= BAL.econ.noClientMonthsEnd && !(month === 11 && season >= 2)) { // June of season 2+ keeps its own season-end check below
+    if (S.agency.noClientMonths >= BAL.econ.noClientMonthsEnd) {
       report.ending = ending.build(S, 'yalniz');
       finish(S, report, before);
       return report;
     }
-    report.events.push(...noClientWarning(S));
+    report.events.push({ type: 'noClients', left: BAL.econ.noClientMonthsEnd - S.agency.noClientMonths });
   } else S.agency.noClientMonths = 0;
-  // 11. season rollover
+  // season rollover
   if (month === 11) {
-    clientRows(S, report, before); // before endSeason resets stats / retires players
+    clientRows(S, report, before);
     report.seasonEnd = endSeason(S);
     report.events.push(...report.seasonEnd.clientEvents);
     report.news = S.news.filter(n => n.season === season && n.month === month);
-    if (season >= 2 && myClients(S).length === 0) { report.ending = ending.build(S, 'musterisiz'); return report; }
     if (season >= S.meta.careerSeasons) {
       S.time.season++; S.time.month = 0;
       report.ending = ending.build(S, 'kariyer');
       return report;
     }
     S.time.season++; S.time.month = 0;
-    objectives.offer(S);
+    goal.assign(S);
+    if (hasUpgrade(S, 'brand')) addRep(S, BAL.upgrade.brandRep);
   } else {
     finish(S, report, before);
     S.time.month++;
@@ -101,20 +87,6 @@ export function advanceMonth(S) {
   S.agency.energyMax = energyMaxFor(S);
   S.agency.energy = S.agency.energyMax;
   return report;
-}
-
-function noClientWarning(S) {
-  const left = Math.max(0, BAL.econ.noClientMonthsEnd - S.agency.noClientMonths);
-  S.inbox = S.inbox.filter(c => c.key !== 'no_clients');
-  const card = events.addCard(S, {
-    key: 'no_clients', kind: 'ajans', title: 'Hiç müşterin kalmadı', from: 'Rıza Abi', expiresIn: 1,
-    body: left > 0
-      ? `Ajansın şu an tek bir oyuncuyu bile temsil etmiyor. Böyle giderse ${left} ay içinde kapıya kilit vurulur. Bir keşif gezisine çık, yetenek bul, ya da bir oyuncuyu ikna et.`
-      : 'Ajansın hâlâ tek bir oyuncuyu bile temsil etmiyor.',
-    options: [{ id: 'tamam', label: 'Tamam', hint: 'Müşteri bulmalısın', cost: { energy: 0, cash: 0 }, risk: null, effects: [] }],
-    defaultOption: 'tamam',
-  });
-  return [{ type: 'inboxNew', cardId: card.id, key: card.key, title: card.title }];
 }
 
 function finish(S, report, before) {

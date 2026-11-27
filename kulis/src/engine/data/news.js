@@ -59,27 +59,6 @@ def('rivalSign',
   n => `Menajerlik savaşı kızışıyor: ${n.agency}, ${n.name} için imzayı aldı.`,
   n => `Kulislerde ${n.agency} dönemi: ${n.name} artık onların oyuncusu.`,
   n => `Yeni müşteri: ${n.name} da ${ek(n.agency, 'gen')} listesine eklendi.`);
-def('dreamFulfilled',
-  n => `Hayal gerçek oldu: ${n.name} sonunda istediğine kavuştu!`,
-  n => `${n.name} gözyaşlarını tutamadı: yıllardır beklediği hayal gerçek oldu.`,
-  n => `"Çocukluk hayalimdi" diyen ${n.name}, hedefine ulaştı.`,
-  n => `Futbolda masal gibi bir an: ${ek(n.name, 'gen')} hayali gerçekleşti.`,
-  n => `${n.name} mutluluktan uçuyor: hayal kuruldu, gerçek oldu.`,
-  n => `Menajerin gururu: ${n.name} hayaline ulaştı.`);
-def('promiseKept',
-  n => `Söz verildi, söz tutuldu: ${ek(n.name, 'gen')} menajeri çizgisini bozmadı.`,
-  n => `${n.name} memnun: menajeri sözünü tuttu.`,
-  n => `Kulislerde güven artıyor: ${n.name} için verilen söz yerine geldi.`,
-  n => `"Sözünün adamı" lafı ${ek(n.name, 'gen')} menajeri için söylenir oldu.`,
-  n => `${n.name}: "Menajerim dediğini yaptı. Bu sektörde ender bir şey."`,
-  n => `Futbol dünyası konuşuyor: ${ek(n.name, 'gen')} menajeri sözünü tuttu.`);
-def('promiseBroken',
-  n => `Verilen söz havada kaldı: ${n.name} menajerinden memnun değil.`,
-  n => `${n.name} isyanda: "Bana söz vermişlerdi!"`,
-  n => `Kulis çalkalanıyor: ${ek(n.name, 'gen')} menajeri sözünü tutamadı.`,
-  n => `Güven sarsıldı: ${n.name} sessizliğini bozdu.`,
-  n => `"Söz uçar" diye boşuna dememişler: ${n.name} hayal kırıklığında.`,
-  n => `${ek(n.name, 'gen')} sabrı taştı: sözler tutulmayınca bağ da gevşiyor.`);
 def('champion',
   n => `${n.club} ${n.league} şampiyonu oldu!`,
   n => `Şampiyon belli: ${n.club}! ${n.league} kupası ${ek(n.club, 'dat')} gitti.`,
@@ -129,20 +108,6 @@ def('wonderkidBreakout',
   n => `Futbolun parlayan ismi ${n.name}${n.goals ? ': ' + n.goals + ' golle ligi salladı' : ': ligi salladı'}.`,
   n => `Menajerlerin yeni gözdesi ${n.name}: Avrupa izliyor.`,
   n => `"Bu çocuk bir başka" diyorlar: ${n.name} gündemi sarstı.`);
-def('deadlineDrama',
-  n => `Son Gün'de olaylı saatler: ${n.name} dosyası nefes kesti.`,
-  n => `Saat ilerledi, telefonlar kızıştı: ${n.name} için son dakika pazarlığı!`,
-  n => `Kapanışa dakikalar kala ${n.name} hamlesi gündemi altüst etti.`,
-  n => `Menajerler ofisten çıkmadı: ${n.name} için gece yarısı mesaisi.`,
-  n => `Transfer döneminin son saatleri: ${n.name} için tansiyon yüksek.`,
-  n => `Son Gün, son saat, son hamle: ${n.name} sahnede.`);
-def('objectiveDone',
-  n => `Hedef tamam: ${n.objective}.`,
-  n => `Sözünü tuttu: "${n.objective}" hedefi başarıyla tamamlandı.`,
-  n => `Ajans cephesinde sevinç: ${n.objective} gerçekleşti.`,
-  n => `Defter kapandı, hedef vuruldu: ${n.objective}.`,
-  n => `Kulislerde alkış: "${n.objective}" artık geçmişte kaldı.`,
-  n => `Sezonun hedeflerinden biri daha tamam: ${n.objective}.`);
 def('retire',
   n => `${n.name} futbola veda etti.`,
   n => `Bir devir kapandı: ${n.name} kramponlarını astı.`,
@@ -159,7 +124,7 @@ def('topscorer',
   n => `Kral belli: ${n.name} (${n.goals} gol) ${n.league} tarihine yazıldı.`);
 V.genel = [c => c.text || 'Futbol dünyasından haberler.'];
 
-const ALIAS = { transfer: 'transferAI', transferYours: 'transferYou', transferAi: 'transferAI', promotion: 'promoted', relegation: 'relegated', rivalSigned: 'rivalSign', promise_kept: 'promiseKept', promise_broken: 'promiseBroken' };
+const ALIAS = { transfer: 'transferAI', transferYours: 'transferYou', transferAi: 'transferAI', promotion: 'promoted', relegation: 'relegated', rivalSigned: 'rivalSign' };
 
 /** All kinds that have ≥ 6 variants (the test checks this). */
 export const NEWS_KINDS = Object.keys(V).filter(k => k !== 'genel');

@@ -34,7 +34,7 @@ export async function newPage(browser, base, { width = 390, height = 844, dsf = 
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.g|ERR_|Failed to load resource/.test(m.text())) errors.push('console: ' + m.text()); });
-  if (save) await ctx.addInitScript((s) => { if (!sessionStorage.getItem('__seeded')) { localStorage.setItem('kulis-save-v1', s); sessionStorage.setItem('__seeded', '1'); } }, save);
+  if (save) await ctx.addInitScript((s) => { if (!sessionStorage.getItem('__seeded')) { localStorage.setItem('kulis-save-v2', s); sessionStorage.setItem('__seeded', '1'); } }, save);
   const open = async () => { await page.goto(base, { waitUntil: 'load' }); await page.waitForSelector('html.ready', { timeout: 10000 }); await sleep(500); };
   const shot = async (name, full = false) => { await sleep(350); await page.screenshot({ path: join(shotDir, `e2e-${name}.png`), fullPage: full }); };
   return { ctx, page, errors, shot, open };

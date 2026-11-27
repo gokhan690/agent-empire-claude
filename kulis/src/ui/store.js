@@ -5,8 +5,8 @@ import { useState, useEffect, useRef } from './lib.js';
 import { toast } from './components/Toast.js';
 import { audio } from './fx/audio.js';
 
-const KEY = 'kulis-save-v1';
-const UIKEY = 'kulis-ui-v1'; // tiny UI bookkeeping next to the save: which season-end screen has not been seen yet
+const KEY = 'kulis-save-v2';
+const UIKEY = 'kulis-ui-v2'; // tiny UI bookkeeping next to the save: which season-end screen has not been seen yet
 let engine = null;
 const subs = new Set();
 const evSubs = new Set();
@@ -31,7 +31,7 @@ export const store = {
     overlay: null,   // { name, props } | null  (one full-screen overlay at a time; name from app.js OVERLAYS registry)
     sheets: [],      // stack of { name, props }  (name from app.js SHEETS registry)
     // A new overlay always closes open sheets (a stale sheet would otherwise sit above it: z-sheet > z-overlay).
-    openOverlay(name, props = {}) { store.ui.sheets = []; store.ui.overlay = { name, props, key: Math.random() }; notify(); },
+    openOverlay(name, props = {}) { if (store.ui.overlay && store.ui.overlay.name === 'SeasonEnd') setPending(null); store.ui.sheets = []; store.ui.overlay = { name, props, key: Math.random() }; notify(); },
     closeOverlay() { if (store.ui.overlay) { if (store.ui.overlay.name === 'SeasonEnd') setPending(null); store.ui.overlay = null; notify(); } },
     openSheet(name, props = {}) { store.ui.sheets = [...store.ui.sheets, { name, props, key: Math.random() }]; notify(); },
     closeSheet() { if (store.ui.sheets.length) { store.ui.sheets = store.ui.sheets.slice(0, -1); notify(); } },
@@ -77,8 +77,7 @@ export const store = {
     return r;
   },
   /**
-   * Press "Ayı Oynat". Returns the MonthReport. Default routing (pass {silent:true} to skip):
-   * report.phase === 'deadline' -> overlay 'Deadline'; otherwise -> overlay 'Playback' with { report }.
+   * Press "Ayı Oynat". Returns the MonthReport and opens overlay 'Playback' with { report } (pass {silent:true} to skip).
    */
   advance({ silent = false } = {}) {
     if (!engine || !store.S) return fail('Oyun başlamadı');
@@ -87,12 +86,12 @@ export const store = {
     if (!r || r.ok === false) { toast.error((r && r.error) || 'Ay oynatılamadı'); notify(); return r; }
     if (r.seasonEnd) setPending({ seasonEnd: r.seasonEnd.season });
     save(); emitEvents(r.events);
-    if (!silent) { if (r.phase === 'deadline') store.ui.openOverlay('Deadline', { report: r }); else store.ui.openOverlay('Playback', { report: r }); }
+    if (!silent) store.ui.openOverlay('Playback', { report: r });
     notify();
     return r;
   },
   /**
-   * After load/import: put the player back where they were. Priority: Ending (career over) > open Masa > Son Gün
+   * After load/import: put the player back where they were. Priority: Ending (career over) > open Masa
    * > an unseen season-end review. Plain months need nothing (the Hub shows state). Returns the overlay name or null.
    */
   restore() {
@@ -101,7 +100,6 @@ export const store = {
     let name = null, props = {};
     if (S.time.phase === 'over' && S.ending) { const pe = getPending(); if (pe && pe.seasonEnd) { name = 'SeasonEnd'; props = { seasonEnd: null, report: null }; } else name = 'Ending'; }
     else if (S.negotiation) name = 'Negotiation';
-    else if (S.time.phase === 'deadline' && S.deadline) name = 'Deadline';
     else { const pe = getPending(); const last = (S.history || [])[(S.history || []).length - 1]; if (pe && pe.seasonEnd && last && last.season === pe.seasonEnd) { name = 'SeasonEnd'; props = { seasonEnd: null, report: null }; } else if (pe) setPending(null); }
     if (name) store.ui.openOverlay(name, props); else if (store.ui.overlay) { store.ui.overlay = null; notify(); }
     return name;
